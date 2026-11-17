@@ -1,0 +1,67 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer utilities {
+  /* Custom scrollbars */
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    background: #11131a;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: #2a2e3d;
+    border-radius: 3px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: #3b4256;
+  }
+}
+
+/* Transitions for Dual-Video Player */
+.transition-fade {
+  animation: fadeIn 350ms cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+
+.transition-dissolve {
+  animation: dissolveIn 400ms ease-in-out forwards;
+}
+
+.transition-wipeleft {
+  animation: wipeLeftIn 400ms cubic-bezier(0.25, 1, 0.5, 1) forwards;
+}
+
+.transition-wiperight {
+  animation: wipeRightIn 400ms cubic-bezier(0.25, 1, 0.5, 1) forwards;
+}
+
+.transition-slideup {
+  animation: slideUpIn 350ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes dissolveIn {
+  0% { filter: blur(6px) brightness(1.2); opacity: 0; }
+  100% { filter: blur(0px) brightness(1); opacity: 1; }
+}
+
+@keyframes wipeLeftIn {
+  from { clip-path: inset(0 100% 0 0); }
+  to { clip-path: inset(0 0 0 0); }
+}
+
+@keyframes wipeRightIn {
+  from { clip-path: inset(0 0 0 100%); }
+  to { clip-path: inset(0 0 0 0); }
+}
+
+@keyframes slideUpIn {
+  from { transform: translateY(100%); opacity: 0.5; }
+  to { transform: translateY(0); opacity: 1; }
+}

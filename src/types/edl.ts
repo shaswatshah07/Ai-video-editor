@@ -1,0 +1,69 @@
+export type ClipKind = 'SOURCE_CLIP' | 'MEME_CLIP';
+
+export type ClipStatus = 'ACTIVE' | 'SUGGESTED_SILENCE_CUT' | 'SUGGESTED_MEME' | 'DELETED';
+
+export type TransitionType = 'none' | 'fade' | 'dissolve' | 'wipeleft' | 'wiperight' | 'slideup';
+
+export interface TransitionOut {
+  type: TransitionType;
+  durationMs: number;
+}
+
+export interface TimelineItem {
+  id: string;
+  kind: ClipKind;
+  title: string;
+  blobUrl: string;
+  sourceStartMs: number;
+  sourceEndMs: number;
+  durationMs: number;
+  projectStartMs: number;
+  projectEndMs: number;
+  status: ClipStatus;
+  transitionOut: TransitionOut;
+  meta?: {
+    silenceRms?: number;
+    memeCategory?: string;
+    isCustomUpload?: boolean;
+  };
+}
+
+export interface TranscriptWord {
+  id: string;
+  word: string;
+  sourceStartMs: number;
+  sourceEndMs: number;
+  confidence: number;
+}
+
+export interface ChapterMarker {
+  id: string;
+  title: string;
+  sourceMs: number;
+  description?: string;
+}
+
+export interface AudioSettings {
+  voiceEnhanceEnabled: boolean;  // 80Hz HPF + 3kHz peak EQ + compressor
+  noiseReductionEnabled: boolean; // Noise gate / spectral suppression
+  highPassFreq: number;           // 80 Hz
+  eqPeakFreq: number;             // 3000 Hz
+  eqGainDb: number;               // +3 dB
+  compressorThresholdDb: number;  // -20 dB
+}
+
+export interface ProjectEDL {
+  id: string;
+  title: string;
+  sourceDurationMs: number;
+  sourceVideoUrl: string;
+  sourceFileName: string;
+  sourceFileSize: number;
+  totalProjectDurationMs: number;
+  items: TimelineItem[];
+  transcript: TranscriptWord[];
+  chapters: ChapterMarker[];
+  audioSettings: AudioSettings;
+  createdAt: number;
+  updatedAt: number;
+}
