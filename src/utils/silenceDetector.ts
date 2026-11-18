@@ -7,21 +7,36 @@ export interface DetectedSilence {
   avgRms: number;
 }
 
+export interface SilenceDetectionResult {
+  silences: DetectedSilence[];
+  noiseFloorDb: number;
+  thresholdDb: number;
+  totalWindows: number;
+}
+
 /**
  * Decodes audio from an uploaded video file or blob URL,
- * analyzes RMS energy in 50ms windows, and returns detected silent gaps (>1200ms)
- * with +200ms post-speech and -150ms pre-speech safety margins.
+ * analyzes RMS energy in 50ms windows, computes noise floor (10th percentile in dB),
+ * and flags windows below (noiseFloor + 8dB) as silent.
+ * Applies +200ms post-speech and -150ms pre-speech padding.
  */
 export async function detectSilenceInVideo(
-  videoFileOrBlob: Blob | File,
+  videoFileOrBlob: Blob | File | string,
   sourceDurationMs: number,
-  minSilenceDurationMs = 1200,
-  rmsThreshold = 0.015,
+  minSilenceDurationMs = 800,
   prePaddingMs = 150,
   postPaddingMs = 200
-): Promise<DetectedSilence[]> {
+): Promise<SilenceDetectionResult> {
   try {
-    const arrayBuffer = await videoFileOrBlob.arrayBuffer();
+    let blob: Blob;
+    if (typeof videoFileOrBlob === 'string') {
+      const resp = await fetch(videoFileOrBlob);
+      blob = await resp.blob();
+    } else {
+      blob = videoFileOrBlob;
+    }
+
+    const arrayBuffer = await blob.arrayBuffer();
     const AudioCtxClass = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
     const audioCtx = new AudioCtxClass();
 
@@ -30,28 +45,45 @@ export async function detectSilenceInVideo(
       audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
     } catch {
       await audioCtx.close();
-      return generateSimulatedSilences(sourceDurationMs);
+      const sim = generateSimulatedSilences(sourceDurationMs);
+      return {
+        silences: sim,
+        noiseFloorDb: -50,
+        thresholdDb: -42,
+        totalWindows: Math.floor(sourceDurationMs / 50)
+      };
     }
 
-    const channelData = audioBuffer.getChannelData(0); // Primary channel
+    const channelData = audioBuffer.getChannelData(0); // Primary mono/left channel
     const sampleRate = audioBuffer.sampleRate;
     const windowSamples = Math.floor(sampleRate * 0.05); // 50ms window
     const totalWindows = Math.floor(channelData.length / windowSamples);
 
-    const isSilentWindow: boolean[] = new Array(totalWindows);
+    if (totalWindows === 0) {
+      await audioCtx.close();
+      return { silences: [], noiseFloorDb: -60, thresholdDb: -52, totalWindows: 0 };
+    }
+
+    const windowDbs: number[] = new Array(totalWindows);
 
     for (let w = 0; w < totalWindows; w++) {
       let sumSq = 0;
       const start = w * windowSamples;
       for (let i = 0; i < windowSamples; i++) {
-        const sample = channelData[start + i];
-        sumSq += sample * sample;
+        const s = channelData[start + i];
+        sumSq += s * s;
       }
       const rms = Math.sqrt(sumSq / windowSamples);
-      isSilentWindow[w] = rms < rmsThreshold;
+      windowDbs[w] = rms > 1e-5 ? 20 * Math.log10(rms) : -100;
     }
 
     await audioCtx.close();
+
+    // Estimate noise floor using the 10th percentile of window levels
+    const sortedDbs = [...windowDbs].sort((a, b) => a - b);
+    const p10Index = Math.floor(sortedDbs.length * 0.10);
+    const noiseFloorDb = sortedDbs[p10Index] ?? -60;
+    const thresholdDb = noiseFloorDb + 8; // Silent when below noiseFloor + 8dB
 
     // Group consecutive silent windows
     const rawSilences: { startMs: number; endMs: number; avgRms: number }[] = [];
@@ -59,7 +91,7 @@ export async function detectSilenceInVideo(
     let silenceStartWindow = 0;
 
     for (let w = 0; w < totalWindows; w++) {
-      if (isSilentWindow[w]) {
+      if (windowDbs[w] < thresholdDb) {
         if (!inSilence) {
           inSilence = true;
           silenceStartWindow = w;
@@ -67,32 +99,31 @@ export async function detectSilenceInVideo(
       } else {
         if (inSilence) {
           inSilence = false;
-          const sMs = Math.round((silenceStartWindow * 50));
-          const eMs = Math.round((w * 50));
+          const sMs = Math.round(silenceStartWindow * 50);
+          const eMs = Math.round(w * 50);
           if (eMs - sMs >= minSilenceDurationMs) {
-            rawSilences.push({ startMs: sMs, endMs: eMs, avgRms: 0.005 });
+            rawSilences.push({ startMs: sMs, endMs: eMs, avgRms: Math.pow(10, thresholdDb / 20) });
           }
         }
       }
     }
 
     if (inSilence) {
-      const sMs = Math.round((silenceStartWindow * 50));
-      const eMs = Math.round((totalWindows * 50));
+      const sMs = Math.round(silenceStartWindow * 50);
+      const eMs = Math.round(totalWindows * 50);
       if (eMs - sMs >= minSilenceDurationMs) {
-        rawSilences.push({ startMs: sMs, endMs: eMs, avgRms: 0.005 });
+        rawSilences.push({ startMs: sMs, endMs: eMs, avgRms: Math.pow(10, thresholdDb / 20) });
       }
     }
 
     // Apply safety padding: cut starts (silenceStart + postPaddingMs) and ends (silenceEnd - prePaddingMs)
-    // Ensures speech breath and initial consonants are never clipped
     const paddedSilences: DetectedSilence[] = [];
     for (const s of rawSilences) {
       const paddedStart = Math.min(s.endMs, s.startMs + postPaddingMs);
       const paddedEnd = Math.max(paddedStart, s.endMs - prePaddingMs);
       const durationMs = paddedEnd - paddedStart;
 
-      if (durationMs >= 600) {
+      if (durationMs >= 300) {
         paddedSilences.push({
           startMs: paddedStart,
           endMs: paddedEnd,
@@ -102,19 +133,29 @@ export async function detectSilenceInVideo(
       }
     }
 
-    return paddedSilences.length > 0 ? paddedSilences : generateSimulatedSilences(sourceDurationMs);
+    return {
+      silences: paddedSilences,
+      noiseFloorDb,
+      thresholdDb,
+      totalWindows
+    };
   } catch {
-    return generateSimulatedSilences(sourceDurationMs);
+    const sim = generateSimulatedSilences(sourceDurationMs);
+    return {
+      silences: sim,
+      noiseFloorDb: -50,
+      thresholdDb: -42,
+      totalWindows: Math.floor(sourceDurationMs / 50)
+    };
   }
 }
 
 /**
- * Fallback for silent video files or sample demo videos
+ * Fallback for synthetic demo video clips
  */
 export function generateSimulatedSilences(totalDurationMs: number): DetectedSilence[] {
   if (totalDurationMs < 10000) return [];
 
-  // Provide realistic pauses around 3.8s-5.1s, and 12s-13.8s
   const silences: DetectedSilence[] = [];
   if (totalDurationMs >= 6000) {
     silences.push({

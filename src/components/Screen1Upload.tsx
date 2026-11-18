@@ -134,8 +134,8 @@ export const Screen1Upload: React.FC = () => {
 
       if (isAutoMode) {
         if (autoOptions.detectSilence) {
-          setProcessingStatus('Scanning RMS energy for awkward pauses (>1.2s)...');
-          const silences = await detectSilenceInVideo(selectedFile, durationMs);
+          setProcessingStatus('Scanning RMS energy for awkward pauses (>800ms)...');
+          const { silences } = await detectSilenceInVideo(selectedFile, durationMs, 800);
           items = injectSilenceCutsIntoTimeline(items, silences);
         }
 
@@ -291,8 +291,8 @@ export const Screen1Upload: React.FC = () => {
                 { key: 'transcript', label: 'Generate Word-Level Transcript' },
                 { key: 'timestamps', label: 'Create Chapter Timestamps' },
                 { key: 'voiceEnhance', label: 'Enhance Voice (+3dB 3kHz EQ & Compressor)' },
-                { key: 'noiseReduction', label: 'Remove Background Noise (Spectral Denoise)' },
-                { key: 'detectSilence', label: 'Detect Awkward Silences (>1.2s Pauses)' },
+                { key: 'noiseReduction', label: 'Low-Cut Filter (80-120Hz AC & Rumble Attenuation)' },
+                { key: 'detectSilence', label: 'Detect Awkward Silences (>800ms Pauses)' },
                 { key: 'suggestMemes', label: 'Enable Meme Reaction Library' },
               ].map(({ key, label }) => (
                 <label

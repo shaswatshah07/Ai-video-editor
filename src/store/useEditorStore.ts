@@ -8,6 +8,7 @@ import {
   getTotalProjectDuration
 } from '../utils/timelineMath';
 import { getOrGenerateMemeBlob, MEME_PRESETS } from '../utils/memeGenerator';
+import { detectSilenceInVideo, injectSilenceCutsIntoTimeline } from '../utils/silenceDetector';
 
 export type ScreenState = 'UPLOAD' | 'WORKSPACE' | 'EXPORT';
 
@@ -23,7 +24,9 @@ interface EditorState {
   project: ProjectEDL | null;
   currentProjectMs: number;
   isPlaying: boolean;
-  zoomLevel: 1 | 2 | 5;
+  previewSpeed: 1 | 2 | 5;
+  timelineZoom: number;
+  minSilenceDurationMs: number;
   selectedItemId: string | null;
   commandLogs: CommandLogEntry[];
   customMemeClips: CustomMeme[];
@@ -43,7 +46,11 @@ interface EditorState {
   ) => void;
   setCurrentProjectMs: (ms: number) => void;
   setIsPlaying: (playing: boolean) => void;
-  setZoomLevel: (zoom: 1 | 2 | 5) => void;
+  setPreviewSpeed: (speed: 1 | 2 | 5) => void;
+  setTimelineZoom: (zoom: number) => void;
+  zoomIn: () => void;
+  zoomOut: () => void;
+  setMinSilenceDurationMs: (ms: number) => void;
   setSelectedItemId: (id: string | null) => void;
   addCommandLog: (log: CommandLogEntry) => void;
   
@@ -55,7 +62,9 @@ interface EditorState {
   deleteSelected: () => void;
   acceptSilenceCut: (itemId: string) => void;
   keepSilencePause: (itemId: string) => void;
-  acceptAllSilences: () => void;
+  acceptAllSilences: () => Promise<{ changed: boolean; message: string }>;
+  detectSilencesOnly: (minMs?: number) => Promise<{ count: number; message: string }>;
+  removeOrDetectSilences: (minMs?: number) => Promise<{ changed: boolean; message: string; count?: number; totalSilenceMs?: number; newDurationMs?: number }>;
   setTransition: (itemId: string, type: TransitionType, durationMs?: number) => void;
   trimProjectRange: (startMs: number, endMs: number) => void;
   insertLibraryMeme: (memeId: 'fail_trombone' | 'wait_what' | 'victory_cheer' | 'shocked_blink', atProjectMs: number) => Promise<void>;
@@ -71,7 +80,9 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   project: null,
   currentProjectMs: 0,
   isPlaying: false,
-  zoomLevel: 1,
+  previewSpeed: 1,
+  timelineZoom: 1,
+  minSilenceDurationMs: 800,
   selectedItemId: null,
   commandLogs: [],
   customMemeClips: [],
@@ -158,7 +169,11 @@ export const useEditorStore = create<EditorState>((set, get) => ({
 
   setCurrentProjectMs: (ms) => set({ currentProjectMs: Math.max(0, Math.round(ms)) }),
   setIsPlaying: (isPlaying) => set({ isPlaying }),
-  setZoomLevel: (zoomLevel) => set({ zoomLevel }),
+  setPreviewSpeed: (previewSpeed) => set({ previewSpeed }),
+  setTimelineZoom: (timelineZoom) => set({ timelineZoom: Math.max(1, Math.min(5, timelineZoom)) }),
+  zoomIn: () => set((s) => ({ timelineZoom: Math.min(5, Number((s.timelineZoom + 0.5).toFixed(1))) })),
+  zoomOut: () => set((s) => ({ timelineZoom: Math.max(1, Number((s.timelineZoom - 0.5).toFixed(1))) })),
+  setMinSilenceDurationMs: (minSilenceDurationMs) => set({ minSilenceDurationMs }),
   setSelectedItemId: (selectedItemId) => set({ selectedItemId }),
 
   addCommandLog: (log) => set((s) => ({
@@ -302,14 +317,20 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     });
   },
 
-  acceptAllSilences: () => {
-    const { project } = get();
-    if (!project) return;
-    get().pushHistory();
+  detectSilencesOnly: async (minMs) => {
+    const { project, minSilenceDurationMs } = get();
+    if (!project) return { count: 0, message: 'No video project loaded.' };
 
-    const updated = project.items.map((it) =>
-      it.status === 'SUGGESTED_SILENCE_CUT' ? { ...it, status: 'DELETED' as const } : it
-    );
+    const thresholdMs = minMs ?? minSilenceDurationMs ?? 800;
+    const res = await detectSilenceInVideo(project.sourceVideoUrl, project.sourceDurationMs, thresholdMs);
+
+    if (res.silences.length === 0) {
+      const msg = `No pauses longer than ${(thresholdMs / 1000).toFixed(1)} s found (noise floor ${res.noiseFloorDb.toFixed(1)} dB, threshold ${res.thresholdDb.toFixed(1)} dB).`;
+      return { count: 0, message: msg };
+    }
+
+    get().pushHistory();
+    const updated = injectSilenceCutsIntoTimeline(project.items, res.silences);
     const recalculated = recalculateTimeline(updated);
     const totalProjMs = getTotalProjectDuration(recalculated);
 
@@ -321,6 +342,65 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         updatedAt: Date.now()
       }
     });
+
+    const totalSec = res.silences.reduce((acc, s) => acc + s.durationMs, 0) / 1000;
+    const msg = `Found ${res.silences.length} pauses totalling ${totalSec.toFixed(1)} s (noise floor ${res.noiseFloorDb.toFixed(1)} dB, threshold ${res.thresholdDb.toFixed(1)} dB). Amber blocks added to timeline.`;
+    return { count: res.silences.length, message: msg };
+  },
+
+  removeOrDetectSilences: async (minMs) => {
+    const { project, minSilenceDurationMs } = get();
+    if (!project) return { changed: false, message: 'No video project loaded.' };
+
+    const thresholdMs = minMs ?? minSilenceDurationMs ?? 800;
+    let items = [...project.items];
+    let existingSuggested = items.filter(it => it.status === 'SUGGESTED_SILENCE_CUT');
+
+    // If detector hasn't run yet, run it on demand
+    if (existingSuggested.length === 0) {
+      const res = await detectSilenceInVideo(project.sourceVideoUrl, project.sourceDurationMs, thresholdMs);
+      if (res.silences.length === 0) {
+        return {
+          changed: false,
+          message: `No pauses longer than ${(thresholdMs / 1000).toFixed(1)} s found (noise floor ${res.noiseFloorDb.toFixed(1)} dB, threshold ${res.thresholdDb.toFixed(1)} dB).`
+        };
+      }
+      items = injectSilenceCutsIntoTimeline(items, res.silences);
+      existingSuggested = items.filter(it => it.status === 'SUGGESTED_SILENCE_CUT');
+    }
+
+    const count = existingSuggested.length;
+    const totalSilenceMs = existingSuggested.reduce((acc, it) => acc + it.durationMs, 0);
+
+    get().pushHistory();
+
+    const updated = items.map(it =>
+      it.status === 'SUGGESTED_SILENCE_CUT' ? { ...it, status: 'DELETED' as const } : it
+    );
+    const recalculated = recalculateTimeline(updated);
+    const newDurationMs = getTotalProjectDuration(recalculated);
+
+    set({
+      project: {
+        ...project,
+        items: recalculated,
+        totalProjectDurationMs: newDurationMs,
+        updatedAt: Date.now()
+      }
+    });
+
+    const msg = `Found ${count} pauses totalling ${(totalSilenceMs / 1000).toFixed(1)} s. Removed them. New length ${(newDurationMs / 1000).toFixed(1)} s.`;
+    return {
+      changed: true,
+      message: msg,
+      count,
+      totalSilenceMs,
+      newDurationMs
+    };
+  },
+
+  acceptAllSilences: async () => {
+    return await get().removeOrDetectSilences();
   },
 
   setTransition: (itemId: string, type: TransitionType, durationMs = 400) => {
@@ -539,14 +619,14 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         appliedMessage: `Trimmed section from ${(payload.startMs / 1000).toFixed(1)}s to ${(payload.endMs / 1000).toFixed(1)}s.`
       });
     } else if (action === 'REMOVE_SILENCE') {
-      store.acceptAllSilences();
+      const res = await store.removeOrDetectSilences(payload.minDurationMs);
       store.addCommandLog({
         id: `cmd_${Date.now()}`,
         rawInput,
         timestamp: Date.now(),
         parsedCommand: command,
-        status: 'SUCCESS',
-        appliedMessage: 'Approved and removed all detected awkward silence pauses.'
+        status: res.changed ? 'SUCCESS' : 'WARNING',
+        appliedMessage: res.message
       });
     } else if (action === 'INSERT_LIBRARY_MEME') {
       await store.insertLibraryMeme(payload.memeId, payload.atProjectMs);
@@ -600,7 +680,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         timestamp: Date.now(),
         parsedCommand: command,
         status: 'SUCCESS',
-        appliedMessage: payload.enabled ? 'Noise Reduction filter activated.' : 'Noise Reduction disabled.'
+        appliedMessage: payload.enabled ? 'Low-cut filter activated (80-120Hz high-pass for rumble attenuation).' : 'Low-cut filter disabled.'
       });
     } else if (action === 'GENERATE_TRANSCRIPT') {
       store.addCommandLog({

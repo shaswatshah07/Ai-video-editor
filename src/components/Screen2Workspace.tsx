@@ -14,7 +14,9 @@ export const Screen2Workspace: React.FC = () => {
     project,
     currentProjectMs,
     isPlaying,
-    zoomLevel,
+    previewSpeed,
+    timelineZoom,
+    minSilenceDurationMs,
     selectedItemId,
     commandLogs,
     isAudioEnhanceActive,
@@ -24,19 +26,24 @@ export const Screen2Workspace: React.FC = () => {
     setScreen,
     setCurrentProjectMs,
     setIsPlaying,
-    setZoomLevel,
+    setPreviewSpeed,
+    zoomIn,
+    zoomOut,
+    setMinSilenceDurationMs,
     setSelectedItemId,
     splitAtPlayhead,
     deleteSelected,
     acceptSilenceCut,
     keepSilencePause,
+    detectSilencesOnly,
     setTransition,
     toggleVoiceEnhance,
     toggleNoiseReduction,
     undo,
     redo,
     addCustomMeme,
-    applyAICommand
+    applyAICommand,
+    addCommandLog
   } = useEditorStore();
 
   // Dual Video Elements (Spec 3)
@@ -46,6 +53,7 @@ export const Screen2Workspace: React.FC = () => {
   // RAF synchronization & Seek Loop Guard
   const rafIdRef = useRef<number | null>(null);
   const lastSeekTargetRef = useRef<number | null>(null);
+  const lastTickTimeRef = useRef<number | null>(null);
   const activeMemeIdRef = useRef<string | null>(null);
 
   // Web Audio Context WeakMap Guard (Spec 4: single attachment per element in StrictMode)
@@ -77,10 +85,10 @@ export const Screen2Workspace: React.FC = () => {
 
       const source = ctx.createMediaElementSource(mainVideoRef.current);
 
-      // 80Hz High-pass filter
+      // 80Hz - 120Hz High-pass filter (Low-cut rumble & AC hum attenuation)
       const hpf = ctx.createBiquadFilter();
       hpf.type = 'highpass';
-      hpf.frequency.value = 80;
+      hpf.frequency.value = isNoiseReductionActive ? 120 : (isAudioEnhanceActive ? 80 : 10);
       hpfFilterRef.current = hpf;
 
       // 3kHz Peaking EQ (+3dB)
@@ -119,37 +127,89 @@ export const Screen2Workspace: React.FC = () => {
       );
     }
     if (hpfFilterRef.current && audioContextRef.current) {
+      const freq = isNoiseReductionActive ? 120 : (isAudioEnhanceActive ? 80 : 10);
       hpfFilterRef.current.frequency.setValueAtTime(
-        isAudioEnhanceActive ? 80 : 10,
+        freq,
         audioContextRef.current.currentTime
       );
     }
-  }, [isAudioEnhanceActive]);
+  }, [isAudioEnhanceActive, isNoiseReductionActive]);
+
+  // Apply playback speed to video elements
+  const applyPlaybackSpeed = useCallback((speed: number) => {
+    if (mainVideoRef.current) {
+      mainVideoRef.current.playbackRate = speed;
+      mainVideoRef.current.preservesPitch = true;
+    }
+    if (memeVideoRef.current) {
+      memeVideoRef.current.playbackRate = speed;
+      memeVideoRef.current.preservesPitch = true;
+    }
+  }, []);
+
+  useEffect(() => {
+    applyPlaybackSpeed(previewSpeed);
+  }, [previewSpeed, applyPlaybackSpeed]);
 
   // Main Virtual Playback Engine RAF Loop (Spec 3)
   useEffect(() => {
     if (!project) return;
 
-    const loop = () => {
+    const loop = (timestamp: number) => {
       if (isPlaying) {
+        if (lastTickTimeRef.current === null) {
+          lastTickTimeRef.current = timestamp;
+        }
+        const deltaSeconds = Math.min(0.1, (timestamp - lastTickTimeRef.current) / 1000);
+        lastTickTimeRef.current = timestamp;
+
+        const deltaMs = deltaSeconds * 1000 * previewSpeed;
+        const nextProjectMs = currentProjectMs + deltaMs;
+
         const activeItems = project.items.filter(it => it.status === 'ACTIVE' || it.status === 'SUGGESTED_MEME');
         const totalDuration = project.totalProjectDurationMs;
 
-        if (currentProjectMs >= totalDuration) {
+        if (nextProjectMs >= totalDuration) {
           setIsPlaying(false);
           setCurrentProjectMs(totalDuration);
+          lastTickTimeRef.current = null;
           return;
         }
 
-        const { item, sourceMs } = mapProjectToSource(currentProjectMs, project.items);
+        // High-speed cut-skipping: check if mainVideoRef.currentTime entered or crossed a DELETED segment
+        if (mainVideoRef.current && !mainVideoRef.current.paused) {
+          const curSrcMs = Math.round(mainVideoRef.current.currentTime * 1000);
+          const inDeleted = project.items.find(
+            it => it.status === 'DELETED' && curSrcMs >= it.sourceStartMs && curSrcMs < it.sourceEndMs
+          );
+          if (inDeleted) {
+            const nextActiveAfter = project.items.find(
+              it => (it.status === 'ACTIVE' || it.status === 'SUGGESTED_MEME') && it.sourceStartMs >= inDeleted.sourceEndMs
+            );
+            if (nextActiveAfter && lastSeekTargetRef.current !== nextActiveAfter.sourceStartMs) {
+              lastSeekTargetRef.current = nextActiveAfter.sourceStartMs;
+              mainVideoRef.current.currentTime = nextActiveAfter.sourceStartMs / 1000;
+              setCurrentProjectMs(nextActiveAfter.projectStartMs);
+              rafIdRef.current = requestAnimationFrame(loop);
+              return;
+            }
+          }
+        }
+
+        const { item, sourceMs } = mapProjectToSource(nextProjectMs, project.items);
 
         if (!item) {
-          // If in a gap or deleted region, jump forward
-          const nextActive = activeItems.find(it => it.projectStartMs > currentProjectMs);
+          // If in a gap or deleted region, jump forward to next active clip
+          const nextActive = activeItems.find(it => it.projectStartMs > nextProjectMs);
           if (nextActive) {
             setCurrentProjectMs(nextActive.projectStartMs);
+            if (mainVideoRef.current) {
+              mainVideoRef.current.currentTime = nextActive.sourceStartMs / 1000;
+              lastSeekTargetRef.current = nextActive.sourceStartMs;
+            }
           } else {
             setIsPlaying(false);
+            lastTickTimeRef.current = null;
           }
           rafIdRef.current = requestAnimationFrame(loop);
           return;
@@ -161,9 +221,15 @@ export const Screen2Workspace: React.FC = () => {
           if (mainVideoRef.current && !mainVideoRef.current.paused) mainVideoRef.current.pause();
 
           if (memeVideoRef.current) {
+            if (memeVideoRef.current.playbackRate !== previewSpeed) {
+              memeVideoRef.current.playbackRate = previewSpeed;
+              memeVideoRef.current.preservesPitch = true;
+            }
             if (activeMemeIdRef.current !== item.id) {
               activeMemeIdRef.current = item.id;
               memeVideoRef.current.src = item.blobUrl;
+              memeVideoRef.current.playbackRate = previewSpeed;
+              memeVideoRef.current.preservesPitch = true;
               memeVideoRef.current.currentTime = (sourceMs - item.sourceStartMs) / 1000;
               memeVideoRef.current.play().catch(() => {});
             }
@@ -180,10 +246,15 @@ export const Screen2Workspace: React.FC = () => {
             const targetSec = sourceMs / 1000;
             const driftSec = Math.abs(mainVideoRef.current.currentTime - targetSec);
 
-            // Sync main video if drifting > 150ms or seek guard triggered
+            // Sync main video if drifting > 150ms or crossing cut boundaries
             if (driftSec > 0.15 && lastSeekTargetRef.current !== sourceMs) {
               lastSeekTargetRef.current = sourceMs;
               mainVideoRef.current.currentTime = targetSec;
+            }
+
+            if (mainVideoRef.current.playbackRate !== previewSpeed) {
+              mainVideoRef.current.playbackRate = previewSpeed;
+              mainVideoRef.current.preservesPitch = true;
             }
 
             if (mainVideoRef.current.paused) {
@@ -194,7 +265,7 @@ export const Screen2Workspace: React.FC = () => {
 
         // Check for transition trigger near cut boundary
         if (item.transitionOut && item.transitionOut.type !== 'none') {
-          const distToEnd = item.projectEndMs - currentProjectMs;
+          const distToEnd = item.projectEndMs - nextProjectMs;
           if (distToEnd > 0 && distToEnd <= item.transitionOut.durationMs) {
             const cls = `transition-${item.transitionOut.type}`;
             if (activeTransitionClass !== cls) {
@@ -207,10 +278,10 @@ export const Screen2Workspace: React.FC = () => {
           setActiveTransitionClass('');
         }
 
-        // Advance project playhead by ~16.6ms per frame
-        setCurrentProjectMs(currentProjectMs + 16.6);
+        setCurrentProjectMs(nextProjectMs);
       } else {
         // Paused: halt both video players
+        lastTickTimeRef.current = null;
         if (mainVideoRef.current && !mainVideoRef.current.paused) mainVideoRef.current.pause();
         if (memeVideoRef.current && !memeVideoRef.current.paused) memeVideoRef.current.pause();
       }
@@ -223,7 +294,24 @@ export const Screen2Workspace: React.FC = () => {
     return () => {
       if (rafIdRef.current) cancelAnimationFrame(rafIdRef.current);
     };
-  }, [isPlaying, currentProjectMs, project, activeTransitionClass, setCurrentProjectMs, setIsPlaying]);
+  }, [isPlaying, currentProjectMs, project, activeTransitionClass, previewSpeed, setCurrentProjectMs, setIsPlaying]);
+
+  // Auto-scroll playhead into view when playing and timeline is zoomed
+  useEffect(() => {
+    if (isPlaying && timelineZoom > 1 && timelineContainerRef.current && project) {
+      const container = timelineContainerRef.current;
+      const totalWidth = container.scrollWidth;
+      const clientWidth = container.clientWidth;
+      if (totalWidth > clientWidth && project.totalProjectDurationMs > 0) {
+        const playheadX = (currentProjectMs / project.totalProjectDurationMs) * totalWidth;
+        const currentScroll = container.scrollLeft;
+        // Keep playhead within view
+        if (playheadX > currentScroll + clientWidth * 0.75 || playheadX < currentScroll + clientWidth * 0.1) {
+          container.scrollLeft = playheadX - clientWidth * 0.3;
+        }
+      }
+    }
+  }, [currentProjectMs, isPlaying, timelineZoom, project]);
 
   // Handle Play/Pause Toggle
   const togglePlayPause = () => {
@@ -286,8 +374,18 @@ export const Screen2Workspace: React.FC = () => {
 
   if (!project) return null;
 
-  const totalProjSec = (project.totalProjectDurationMs / 1000).toFixed(1);
+  const totalProjSecNum = Math.max(1, project.totalProjectDurationMs / 1000);
+  const totalProjSec = totalProjSecNum.toFixed(1);
   const curProjSec = (currentProjectMs / 1000).toFixed(1);
+
+  // Adaptive Time Ruler steps (Item 1B)
+  let rulerStepSec = 10;
+  if (totalProjSecNum * timelineZoom <= 30) rulerStepSec = 1;
+  else if (totalProjSecNum * timelineZoom <= 60) rulerStepSec = 2;
+  else if (totalProjSecNum * timelineZoom <= 150) rulerStepSec = 5;
+  else if (totalProjSecNum * timelineZoom <= 300) rulerStepSec = 10;
+  else rulerStepSec = 15;
+  const rulerTickCount = Math.ceil(totalProjSecNum / rulerStepSec);
 
   return (
     <div className="h-screen w-screen bg-[#0F1117] text-gray-100 flex flex-col overflow-hidden select-none">
@@ -323,6 +421,7 @@ export const Screen2Workspace: React.FC = () => {
 
           <button
             onClick={() => toggleNoiseReduction()}
+            title="Applies an 80-120Hz high-pass filter to attenuate low-frequency mic rumble and AC hum during preview."
             className={`px-2.5 py-1 rounded-md text-xs font-medium flex items-center space-x-1.5 border transition-all ${
               isNoiseReductionActive
                 ? 'bg-indigo-950/60 border-indigo-500/80 text-indigo-300'
@@ -330,7 +429,7 @@ export const Screen2Workspace: React.FC = () => {
             }`}
           >
             <Wand2 className="w-3.5 h-3.5" />
-            <span>Denoise</span>
+            <span>Low-cut filter (preview)</span>
           </button>
 
           <div className="h-4 w-[1px] bg-gray-800 mx-1" />
@@ -706,22 +805,86 @@ export const Screen2Workspace: React.FC = () => {
       {/* Bottom Timeline Section (Spec 1 & Spec 2) */}
       <footer className="h-44 border-t border-gray-800 bg-[#10121A] flex flex-col p-3 z-20">
         {/* Timeline Toolbar */}
-        <div className="flex items-center justify-between pb-2 text-xs">
-          <div className="flex items-center space-x-2">
-            <span className="text-gray-400 text-[11px]">Zoom:</span>
-            {([1, 2, 5] as const).map((z) => (
+        <div className="flex flex-wrap items-center justify-between pb-2 text-xs gap-2">
+          <div className="flex items-center space-x-3">
+            {/* Playback Speed Controls (Item 1) */}
+            <div className="flex items-center space-x-1.5">
+              <span className="text-gray-400 text-[11px] font-medium">Speed:</span>
+              {([1, 2, 5] as const).map((s) => (
+                <button
+                  key={s}
+                  onClick={() => setPreviewSpeed(s)}
+                  className={`px-2 py-0.5 rounded text-[11px] font-mono font-medium transition-colors ${
+                    previewSpeed === s ? 'bg-indigo-600 text-white shadow-sm' : 'bg-gray-800 text-gray-400 hover:text-white'
+                  }`}
+                >
+                  {s}x
+                </button>
+              ))}
+              <span className="text-[10px] text-gray-500 hidden sm:inline">Preview speed only. Export keeps normal speed.</span>
+              {previewSpeed === 5 && (
+                <span className="text-[10px] text-amber-400/90 ml-1">
+                  (Audio may be muted or distorted at 5x by browser)
+                </span>
+              )}
+            </div>
+
+            {/* Timeline Zoom Controls (Item 1B) */}
+            <div className="flex items-center space-x-1.5 pl-3 border-l border-gray-800">
+              <span className="text-gray-400 text-[11px] font-medium">Zoom:</span>
               <button
-                key={z}
-                onClick={() => setZoomLevel(z)}
-                className={`px-2 py-0.5 rounded text-[11px] font-mono font-medium transition-colors ${
-                  zoomLevel === z ? 'bg-indigo-600 text-white' : 'bg-gray-800 text-gray-400 hover:text-white'
-                }`}
+                onClick={zoomOut}
+                disabled={timelineZoom <= 1}
+                className="w-5 h-5 flex items-center justify-center rounded bg-gray-800 hover:bg-gray-700 text-gray-300 text-xs font-bold disabled:opacity-30 disabled:cursor-not-allowed"
+                title="Zoom Out Timeline (-)"
               >
-                {z}x
+                -
               </button>
-            ))}
+              <span className="text-[11px] font-mono text-gray-300 w-7 text-center">{timelineZoom}x</span>
+              <button
+                onClick={zoomIn}
+                disabled={timelineZoom >= 5}
+                className="w-5 h-5 flex items-center justify-center rounded bg-gray-800 hover:bg-gray-700 text-gray-300 text-xs font-bold disabled:opacity-30 disabled:cursor-not-allowed"
+                title="Zoom In Timeline (+)"
+              >
+                +
+              </button>
+            </div>
+
+            {/* Silence Detection Settings (Item 2) */}
+            <div className="flex items-center space-x-1.5 pl-3 border-l border-gray-800">
+              <span className="text-gray-400 text-[11px]">Min Silence:</span>
+              <select
+                value={minSilenceDurationMs}
+                onChange={(e) => setMinSilenceDurationMs(Number(e.target.value))}
+                className="bg-gray-800 text-gray-200 border border-gray-700 rounded px-1.5 py-0.5 text-[11px]"
+              >
+                <option value={600}>600ms</option>
+                <option value={800}>800ms</option>
+                <option value={1000}>1000ms</option>
+                <option value={1200}>1200ms</option>
+              </select>
+              <button
+                onClick={async () => {
+                  const res = await detectSilencesOnly(minSilenceDurationMs);
+                  addCommandLog({
+                    id: `cmd_${Date.now()}`,
+                    rawInput: `Detect pauses (>= ${minSilenceDurationMs}ms)`,
+                    timestamp: Date.now(),
+                    parsedCommand: { action: 'REMOVE_SILENCE', payload: { minDurationMs: minSilenceDurationMs, paddingPreMs: 150, paddingPostMs: 200 }, explanation: res.message },
+                    status: res.count > 0 ? 'SUCCESS' : 'WARNING',
+                    appliedMessage: res.message
+                  });
+                }}
+                className="px-2 py-0.5 bg-amber-900/60 hover:bg-amber-800/80 border border-amber-600/60 text-amber-200 rounded text-[11px] font-medium transition-colors"
+                title="Scan audio and display amber silence blocks on timeline without deleting them yet"
+              >
+                Detect Silences
+              </button>
+            </div>
           </div>
 
+          {/* Legend */}
           <div className="flex items-center space-x-4 text-[11px] text-gray-400">
             <div className="flex items-center space-x-1.5">
               <span className="w-2.5 h-2.5 rounded-sm bg-indigo-500 inline-block" />
@@ -738,111 +901,139 @@ export const Screen2Workspace: React.FC = () => {
           </div>
         </div>
 
-        {/* Timeline Track Area */}
+        {/* Timeline Track Area (Horizontally Scrollable) */}
         <div
           ref={timelineContainerRef}
-          onClick={(e) => {
-            const rect = e.currentTarget.getBoundingClientRect();
-            const clickX = e.clientX - rect.left;
-            const pct = clickX / rect.width;
-            handleSeek(pct * project.totalProjectDurationMs);
-          }}
-          className="flex-1 bg-gray-950 rounded-xl border border-gray-800 relative overflow-x-auto flex items-center p-2 cursor-pointer"
+          className="flex-1 bg-gray-950 rounded-xl border border-gray-800 relative overflow-x-auto overflow-y-hidden p-2"
         >
-          {/* Red Playhead Line */}
+          {/* Inner scalable track container */}
           <div
-            style={{
-              left: `${project.totalProjectDurationMs > 0 ? (currentProjectMs / project.totalProjectDurationMs) * 100 : 0}%`
+            style={{ width: `${timelineZoom * 100}%`, minWidth: '100%' }}
+            onClick={(e) => {
+              const rect = e.currentTarget.getBoundingClientRect();
+              const clickX = e.clientX - rect.left;
+              const pct = Math.max(0, Math.min(1, clickX / rect.width));
+              handleSeek(pct * project.totalProjectDurationMs);
             }}
-            className="absolute top-0 bottom-0 w-[2px] bg-red-500 z-30 pointer-events-none"
+            className="relative h-full flex flex-col justify-between cursor-pointer select-none"
           >
-            <div className="w-3 h-3 bg-red-500 transform -translate-x-1/2 -translate-y-1 rotate-45 rounded-sm shadow-md" />
-          </div>
-
-          {/* Timeline Items Track */}
-          <div className="w-full h-16 flex items-center space-x-1 relative">
-            {project.items.map((item) => {
-              const isSelected = selectedItemId === item.id;
-
-              if (item.status === 'DELETED') {
-                return null; // Skip rendering deleted parts in active timeline bar
-              }
-
-              const durPct = project.totalProjectDurationMs > 0
-                ? Math.max(3, (item.durationMs / project.totalProjectDurationMs) * 100)
-                : 10;
-
-              const isSilence = item.status === 'SUGGESTED_SILENCE_CUT';
-              const isMeme = item.kind === 'MEME_CLIP';
-
-              return (
-                <div
-                  key={item.id}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setSelectedItemId(item.id);
-                  }}
-                  style={{ width: `${durPct}%` }}
-                  className={`h-14 rounded-lg px-2 py-1 flex flex-col justify-between transition-all relative overflow-hidden select-none cursor-pointer ${
-                    isSelected
-                      ? 'ring-2 ring-white shadow-lg'
-                      : 'border border-black/20'
-                  } ${
-                    isSilence
-                      ? 'bg-amber-600/90 text-amber-50 hover:bg-amber-500'
-                      : isMeme
-                      ? 'bg-purple-600/90 text-purple-50 hover:bg-purple-500'
-                      : 'bg-indigo-600/90 text-white hover:bg-indigo-500'
-                  }`}
-                >
-                  <div className="flex items-center justify-between">
-                    <span className="text-[11px] font-semibold truncate">{item.title}</span>
-                    {isSilence && (
-                      <div className="flex items-center space-x-1" onClick={(e) => e.stopPropagation()}>
-                        <button
-                          onClick={() => acceptSilenceCut(item.id)}
-                          className="p-1 bg-red-700 hover:bg-red-600 rounded text-white"
-                          title="Accept Silence Cut"
-                        >
-                          <Check className="w-3 h-3" />
-                        </button>
-                        <button
-                          onClick={() => keepSilencePause(item.id)}
-                          className="p-1 bg-gray-700 hover:bg-gray-600 rounded text-gray-200"
-                          title="Keep Pause"
-                        >
-                          <X className="w-3 h-3" />
-                        </button>
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="flex items-center justify-between text-[10px] opacity-80 font-mono">
-                    <span>{(item.durationMs / 1000).toFixed(1)}s</span>
-                    {item.transitionOut && item.transitionOut.type !== 'none' && (
-                      <span className="bg-black/30 px-1 rounded uppercase text-[9px]">
-                        {item.transitionOut.type}
-                      </span>
-                    )}
-                  </div>
-
-                  {/* Transition Picker Diamond */}
+            {/* Adaptive Time Ruler (Item 1B) */}
+            <div className="w-full h-4 border-b border-gray-800/80 relative text-[9px] font-mono text-gray-500 select-none pointer-events-none">
+              {Array.from({ length: rulerTickCount + 1 }).map((_, i) => {
+                const tickSec = i * rulerStepSec;
+                const tickMs = tickSec * 1000;
+                if (tickMs > project.totalProjectDurationMs) return null;
+                const leftPct = project.totalProjectDurationMs > 0 ? (tickMs / project.totalProjectDurationMs) * 100 : 0;
+                const mm = Math.floor(tickSec / 60).toString().padStart(2, '0');
+                const ss = Math.floor(tickSec % 60).toString().padStart(2, '0');
+                return (
                   <div
+                    key={i}
+                    style={{ left: `${leftPct}%` }}
+                    className="absolute top-0 bottom-0 flex flex-col items-center transform -translate-x-1/2"
+                  >
+                    <div className="h-1.5 w-[1px] bg-gray-700" />
+                    <span>{mm}:{ss}</span>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Red Playhead Line */}
+            <div
+              style={{
+                left: `${project.totalProjectDurationMs > 0 ? (currentProjectMs / project.totalProjectDurationMs) * 100 : 0}%`
+              }}
+              className="absolute top-0 bottom-0 w-[2px] bg-red-500 z-30 pointer-events-none"
+            >
+              <div className="w-3 h-3 bg-red-500 transform -translate-x-1/2 -translate-y-1 rotate-45 rounded-sm shadow-md" />
+            </div>
+
+            {/* Timeline Items Track */}
+            <div className="w-full h-12 flex items-center space-x-1 relative mt-1">
+              {project.items.map((item) => {
+                const isSelected = selectedItemId === item.id;
+
+                if (item.status === 'DELETED') {
+                  return null;
+                }
+
+                const durPct = project.totalProjectDurationMs > 0
+                  ? Math.max(2, (item.durationMs / project.totalProjectDurationMs) * 100)
+                  : 10;
+
+                const isSilence = item.status === 'SUGGESTED_SILENCE_CUT';
+                const isMeme = item.kind === 'MEME_CLIP';
+
+                return (
+                  <div
+                    key={item.id}
                     onClick={(e) => {
                       e.stopPropagation();
-                      const types: TransitionType[] = ['none', 'fade', 'dissolve', 'wipeleft', 'slideup'];
-                      const curIdx = types.indexOf(item.transitionOut?.type || 'none');
-                      const nextType = types[(curIdx + 1) % types.length];
-                      setTransition(item.id, nextType);
+                      setSelectedItemId(item.id);
                     }}
-                    className="absolute right-0 top-1/2 -translate-y-1/2 translate-x-1/2 w-4 h-4 rounded-full bg-gray-900 border border-gray-600 hover:border-indigo-400 flex items-center justify-center text-[8px] z-20 shadow cursor-pointer"
-                    title={`Click to cycle transition (Current: ${item.transitionOut?.type || 'none'})`}
+                    style={{ width: `${durPct}%` }}
+                    className={`h-11 rounded-lg px-2 py-1 flex flex-col justify-between transition-all relative overflow-hidden select-none cursor-pointer ${
+                      isSelected
+                        ? 'ring-2 ring-white shadow-lg'
+                        : 'border border-black/20'
+                    } ${
+                      isSilence
+                        ? 'bg-amber-600/90 text-amber-50 hover:bg-amber-500'
+                        : isMeme
+                        ? 'bg-purple-600/90 text-purple-50 hover:bg-purple-500'
+                        : 'bg-indigo-600/90 text-white hover:bg-indigo-500'
+                    }`}
                   >
-                    ◇
+                    <div className="flex items-center justify-between">
+                      <span className="text-[11px] font-semibold truncate">{item.title}</span>
+                      {isSilence && (
+                        <div className="flex items-center space-x-1" onClick={(e) => e.stopPropagation()}>
+                          <button
+                            onClick={() => acceptSilenceCut(item.id)}
+                            className="p-1 bg-red-700 hover:bg-red-600 rounded text-white"
+                            title="Accept Silence Cut"
+                          >
+                            <Check className="w-3 h-3" />
+                          </button>
+                          <button
+                            onClick={() => keepSilencePause(item.id)}
+                            className="p-1 bg-gray-700 hover:bg-gray-600 rounded text-gray-200"
+                            title="Keep Pause"
+                          >
+                            <X className="w-3 h-3" />
+                          </button>
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="flex items-center justify-between text-[10px] opacity-80 font-mono">
+                      <span>{(item.durationMs / 1000).toFixed(1)}s</span>
+                      {item.transitionOut && item.transitionOut.type !== 'none' && (
+                        <span className="bg-black/30 px-1 rounded uppercase text-[9px]">
+                          {item.transitionOut.type}
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Transition Picker Diamond */}
+                    <div
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        const types: TransitionType[] = ['none', 'fade', 'dissolve', 'wipeleft', 'slideup'];
+                        const curIdx = types.indexOf(item.transitionOut?.type || 'none');
+                        const nextType = types[(curIdx + 1) % types.length];
+                        setTransition(item.id, nextType);
+                      }}
+                      className="absolute right-0 top-1/2 -translate-y-1/2 translate-x-1/2 w-4 h-4 rounded-full bg-gray-900 border border-gray-600 hover:border-indigo-400 flex items-center justify-center text-[8px] z-20 shadow cursor-pointer"
+                      title={`Click to cycle transition (Current: ${item.transitionOut?.type || 'none'})`}
+                    >
+                      ◇
+                    </div>
                   </div>
-                </div>
-              );
-            })}
+                );
+              })}
+            </div>
           </div>
         </div>
       </footer>

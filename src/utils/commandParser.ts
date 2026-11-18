@@ -188,7 +188,7 @@ export function parseLocalCommand(
     return {
       action: 'REMOVE_NOISE',
       payload: { enabled: !isDisable },
-      explanation: isDisable ? 'Disabling noise suppression.' : 'Activating dynamic background noise reduction.'
+      explanation: isDisable ? 'Disabling low-cut filter.' : 'Activating low-cut audio filter (80-120Hz high-pass) to attenuate rumble and AC hum.'
     };
   }
 
