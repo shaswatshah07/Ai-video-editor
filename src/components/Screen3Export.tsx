@@ -1,16 +1,18 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { ArrowLeft, Download, CheckCircle2, AlertCircle, Film, Sparkles, RefreshCw } from 'lucide-react';
+import { ArrowLeft, Download, CheckCircle2, AlertTriangle, AlertCircle, Film, RefreshCw, ChevronDown, ChevronUp } from 'lucide-react';
 import { useEditorStore } from '../store/useEditorStore';
-import { exportProjectVideo, verifyRenderedVideo, RenderProgress } from '../utils/ffmpegExporter';
+import { exportProjectVideo, verifyRenderedVideo, RenderProgress, ExportResult } from '../utils/ffmpegExporter';
 
 export const Screen3Export: React.FC = () => {
   const { project, setScreen } = useEditorStore();
 
   const [isExporting, setIsExporting] = useState<boolean>(true);
   const [progress, setProgress] = useState<RenderProgress>({ ratio: 0, stage: 'Preparing media files...' });
-  const [renderedBlobUrl, setRenderedBlobUrl] = useState<string | null>(null);
+  const [exportResult, setExportResult] = useState<ExportResult | null>(null);
   const [renderError, setRenderError] = useState<string | null>(null);
-  const [verifiedDuration, setVerifiedDuration] = useState<number | null>(null);
+  const [verificationPassed, setVerificationPassed] = useState<boolean>(false);
+  const [actualDuration, setActualDuration] = useState<number>(0);
+  const [showDetails, setShowDetails] = useState<boolean>(false);
 
   const previewVideoRef = useRef<HTMLVideoElement | null>(null);
 
@@ -18,55 +20,68 @@ export const Screen3Export: React.FC = () => {
     if (!project) return;
     setIsExporting(true);
     setRenderError(null);
-    setRenderedBlobUrl(null);
+    setVerificationPassed(false);
+    setExportResult(null);
 
     try {
-      const outputBlob = await exportProjectVideo(project, (p) => {
+      const res = await exportProjectVideo(project, (p) => {
         setProgress(p);
       });
 
-      const url = URL.createObjectURL(outputBlob);
+      // Verification Gate (Step 3)
+      setProgress({ ratio: 0.95, stage: 'Verifying output duration & stream integrity...' });
 
-      // Output Verification Gate (Spec 6)
-      setProgress({ ratio: 0.95, stage: 'Verifying container structure & audio-video playback...' });
-      const verification = await verifyRenderedVideo(url);
+      const verification = await verifyRenderedVideo(
+        res.blob,
+        res.expectedDurationSec,
+        res.hasAudio
+      );
 
       if (!verification.valid) {
-        throw new Error(`Output verification failed: ${verification.error}`);
+        setActualDuration(verification.duration);
+        setExportResult({ ...res, actualDurationSec: verification.duration });
+        setVerificationPassed(false);
+        setIsExporting(false);
+        setRenderError(
+          `Export failed: expected ${res.expectedDurationSec.toFixed(1)} s but the file is ${verification.duration.toFixed(1)} s`
+        );
+        return;
       }
 
-      setVerifiedDuration(verification.duration);
-      setRenderedBlobUrl(url);
+      setActualDuration(verification.duration);
+      setExportResult({ ...res, actualDurationSec: verification.duration });
+      setVerificationPassed(true);
       setIsExporting(false);
-      setProgress({ ratio: 1, stage: 'Export Complete!' });
+      setProgress({ ratio: 1, stage: 'Export Complete & Verified!' });
     } catch (err) {
-      setRenderError((err as Error).message || 'Failed to render MP4 video.');
+      setRenderError((err as Error).message || 'Failed to re-encode video.');
       setIsExporting(false);
+      setVerificationPassed(false);
     }
   };
 
   useEffect(() => {
     startExport();
-    // Cleanup URL on unmount
     return () => {
-      if (renderedBlobUrl) URL.revokeObjectURL(renderedBlobUrl);
+      if (exportResult?.blobUrl) {
+        URL.revokeObjectURL(exportResult.blobUrl);
+      }
     };
   }, []);
 
   if (!project) return null;
 
   const handleDownload = () => {
-    if (!renderedBlobUrl) return;
+    if (!exportResult?.blobUrl) return;
     const a = document.createElement('a');
-    a.href = renderedBlobUrl;
+    a.href = exportResult.blobUrl;
     a.download = `${project.title}_edited.mp4`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
   };
 
-  const activeClipsCount = project.items.filter(it => it.status === 'ACTIVE').length;
-  const memesCount = project.items.filter(it => it.kind === 'MEME_CLIP').length;
+  const activeClipsCount = project.items.filter(it => it.status === 'ACTIVE' && it.kind === 'SOURCE_CLIP').length;
   const cutsCount = project.items.filter(it => it.status === 'DELETED').length;
 
   return (
@@ -86,12 +101,23 @@ export const Screen3Export: React.FC = () => {
           <h1 className="text-base font-bold text-gray-200">Export & Render Studio</h1>
         </div>
 
-        <div className="w-24" /> {/* Spacer */}
+        <div className="w-24" />
       </header>
 
       {/* Main Export Content */}
-      <main className="max-w-4xl mx-auto w-full my-8 space-y-6">
-        {/* Render Progress Card */}
+      <main className="max-w-4xl mx-auto w-full my-6 space-y-6">
+        {/* Visible Warnings for Preview-only items (Step 2.d) */}
+        {exportResult && exportResult.warnings.length > 0 && (
+          <div className="bg-amber-950/40 border border-amber-600/60 rounded-xl p-3 flex items-start space-x-2.5 text-xs text-amber-200">
+            <AlertTriangle className="w-4 h-4 text-amber-400 flex-shrink-0 mt-0.5" />
+            <div className="space-y-0.5">
+              <span className="font-semibold text-amber-300">Notice:</span>
+              <p>{exportResult.warnings.join(' ')}</p>
+            </div>
+          </div>
+        )}
+
+        {/* State A: Rendering in Progress */}
         {isExporting ? (
           <div className="bg-gray-900 border border-gray-800 rounded-2xl p-8 text-center space-y-5">
             <div className="w-16 h-16 rounded-full bg-indigo-600/20 text-indigo-400 mx-auto flex items-center justify-center animate-spin">
@@ -99,7 +125,7 @@ export const Screen3Export: React.FC = () => {
             </div>
 
             <div className="space-y-2">
-              <h3 className="text-lg font-semibold text-white">Rendering MP4 Video</h3>
+              <h3 className="text-lg font-semibold text-white">Re-encoding Video (1-Pass Concat)</h3>
               <p className="text-xs text-gray-400">{progress.stage}</p>
             </div>
 
@@ -112,28 +138,41 @@ export const Screen3Export: React.FC = () => {
             </div>
 
             <p className="text-xs font-mono text-gray-500">
-              {Math.round(progress.ratio * 100)}% Complete • Zero server cost, 100% in-browser
+              {Math.round(progress.ratio * 100)}% • 100% in-browser WebAssembly re-encode
             </p>
           </div>
-        ) : renderError ? (
-          /* Error State */
-          <div className="bg-red-950/30 border border-red-800/60 rounded-2xl p-6 text-center space-y-4">
+        ) : !verificationPassed || renderError ? (
+          /* State B: Verification or Render Failure (Step 3) */
+          <div className="bg-red-950/40 border border-red-800/80 rounded-2xl p-6 text-center space-y-4">
             <div className="w-12 h-12 rounded-full bg-red-600/20 text-red-400 mx-auto flex items-center justify-center">
               <AlertCircle className="w-6 h-6" />
             </div>
-            <div>
-              <h3 className="text-base font-semibold text-red-300">Rendering Error</h3>
-              <p className="text-xs text-red-400 mt-1">{renderError}</p>
+            <div className="space-y-1">
+              <h3 className="text-base font-bold text-red-300">Export Verification Failed</h3>
+              <p className="text-sm font-semibold text-red-400">{renderError}</p>
+              {exportResult && (
+                <p className="text-xs text-gray-400 font-mono mt-2">
+                  Expected: {exportResult.expectedDurationSec.toFixed(2)}s | Actual: {actualDuration.toFixed(2)}s | Drift: {Math.abs(actualDuration - exportResult.expectedDurationSec).toFixed(3)}s
+                </p>
+              )}
             </div>
-            <button
-              onClick={startExport}
-              className="px-4 py-2 bg-red-800 hover:bg-red-700 text-white rounded-xl text-xs font-medium transition-colors"
-            >
-              Retry Render
-            </button>
+            <div className="flex items-center justify-center space-x-3 pt-2">
+              <button
+                onClick={startExport}
+                className="px-4 py-2 bg-red-800 hover:bg-red-700 text-white rounded-xl text-xs font-medium transition-colors"
+              >
+                Retry Re-encode
+              </button>
+              <button
+                onClick={() => setScreen('WORKSPACE')}
+                className="px-4 py-2 bg-gray-800 hover:bg-gray-700 text-gray-200 rounded-xl text-xs font-medium transition-colors"
+              >
+                Back to Workspace
+              </button>
+            </div>
           </div>
         ) : (
-          /* Success & Preview State */
+          /* State C: Verification Passed */
           <div className="bg-gray-900 border border-gray-800 rounded-2xl p-6 space-y-6">
             <div className="flex items-center justify-between border-b border-gray-800 pb-4">
               <div className="flex items-center space-x-3">
@@ -143,7 +182,7 @@ export const Screen3Export: React.FC = () => {
                 <div>
                   <h3 className="text-base font-bold text-white">Export Complete & Verified!</h3>
                   <p className="text-xs text-gray-400">
-                    Duration: {verifiedDuration?.toFixed(1)}s • Ready for download
+                    Duration: {actualDuration.toFixed(2)}s (Expected: {exportResult?.expectedDurationSec.toFixed(2)}s, Drift: {(Math.abs(actualDuration - (exportResult?.expectedDurationSec || 0)) * 1000).toFixed(0)}ms)
                   </p>
                 </div>
               </div>
@@ -158,11 +197,11 @@ export const Screen3Export: React.FC = () => {
             </div>
 
             {/* Video Player */}
-            {renderedBlobUrl && (
+            {exportResult?.blobUrl && (
               <div className="aspect-video w-full max-w-2xl mx-auto bg-black rounded-xl overflow-hidden border border-gray-800 shadow-xl">
                 <video
                   ref={previewVideoRef}
-                  src={renderedBlobUrl}
+                  src={exportResult.blobUrl}
                   controls
                   playsInline
                   className="w-full h-full object-contain"
@@ -174,30 +213,96 @@ export const Screen3Export: React.FC = () => {
             <div className="grid grid-cols-3 gap-4 pt-2">
               <div className="bg-gray-800/40 border border-gray-750 p-3 rounded-xl text-center">
                 <span className="text-[10px] uppercase font-bold text-gray-400 tracking-wider">Cuts Applied</span>
-                <p className="text-lg font-bold text-indigo-400">{cutsCount} Segments</p>
+                <p className="text-lg font-bold text-indigo-400">{cutsCount} Cuts</p>
               </div>
 
               <div className="bg-gray-800/40 border border-gray-750 p-3 rounded-xl text-center">
-                <span className="text-[10px] uppercase font-bold text-gray-400 tracking-wider">Active Clips</span>
-                <p className="text-lg font-bold text-emerald-400">{activeClipsCount} Clips</p>
+                <span className="text-[10px] uppercase font-bold text-gray-400 tracking-wider">Active Source Segments</span>
+                <p className="text-lg font-bold text-emerald-400">{activeClipsCount} Segments</p>
               </div>
 
               <div className="bg-gray-800/40 border border-gray-750 p-3 rounded-xl text-center">
-                <span className="text-[10px] uppercase font-bold text-gray-400 tracking-wider">Memes Added</span>
-                <p className="text-lg font-bold text-purple-400">{memesCount} Memes</p>
+                <span className="text-[10px] uppercase font-bold text-gray-400 tracking-wider">File Size</span>
+                <p className="text-lg font-bold text-purple-400">
+                  {exportResult ? `${(exportResult.fileSizeBytes / (1024 * 1024)).toFixed(2)} MB` : '--'}
+                </p>
               </div>
             </div>
+          </div>
+        )}
+
+        {/* STEP 4: Collapsible "Export details" Section */}
+        {exportResult && (
+          <div className="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
+            <button
+              onClick={() => setShowDetails(!showDetails)}
+              className="w-full px-4 py-3 bg-gray-850 hover:bg-gray-800 flex items-center justify-between text-xs font-semibold text-gray-200 transition-colors"
+            >
+              <span>Export Details & Diagnostic Evidence</span>
+              {showDetails ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+            </button>
+
+            {showDetails && (
+              <div className="p-4 space-y-3 text-xs font-mono text-gray-300 border-t border-gray-800">
+                <div className="grid grid-cols-2 gap-2 text-[11px]">
+                  <div>
+                    <span className="text-gray-500">Exit Code: </span>
+                    <span className={exportResult.exitCode === 0 ? 'text-emerald-400 font-bold' : 'text-red-400 font-bold'}>
+                      {exportResult.exitCode}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-gray-500">Elapsed Render Time: </span>
+                    <span className="text-gray-200">{(exportResult.elapsedTimeMs / 1000).toFixed(2)}s</span>
+                  </div>
+                  <div>
+                    <span className="text-gray-500">Expected Duration: </span>
+                    <span className="text-gray-200">{exportResult.expectedDurationSec.toFixed(3)}s</span>
+                  </div>
+                  <div>
+                    <span className="text-gray-500">Actual Duration: </span>
+                    <span className="text-gray-200">{actualDuration.toFixed(3)}s</span>
+                  </div>
+                  <div>
+                    <span className="text-gray-500">Output Size: </span>
+                    <span className="text-gray-200">{(exportResult.fileSizeBytes / (1024 * 1024)).toFixed(2)} MB ({exportResult.fileSizeBytes} bytes)</span>
+                  </div>
+                  <div>
+                    <span className="text-gray-500">Audio Track: </span>
+                    <span className="text-gray-200">{exportResult.hasAudio ? 'Present (AAC 128k)' : 'None'}</span>
+                  </div>
+                </div>
+
+                {/* Segments Table */}
+                <div className="pt-2">
+                  <span className="text-gray-500 font-bold text-[10px] uppercase">Active Source Segments ({exportResult.segments.length}):</span>
+                  <div className="mt-1 bg-gray-950 rounded p-2 border border-gray-800 text-[10px] space-y-1">
+                    {exportResult.segments.map((seg) => (
+                      <div key={seg.index} className="flex justify-between">
+                        <span>Segment #{seg.index}: source [{seg.startSec.toFixed(3)}s → {seg.endSec.toFixed(3)}s]</span>
+                        <span className="text-indigo-400">Duration: {seg.durSec.toFixed(3)}s</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* FFmpeg Arguments */}
+                <div className="pt-2">
+                  <span className="text-gray-500 font-bold text-[10px] uppercase">FFmpeg Execution Arguments:</span>
+                  <pre className="mt-1 bg-gray-950 p-2.5 rounded border border-gray-800 text-[10px] whitespace-pre-wrap break-all text-gray-400">
+                    ffmpeg {exportResult.ffmpegArgs.join(' ')}
+                  </pre>
+                </div>
+              </div>
+            )}
           </div>
         )}
       </main>
 
       {/* Footer */}
       <footer className="max-w-4xl mx-auto w-full pt-4 border-t border-gray-900 text-center text-xs text-gray-600 flex items-center justify-between">
-        <span>AI Video Editor • 100% Client-Side Processing</span>
-        <span className="flex items-center space-x-1 text-gray-500">
-          <Sparkles className="w-3.5 h-3.5 text-indigo-400" />
-          <span>Scaler YIIC 9.0 Week 2</span>
-        </span>
+        <span>AI Video Editor • Frame-Accurate Re-encode Engine</span>
+        <span>Scaler YIIC 9.0 Week 2</span>
       </footer>
     </div>
   );
