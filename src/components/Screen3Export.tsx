@@ -285,7 +285,7 @@ export const Screen3Export: React.FC = () => {
                   <div>
                     <span className="text-gray-500">Speaker Voice Enhance: </span>
                     <span className={exportResult.voiceEnhanceBaked ? 'text-emerald-400 font-bold' : 'text-gray-400'}>
-                      {exportResult.voiceEnhanceBaked ? 'Baked into MP4 (100Hz HPF + 260Hz cut + 3.2kHz boost + 8kHz shelf + Compressor + Loudnorm)' : 'Disabled'}
+                      {exportResult.voiceEnhanceBaked ? 'Baked into MP4 (90Hz HPF + 280Hz cut + 2.5kHz boost + 6.5kHz treble cut + Compressor + Loudnorm)' : 'Disabled'}
                     </span>
                   </div>
                   <div>

@@ -308,7 +308,7 @@ export async function exportProjectVideo(
     // Audio enhancement filter chain
     let finalAudioMap = '[aconcat]';
     if (hasAudio) {
-      const voiceEnhanceFilter = 'highpass=f=100,equalizer=f=260:t=q:w=1.2:g=-3.5,equalizer=f=3200:t=q:w=1.2:g=5.5,equalizer=f=8000:t=h:g=2,acompressor=threshold=-24dB:ratio=5:attack=4:release=140:makeup=3,loudnorm=I=-16:TP=-1.5:LRA=11';
+      const voiceEnhanceFilter = 'highpass=f=90,equalizer=f=280:t=q:w=1.2:g=-2.5,equalizer=f=2500:t=q:w=0.9:g=2.8,treble=g=-1.5:f=6500,acompressor=threshold=-14dB:ratio=2.5:attack=10:release=200:makeup=1.5,loudnorm=I=-16:TP=-1.5:LRA=11';
 
       let audioChain: string | null = null;
       if (hasDenoisedWavFile) {
