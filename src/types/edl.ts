@@ -49,6 +49,8 @@ export interface TranscriptionMeta {
   durationMs: number;
   arabicScriptPercent?: number;
   hasUrduWarning?: boolean;
+  lowQualityWarning?: string | null;
+  suppressWordRender?: boolean;
 }
 
 export interface ChapterMarker {

@@ -129,7 +129,7 @@ export async function transcribeVideoAudio(
       } else if (msg.type === 'COMPLETE') {
         cleanup();
         try {
-          const words = parseTranscriptionResult(msg.result);
+          const { words, lowQualityWarning, suppressWordRender } = parseTranscriptionResult(msg.result);
           const chapters = generateChaptersFromTranscript(words);
           const arabicPercent = detectArabicScriptPercentage(words);
           const hasUrduWarning = mode === 'transcribe_hi' && arabicPercent > 25;
@@ -141,7 +141,9 @@ export async function transcribeVideoAudio(
             device: msg.device || 'WASM',
             durationMs: msg.durationMs || 0,
             arabicScriptPercent: arabicPercent,
-            hasUrduWarning
+            hasUrduWarning,
+            lowQualityWarning,
+            suppressWordRender
           };
 
           const resultPayload: TranscriptionServiceResult = { words, chapters, meta };

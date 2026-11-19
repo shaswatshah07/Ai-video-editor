@@ -5,37 +5,116 @@ interface RawChunk {
   timestamp: [number, number | null];
 }
 
+export interface ParsedTranscriptionResult {
+  words: TranscriptWord[];
+  lowQualityWarning: string | null;
+  suppressWordRender: boolean;
+}
+
+export const HINDI_LOW_QUALITY_WARNING = "⚠️ Hindi transcription quality is low for this audio. Try 'English (translated)' mode for better results.";
+
+/**
+ * Catches single-word consecutive repetitions:
+ * - If any single word appears > 4 times consecutively, collapse to one instance, append "..."
+ *   and mark with HINDI_LOW_QUALITY_WARNING.
+ * - If total unique words < 15% of total words (almost all repeats), suppressWordRender = true.
+ */
+export function collapseRepetitionsAndCheckQuality(rawWords: TranscriptWord[]): ParsedTranscriptionResult {
+  if (rawWords.length === 0) {
+    return { words: [], lowQualityWarning: null, suppressWordRender: false };
+  }
+
+  // 1. Unique word count ratio check
+  const totalWords = rawWords.length;
+  const uniqueWordsSet = new Set(
+    rawWords.map((w) => w.word.toLowerCase().replace(/[.,!?;:…"]/g, '').trim()).filter(Boolean)
+  );
+  const uniqueCount = uniqueWordsSet.size;
+  const uniqueRatio = totalWords > 0 ? uniqueCount / totalWords : 1;
+  const isSevereRepeat = totalWords >= 5 && uniqueRatio < 0.15;
+
+  // 2. Collapse single-word consecutive repetitions (> 4 times)
+  let hasConsecutiveRepetition = false;
+  const collapsedWords: TranscriptWord[] = [];
+  let i = 0;
+
+  while (i < rawWords.length) {
+    const currentWord = rawWords[i];
+    const currentNorm = currentWord.word.toLowerCase().replace(/[.,!?;:…"]/g, '').trim();
+
+    let j = i;
+    while (
+      j < rawWords.length &&
+      rawWords[j].word.toLowerCase().replace(/[.,!?;:…"]/g, '').trim() === currentNorm &&
+      currentNorm.length > 0
+    ) {
+      j++;
+    }
+
+    const runLength = j - i;
+    if (runLength > 4) {
+      hasConsecutiveRepetition = true;
+      const lastWord = rawWords[j - 1];
+      const baseText = currentWord.word.replace(/\.+$/, '');
+      collapsedWords.push({
+        ...currentWord,
+        word: `${baseText}...`,
+        sourceEndMs: lastWord.sourceEndMs
+      });
+    } else {
+      for (let k = i; k < j; k++) {
+        collapsedWords.push(rawWords[k]);
+      }
+    }
+
+    i = j;
+  }
+
+  const shouldWarn = isSevereRepeat || hasConsecutiveRepetition;
+  const lowQualityWarning = shouldWarn ? HINDI_LOW_QUALITY_WARNING : null;
+
+  return {
+    words: isSevereRepeat ? [] : collapsedWords,
+    lowQualityWarning,
+    suppressWordRender: isSevereRepeat
+  };
+}
+
 /**
  * Converts raw Whisper chunks (either word-level or segment-level)
  * into a typed array of TranscriptWord objects with integer milliseconds.
- * Includes a hallucination guard to collapse repetitive phrase loops (>= 3 repeats).
+ * Includes hallucination guards for phrase loops and single-word repetition loops.
  */
 export function parseTranscriptionResult(rawOutput: {
   text?: string;
   chunks?: RawChunk[];
   isSegmentLevelFallback?: boolean;
-}): TranscriptWord[] {
+}): ParsedTranscriptionResult {
   const chunks = rawOutput.chunks || [];
+  let uncollapsedWords: TranscriptWord[] = [];
+
   if (chunks.length === 0) {
     if (rawOutput.text && rawOutput.text.trim()) {
-      // Fallback single chunk
-      return parseSegmentChunksToWords([
+      uncollapsedWords = parseSegmentChunksToWords([
         { text: rawOutput.text, timestamp: [0, 5] }
       ]);
+    } else {
+      return { words: [], lowQualityWarning: null, suppressWordRender: false };
     }
-    return [];
-  }
-
-  // Detect if chunks are word-level (single word per chunk) or segment-level
-  const isWordLevel = !rawOutput.isSegmentLevelFallback && chunks.every(
-    (c) => c.text.trim().split(/\s+/).length <= 2
-  );
-
-  if (isWordLevel) {
-    return parseWordLevelChunks(chunks);
   } else {
-    return parseSegmentChunksToWords(chunks);
+    // Detect if chunks are word-level (single word per chunk) or segment-level
+    const isWordLevel = !rawOutput.isSegmentLevelFallback && chunks.every(
+      (c) => c.text.trim().split(/\s+/).length <= 2
+    );
+
+    if (isWordLevel) {
+      uncollapsedWords = parseWordLevelChunks(chunks);
+    } else {
+      uncollapsedWords = parseSegmentChunksToWords(chunks);
+    }
   }
+
+  return collapseRepetitionsAndCheckQuality(uncollapsedWords);
 }
 
 /**

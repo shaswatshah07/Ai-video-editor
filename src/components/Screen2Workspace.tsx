@@ -757,7 +757,16 @@ export const Screen2Workspace: React.FC = () => {
                   )}
 
                   {/* Transcript Content List */}
-                  {project.transcript.length === 0 && transcriptionStatus === 'idle' ? (
+                  {project.transcriptionMeta?.suppressWordRender ? (
+                    <div className="p-3.5 rounded-xl bg-amber-950/60 border border-amber-600/70 text-amber-200 text-xs leading-relaxed space-y-2">
+                      <div className="flex items-start space-x-2">
+                        <AlertCircle className="w-4 h-4 flex-shrink-0 text-amber-400 mt-0.5" />
+                        <span className="font-medium">
+                          {project.transcriptionMeta.lowQualityWarning || "⚠️ Hindi transcription quality is low for this audio. Try 'English (translated)' mode for better results."}
+                        </span>
+                      </div>
+                    </div>
+                  ) : project.transcript.length === 0 && transcriptionStatus === 'idle' ? (
                     <div className="p-4 rounded-xl bg-gray-900/40 border border-gray-800 text-center space-y-2">
                       <p className="text-gray-300 text-xs">No transcript generated yet.</p>
                       <p className="text-[11px] text-gray-500 leading-relaxed">
@@ -766,6 +775,13 @@ export const Screen2Workspace: React.FC = () => {
                     </div>
                   ) : project.transcript.length > 0 ? (
                     <div className="space-y-2">
+                      {project.transcriptionMeta?.lowQualityWarning && (
+                        <div className="p-2.5 rounded-lg bg-amber-950/60 border border-amber-600/70 text-amber-200 text-[11px] flex items-start space-x-2">
+                          <AlertCircle className="w-3.5 h-3.5 flex-shrink-0 text-amber-400 mt-0.5" />
+                          <span>{project.transcriptionMeta.lowQualityWarning}</span>
+                        </div>
+                      )}
+
                       <div className="flex items-center justify-between text-[11px] text-gray-400 pb-1 border-b border-gray-800/80">
                         <span>Click to seek • Double-click to edit:</span>
                         {project.isDemoSample ? (
