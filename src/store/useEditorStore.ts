@@ -8,7 +8,8 @@ import {
   getTotalProjectDuration
 } from '../utils/timelineMath';
 import { getOrGenerateMemeBlob, MEME_PRESETS } from '../utils/memeGenerator';
-import { detectSilenceInVideo, injectSilenceCutsIntoTimeline } from '../utils/silenceDetector';
+import { detectSilenceInVideo, injectSilenceCutsIntoTimeline, SilenceSensitivity, SILENCE_PRESETS } from '../utils/silenceDetector';
+import { generateSourceThumbnails, ThumbnailMap, ThumbnailProgress } from '../utils/thumbnailGenerator';
 
 export type ScreenState = 'UPLOAD' | 'WORKSPACE' | 'EXPORT';
 
@@ -27,6 +28,9 @@ interface EditorState {
   previewSpeed: 1 | 2 | 5;
   timelineZoom: number;
   minSilenceDurationMs: number;
+  silenceSensitivity: SilenceSensitivity;
+  thumbnails: ThumbnailMap;
+  thumbnailProgress: ThumbnailProgress | null;
   selectedItemId: string | null;
   commandLogs: CommandLogEntry[];
   customMemeClips: CustomMeme[];
@@ -51,6 +55,7 @@ interface EditorState {
   zoomIn: () => void;
   zoomOut: () => void;
   setMinSilenceDurationMs: (ms: number) => void;
+  setSilenceSensitivity: (sensitivity: SilenceSensitivity) => void;
   setSelectedItemId: (id: string | null) => void;
   addCommandLog: (log: CommandLogEntry) => void;
   
@@ -63,8 +68,8 @@ interface EditorState {
   acceptSilenceCut: (itemId: string) => void;
   keepSilencePause: (itemId: string) => void;
   acceptAllSilences: () => Promise<{ changed: boolean; message: string }>;
-  detectSilencesOnly: (minMs?: number) => Promise<{ count: number; message: string }>;
-  removeOrDetectSilences: (minMs?: number) => Promise<{ changed: boolean; message: string; count?: number; totalSilenceMs?: number; newDurationMs?: number }>;
+  detectSilencesOnly: (param?: SilenceSensitivity | number) => Promise<{ count: number; message: string }>;
+  removeOrDetectSilences: (param?: SilenceSensitivity | number) => Promise<{ changed: boolean; message: string; count?: number; totalSilenceMs?: number; newDurationMs?: number }>;
   setTransition: (itemId: string, type: TransitionType, durationMs?: number) => void;
   trimProjectRange: (startMs: number, endMs: number) => void;
   insertLibraryMeme: (memeId: 'fail_trombone' | 'wait_what' | 'victory_cheer' | 'shocked_blink', atProjectMs: number) => Promise<void>;
@@ -82,7 +87,10 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   isPlaying: false,
   previewSpeed: 1,
   timelineZoom: 1,
-  minSilenceDurationMs: 800,
+  minSilenceDurationMs: 500,
+  silenceSensitivity: 'Normal',
+  thumbnails: {},
+  thumbnailProgress: null,
   selectedItemId: null,
   commandLogs: [],
   customMemeClips: [],
@@ -163,7 +171,28 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       isPlaying: false,
       undoStack: [],
       redoStack: [],
-      selectedItemId: null
+      selectedItemId: null,
+      thumbnails: {},
+      thumbnailProgress: { current: 0, total: Math.min(300, Math.max(1, Math.floor(durationMs / 1000))), done: false }
+    });
+
+    // Generate thumbnails in background (1 per second, up to 300 total)
+    generateSourceThumbnails(videoUrl, durationMs, (current, total) => {
+      set({
+        thumbnailProgress: { current, total, done: current >= total }
+      });
+    }).then((thumbnails) => {
+      const count = Object.keys(thumbnails).length;
+      set({
+        thumbnails,
+        thumbnailProgress: {
+          current: count,
+          total: count,
+          done: true
+        }
+      });
+    }).catch((err) => {
+      console.warn('Background thumbnail generation failed:', err);
     });
   },
 
@@ -174,6 +203,10 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   zoomIn: () => set((s) => ({ timelineZoom: Math.min(5, Number((s.timelineZoom + 0.5).toFixed(1))) })),
   zoomOut: () => set((s) => ({ timelineZoom: Math.max(1, Number((s.timelineZoom - 0.5).toFixed(1))) })),
   setMinSilenceDurationMs: (minSilenceDurationMs) => set({ minSilenceDurationMs }),
+  setSilenceSensitivity: (silenceSensitivity) => set({
+    silenceSensitivity,
+    minSilenceDurationMs: SILENCE_PRESETS[silenceSensitivity]?.minSilenceMs ?? 500
+  }),
   setSelectedItemId: (selectedItemId) => set({ selectedItemId }),
 
   addCommandLog: (log) => set((s) => ({
@@ -317,15 +350,19 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     });
   },
 
-  detectSilencesOnly: async (minMs) => {
-    const { project, minSilenceDurationMs } = get();
+  detectSilencesOnly: async (param) => {
+    const { project, silenceSensitivity } = get();
     if (!project) return { count: 0, message: 'No video project loaded.' };
 
-    const thresholdMs = minMs ?? minSilenceDurationMs ?? 800;
-    const res = await detectSilenceInVideo(project.sourceVideoUrl, project.sourceDurationMs, thresholdMs);
+    const effectiveSensitivity: SilenceSensitivity = typeof param === 'string'
+      ? param
+      : typeof param === 'number'
+      ? (param >= 700 ? 'Gentle' : param <= 400 ? 'Tight' : 'Normal')
+      : (silenceSensitivity ?? 'Normal');
+    const res = await detectSilenceInVideo(project.sourceVideoUrl, project.sourceDurationMs, effectiveSensitivity);
 
     if (res.silences.length === 0) {
-      const msg = `No pauses longer than ${(thresholdMs / 1000).toFixed(1)} s found (noise floor ${res.noiseFloorDb.toFixed(1)} dB, threshold ${res.thresholdDb.toFixed(1)} dB).`;
+      const msg = `No pauses detected (${effectiveSensitivity} mode, noise floor ${res.noiseFloorDb.toFixed(1)} dB, threshold ${res.thresholdDb.toFixed(1)} dB).`;
       return { count: 0, message: msg };
     }
 
@@ -344,25 +381,36 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     });
 
     const totalSec = res.silences.reduce((acc, s) => acc + s.durationMs, 0) / 1000;
-    const msg = `Found ${res.silences.length} pauses totalling ${totalSec.toFixed(1)} s (noise floor ${res.noiseFloorDb.toFixed(1)} dB, threshold ${res.thresholdDb.toFixed(1)} dB). Amber blocks added to timeline.`;
+    const msg = `Found ${res.rawGapsCount} raw gaps -> ${res.silences.length} merged regions (${totalSec.toFixed(1)}s, noise floor ${res.noiseFloorDb.toFixed(1)} dB, threshold ${res.thresholdDb.toFixed(1)} dB). Amber blocks added to timeline.`;
     return { count: res.silences.length, message: msg };
   },
 
-  removeOrDetectSilences: async (minMs) => {
-    const { project, minSilenceDurationMs } = get();
+  removeOrDetectSilences: async (param) => {
+    const { project, silenceSensitivity } = get();
     if (!project) return { changed: false, message: 'No video project loaded.' };
 
-    const thresholdMs = minMs ?? minSilenceDurationMs ?? 800;
+    const effectiveSensitivity: SilenceSensitivity = typeof param === 'string'
+      ? param
+      : typeof param === 'number'
+      ? (param >= 700 ? 'Gentle' : param <= 400 ? 'Tight' : 'Normal')
+      : (silenceSensitivity ?? 'Normal');
     let items = [...project.items];
     let existingSuggested = items.filter(it => it.status === 'SUGGESTED_SILENCE_CUT');
+    let rawGapsCount = existingSuggested.length;
+    let noiseFloorDb = -50;
+    let thresholdDb = -40;
 
     // If detector hasn't run yet, run it on demand
     if (existingSuggested.length === 0) {
-      const res = await detectSilenceInVideo(project.sourceVideoUrl, project.sourceDurationMs, thresholdMs);
+      const res = await detectSilenceInVideo(project.sourceVideoUrl, project.sourceDurationMs, effectiveSensitivity);
+      rawGapsCount = res.rawGapsCount;
+      noiseFloorDb = res.noiseFloorDb;
+      thresholdDb = res.thresholdDb;
+
       if (res.silences.length === 0) {
         return {
           changed: false,
-          message: `No pauses longer than ${(thresholdMs / 1000).toFixed(1)} s found (noise floor ${res.noiseFloorDb.toFixed(1)} dB, threshold ${res.thresholdDb.toFixed(1)} dB).`
+          message: `No pauses detected (${effectiveSensitivity} mode, noise floor ${res.noiseFloorDb.toFixed(1)} dB, threshold ${res.thresholdDb.toFixed(1)} dB).`
         };
       }
       items = injectSilenceCutsIntoTimeline(items, res.silences);
@@ -389,7 +437,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       }
     });
 
-    const msg = `Found ${count} pauses totalling ${(totalSilenceMs / 1000).toFixed(1)} s. Removed them. New length ${(newDurationMs / 1000).toFixed(1)} s.`;
+    const msg = `Found ${rawGapsCount} raw gaps -> ${count} merged regions (${(totalSilenceMs / 1000).toFixed(1)}s removed, noise floor ${noiseFloorDb.toFixed(1)} dB, threshold ${thresholdDb.toFixed(1)} dB). New length ${(newDurationMs / 1000).toFixed(1)} s.`;
     return {
       changed: true,
       message: msg,

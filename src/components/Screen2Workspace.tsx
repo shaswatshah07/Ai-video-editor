@@ -8,6 +8,7 @@ import { useEditorStore } from '../store/useEditorStore';
 import { mapProjectToSource, mapSourceToProjectMs } from '../utils/timelineMath';
 import { parseCommandWithFallback } from '../utils/commandParser';
 import { TransitionType } from '../types/edl';
+import { SilenceSensitivity, SILENCE_PRESETS } from '../utils/silenceDetector';
 
 export const Screen2Workspace: React.FC = () => {
   const {
@@ -16,7 +17,9 @@ export const Screen2Workspace: React.FC = () => {
     isPlaying,
     previewSpeed,
     timelineZoom,
-    minSilenceDurationMs,
+    silenceSensitivity,
+    thumbnails,
+    thumbnailProgress,
     selectedItemId,
     commandLogs,
     isAudioEnhanceActive,
@@ -29,7 +32,7 @@ export const Screen2Workspace: React.FC = () => {
     setPreviewSpeed,
     zoomIn,
     zoomOut,
-    setMinSilenceDurationMs,
+    setSilenceSensitivity,
     setSelectedItemId,
     splitAtPlayhead,
     deleteSelected,
@@ -851,27 +854,32 @@ export const Screen2Workspace: React.FC = () => {
               </button>
             </div>
 
-            {/* Silence Detection Settings (Item 2) */}
+            {/* Silence Detection Sensitivity (Item 2) */}
             <div className="flex items-center space-x-1.5 pl-3 border-l border-gray-800">
-              <span className="text-gray-400 text-[11px]">Min Silence:</span>
+              <span className="text-gray-400 text-[11px] font-medium">Sensitivity:</span>
               <select
-                value={minSilenceDurationMs}
-                onChange={(e) => setMinSilenceDurationMs(Number(e.target.value))}
+                value={silenceSensitivity}
+                onChange={(e) => setSilenceSensitivity(e.target.value as SilenceSensitivity)}
                 className="bg-gray-800 text-gray-200 border border-gray-700 rounded px-1.5 py-0.5 text-[11px]"
+                title="Gentle: >=800ms (+8dB) | Normal: >=500ms (+10dB) | Tight: >=350ms (+12dB)"
               >
-                <option value={600}>600ms</option>
-                <option value={800}>800ms</option>
-                <option value={1000}>1000ms</option>
-                <option value={1200}>1200ms</option>
+                <option value="Gentle">Gentle (800ms)</option>
+                <option value="Normal">Normal (500ms)</option>
+                <option value="Tight">Tight (350ms)</option>
               </select>
               <button
                 onClick={async () => {
-                  const res = await detectSilencesOnly(minSilenceDurationMs);
+                  const res = await detectSilencesOnly(silenceSensitivity);
+                  const cfg = SILENCE_PRESETS[silenceSensitivity];
                   addCommandLog({
                     id: `cmd_${Date.now()}`,
-                    rawInput: `Detect pauses (>= ${minSilenceDurationMs}ms)`,
+                    rawInput: `Detect pauses (${silenceSensitivity} mode)`,
                     timestamp: Date.now(),
-                    parsedCommand: { action: 'REMOVE_SILENCE', payload: { minDurationMs: minSilenceDurationMs, paddingPreMs: 150, paddingPostMs: 200 }, explanation: res.message },
+                    parsedCommand: {
+                      action: 'REMOVE_SILENCE',
+                      payload: { minDurationMs: cfg.minSilenceMs, paddingPreMs: cfg.prePaddingMs, paddingPostMs: cfg.postPaddingMs },
+                      explanation: res.message
+                    },
                     status: res.count > 0 ? 'SUCCESS' : 'WARNING',
                     appliedMessage: res.message
                   });
@@ -882,6 +890,14 @@ export const Screen2Workspace: React.FC = () => {
                 Detect Silences
               </button>
             </div>
+
+            {/* Thumbnail Generation Progress (Item 1) */}
+            {thumbnailProgress && !thumbnailProgress.done && (
+              <div className="flex items-center space-x-1.5 px-2 py-0.5 rounded-full bg-indigo-950/80 border border-indigo-700/60 text-indigo-300 text-[10px] animate-pulse">
+                <div className="w-1.5 h-1.5 rounded-full bg-indigo-400 animate-ping" />
+                <span>Generating frames {thumbnailProgress.current}/{thumbnailProgress.total}</span>
+              </div>
+            )}
           </div>
 
           {/* Legend */}
@@ -959,11 +975,14 @@ export const Screen2Workspace: React.FC = () => {
                 }
 
                 const durPct = project.totalProjectDurationMs > 0
-                  ? Math.max(2, (item.durationMs / project.totalProjectDurationMs) * 100)
+                  ? Math.max(1, (item.durationMs / project.totalProjectDurationMs) * 100)
                   : 10;
 
                 const isSilence = item.status === 'SUGGESTED_SILENCE_CUT';
                 const isMeme = item.kind === 'MEME_CLIP';
+                const hasThumbnails = Object.keys(thumbnails).length > 0;
+                const isNarrow = item.durationMs < 2000;
+                const tileCount = Math.max(1, Math.round(item.durationMs / 1000));
 
                 return (
                   <div
@@ -972,21 +991,43 @@ export const Screen2Workspace: React.FC = () => {
                       e.stopPropagation();
                       setSelectedItemId(item.id);
                     }}
-                    style={{ width: `${durPct}%` }}
+                    style={{ width: `${durPct}%`, minWidth: '34px' }}
+                    title={`${item.title} (${(item.durationMs / 1000).toFixed(1)}s)`}
                     className={`h-11 rounded-lg px-2 py-1 flex flex-col justify-between transition-all relative overflow-hidden select-none cursor-pointer ${
                       isSelected
                         ? 'ring-2 ring-white shadow-lg'
                         : 'border border-black/20'
                     } ${
                       isSilence
-                        ? 'bg-amber-600/90 text-amber-50 hover:bg-amber-500'
+                        ? 'bg-amber-600/95 text-amber-50 hover:bg-amber-500'
                         : isMeme
-                        ? 'bg-purple-600/90 text-purple-50 hover:bg-purple-500'
-                        : 'bg-indigo-600/90 text-white hover:bg-indigo-500'
+                        ? 'bg-purple-600/95 text-purple-50 hover:bg-purple-500'
+                        : 'bg-indigo-600/95 text-white hover:bg-indigo-500'
                     }`}
                   >
-                    <div className="flex items-center justify-between">
-                      <span className="text-[11px] font-semibold truncate">{item.title}</span>
+                    {/* Filmstrip Frame Thumbnails (Item 1) */}
+                    {hasThumbnails && item.kind === 'SOURCE_CLIP' && !isSilence && (
+                      <div className="absolute inset-0 flex flex-row overflow-hidden pointer-events-none opacity-80">
+                        {Array.from({ length: tileCount }).map((_, tileIdx) => {
+                          const tileSourceMs = item.sourceStartMs + (tileIdx * item.durationMs) / tileCount;
+                          const tileSec = Math.floor(tileSourceMs / 1000);
+                          const frameUrl = thumbnails[tileSec];
+                          return (
+                            <div
+                              key={tileIdx}
+                              className="flex-1 h-full bg-cover bg-center border-r border-black/25"
+                              style={frameUrl ? { backgroundImage: `url(${frameUrl})` } : { backgroundColor: '#312e81' }}
+                            />
+                          );
+                        })}
+                        <div className="absolute inset-0 bg-gradient-to-b from-black/70 via-black/20 to-black/75 pointer-events-none" />
+                      </div>
+                    )}
+
+                    <div className="relative z-10 flex items-center justify-between">
+                      <span className="text-[11px] font-semibold truncate drop-shadow-md">
+                        {isNarrow && !isSilence ? '' : item.title}
+                      </span>
                       {isSilence && (
                         <div className="flex items-center space-x-1" onClick={(e) => e.stopPropagation()}>
                           <button
@@ -1007,10 +1048,10 @@ export const Screen2Workspace: React.FC = () => {
                       )}
                     </div>
 
-                    <div className="flex items-center justify-between text-[10px] opacity-80 font-mono">
+                    <div className="relative z-10 flex items-center justify-between text-[10px] opacity-90 font-mono drop-shadow-sm">
                       <span>{(item.durationMs / 1000).toFixed(1)}s</span>
                       {item.transitionOut && item.transitionOut.type !== 'none' && (
-                        <span className="bg-black/30 px-1 rounded uppercase text-[9px]">
+                        <span className="bg-black/50 px-1 rounded uppercase text-[9px]">
                           {item.transitionOut.type}
                         </span>
                       )}

@@ -134,8 +134,8 @@ export const Screen1Upload: React.FC = () => {
 
       if (isAutoMode) {
         if (autoOptions.detectSilence) {
-          setProcessingStatus('Scanning RMS energy for awkward pauses (>800ms)...');
-          const { silences } = await detectSilenceInVideo(selectedFile, durationMs, 800);
+          setProcessingStatus('Scanning audio RMS energy for awkward pauses (Normal preset)...');
+          const { silences } = await detectSilenceInVideo(selectedFile, durationMs, 'Normal');
           items = injectSilenceCutsIntoTimeline(items, silences);
         }
 
