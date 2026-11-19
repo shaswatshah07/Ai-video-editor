@@ -6,7 +6,7 @@ import { detectSilenceInVideo, injectSilenceCutsIntoTimeline } from '../utils/si
 import { TimelineItem } from '../types/edl';
 
 export const Screen1Upload: React.FC = () => {
-  const { loadProject, setScreen, toggleVoiceEnhance, toggleNoiseReduction } = useEditorStore();
+  const { loadProject, setScreen, toggleVoiceEnhance, toggleNoiseReduction, generateTranscript } = useEditorStore();
 
   const [isDragging, setIsDragging] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -68,13 +68,14 @@ export const Screen1Upload: React.FC = () => {
 
       setProcessingStatus('Configuring timeline with sample transcript & detected silences...');
 
-      // Load into store
+      // Load into store (with isDemoSample = true)
       loadProject(
         demo.videoUrl,
         'Scaler_YIIC_30s_Demo.mp4',
         demo.blob.size || 1500000,
         demo.durationMs,
-        demo.initialItems
+        demo.initialItems,
+        true
       );
 
       // Apply audio enhancements if checked
@@ -148,8 +149,13 @@ export const Screen1Upload: React.FC = () => {
         selectedFile.name,
         selectedFile.size,
         durationMs,
-        items
+        items,
+        false
       );
+
+      if (isAutoMode && autoOptions.transcript) {
+        generateTranscript('english');
+      }
 
       setIsProcessing(false);
       setScreen('WORKSPACE');
@@ -175,14 +181,39 @@ export const Screen1Upload: React.FC = () => {
           </div>
         </div>
 
-        <button
-          onClick={handleLoadSampleDemo}
-          disabled={isProcessing}
-          className="flex items-center space-x-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 px-4 py-2.5 rounded-xl font-medium text-sm text-white shadow-lg shadow-emerald-900/30 transition-all transform active:scale-95 disabled:opacity-50"
-        >
-          <Play className="w-4 h-4 fill-white" />
-          <span>Load 30s Sample Demo Video</span>
-        </button>
+        <div className="flex items-center space-x-2">
+          <button
+            onClick={async () => {
+              setIsProcessing(true);
+              setProcessingStatus('Loading real 61.7s video asset...');
+              try {
+                const resp = await fetch('/test_video.mp4');
+                const blob = await resp.blob();
+                const file = new File([blob], 'WhatsApp_Video_61.7s.mp4', { type: 'video/mp4' });
+                setSelectedFile(file);
+              } catch {
+                setErrorMsg('Could not fetch public/test_video.mp4');
+              } finally {
+                setIsProcessing(false);
+              }
+            }}
+            disabled={isProcessing}
+            className="flex items-center space-x-2 bg-indigo-700 hover:bg-indigo-600 px-3.5 py-2.5 rounded-xl font-medium text-xs text-white shadow-md transition-all active:scale-95 disabled:opacity-50"
+            title="Load the real 61.7s vertical WhatsApp test video directly"
+          >
+            <Play className="w-3.5 h-3.5 fill-white" />
+            <span>Load Real 61.7s Video</span>
+          </button>
+
+          <button
+            onClick={handleLoadSampleDemo}
+            disabled={isProcessing}
+            className="flex items-center space-x-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 px-3.5 py-2.5 rounded-xl font-medium text-xs text-white shadow-lg shadow-emerald-900/30 transition-all transform active:scale-95 disabled:opacity-50"
+          >
+            <Play className="w-3.5 h-3.5 fill-white" />
+            <span>Load 30s Demo Video</span>
+          </button>
+        </div>
       </header>
 
       {/* Main Content Area */}

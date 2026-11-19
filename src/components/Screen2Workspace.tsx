@@ -2,13 +2,15 @@ import React, { useRef, useEffect, useState, useCallback } from 'react';
 import {
   Play, Pause, RotateCcw, RotateCw, Scissors, Trash2, Volume2,
   Sparkles, Send, Upload, ChevronRight, ChevronLeft, ArrowRight,
-  Bookmark, Check, X, Wand2, ShieldAlert
+  Bookmark, Check, X, Wand2, ShieldAlert, Download, Languages,
+  Loader2, AlertCircle, RefreshCw
 } from 'lucide-react';
 import { useEditorStore } from '../store/useEditorStore';
 import { mapProjectToSource, mapSourceToProjectMs } from '../utils/timelineMath';
 import { parseCommandWithFallback } from '../utils/commandParser';
 import { TransitionType } from '../types/edl';
 import { SilenceSensitivity, SILENCE_PRESETS } from '../utils/silenceDetector';
+import { downloadTranscriptAsTxt } from '../utils/transcriptParser';
 
 export const Screen2Workspace: React.FC = () => {
   const {
@@ -26,6 +28,10 @@ export const Screen2Workspace: React.FC = () => {
     isNoiseReductionActive,
     undoStack,
     redoStack,
+    transcriptionStatus,
+    transcriptionDownloadPercent,
+    transcriptionError,
+    selectedLanguage,
     setScreen,
     setCurrentProjectMs,
     setIsPlaying,
@@ -33,6 +39,9 @@ export const Screen2Workspace: React.FC = () => {
     zoomIn,
     zoomOut,
     setSilenceSensitivity,
+    setSelectedLanguage,
+    generateTranscript,
+    suggestNonSpeechSilences,
     setSelectedItemId,
     splitAtPlayhead,
     deleteSelected,
@@ -75,7 +84,13 @@ export const Screen2Workspace: React.FC = () => {
   const [isRightOpen, setIsRightOpen] = useState<boolean>(true);
   const [activeMemePlaying, setActiveMemePlaying] = useState<boolean>(false);
 
+  // Timeline scrubbing & hover state (Item 2)
+  const [isScrubbing, setIsScrubbing] = useState<boolean>(false);
+  const [hoverTimeMs, setHoverTimeMs] = useState<number | null>(null);
+  const [hoverPct, setHoverPct] = useState<number | null>(null);
+
   const timelineContainerRef = useRef<HTMLDivElement | null>(null);
+  const trackContainerRef = useRef<HTMLDivElement | null>(null);
 
   // Setup Web Audio Node Chain on user gesture or mount
   const setupWebAudio = useCallback(() => {
@@ -339,6 +354,97 @@ export const Screen2Workspace: React.FC = () => {
     }
   };
 
+  // Format timestamp for InShot-style floating label (e.g. "0:11.1")
+  const formatReadout = (ms: number): string => {
+    const totalSec = Math.max(0, ms) / 1000;
+    const mins = Math.floor(totalSec / 60);
+    const secVal = (totalSec % 60).toFixed(1);
+    const secFormatted = Number(secVal) < 10 ? `0${secVal}` : secVal;
+    return `${mins}:${secFormatted}`;
+  };
+
+  // Calculate track time and percentage from cursor clientX
+  const calcTrackTimeAndPct = useCallback((clientX: number) => {
+    if (!trackContainerRef.current || !project || project.totalProjectDurationMs <= 0) return null;
+    const rect = trackContainerRef.current.getBoundingClientRect();
+    const clickX = Math.max(0, Math.min(rect.width, clientX - rect.left));
+    const pct = rect.width > 0 ? clickX / rect.width : 0;
+    const timeMs = Math.round(pct * project.totalProjectDurationMs);
+    return { pct: pct * 100, timeMs };
+  }, [project]);
+
+  const handleTrackMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
+    const res = calcTrackTimeAndPct(e.clientX);
+    if (!res) return;
+    setIsScrubbing(true);
+    handleSeek(res.timeMs);
+    setHoverTimeMs(res.timeMs);
+    setHoverPct(res.pct);
+  };
+
+  const handleTrackMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
+    const res = calcTrackTimeAndPct(e.clientX);
+    if (!res) return;
+    setHoverTimeMs(res.timeMs);
+    setHoverPct(res.pct);
+    if (isScrubbing) {
+      handleSeek(res.timeMs);
+    }
+  };
+
+  const handleTrackMouseLeave = () => {
+    if (!isScrubbing) {
+      setHoverTimeMs(null);
+      setHoverPct(null);
+    }
+  };
+
+  // Window listeners during scrubbing
+  useEffect(() => {
+    if (!isScrubbing) return;
+
+    const handleWindowMouseMove = (e: MouseEvent) => {
+      const res = calcTrackTimeAndPct(e.clientX);
+      if (!res) return;
+      handleSeek(res.timeMs);
+      setHoverTimeMs(res.timeMs);
+      setHoverPct(res.pct);
+    };
+
+    const handleWindowMouseUp = () => {
+      setIsScrubbing(false);
+      setHoverTimeMs(null);
+      setHoverPct(null);
+    };
+
+    window.addEventListener('mousemove', handleWindowMouseMove);
+    window.addEventListener('mouseup', handleWindowMouseUp);
+
+    return () => {
+      window.removeEventListener('mousemove', handleWindowMouseMove);
+      window.removeEventListener('mouseup', handleWindowMouseUp);
+    };
+  }, [isScrubbing, calcTrackTimeAndPct]);
+
+  // Keyboard shortcut listener ('S' to split at playhead)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const activeEl = document.activeElement;
+      if (activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA')) {
+        return;
+      }
+      if (e.key === 's' || e.key === 'S') {
+        e.preventDefault();
+        splitAtPlayhead();
+      } else if (e.key === ' ' || e.code === 'Space') {
+        e.preventDefault();
+        togglePlayPause();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [splitAtPlayhead, togglePlayPause]);
+
   // AI Command Execution
   const handleSendCommand = async () => {
     if (!promptInput.trim() || isAiProcessing || !project) return;
@@ -381,14 +487,16 @@ export const Screen2Workspace: React.FC = () => {
   const totalProjSec = totalProjSecNum.toFixed(1);
   const curProjSec = (currentProjectMs / 1000).toFixed(1);
 
-  // Adaptive Time Ruler steps (Item 1B)
-  let rulerStepSec = 10;
-  if (totalProjSecNum * timelineZoom <= 30) rulerStepSec = 1;
-  else if (totalProjSecNum * timelineZoom <= 60) rulerStepSec = 2;
-  else if (totalProjSecNum * timelineZoom <= 150) rulerStepSec = 5;
-  else if (totalProjSecNum * timelineZoom <= 300) rulerStepSec = 10;
-  else rulerStepSec = 15;
-  const rulerTickCount = Math.ceil(totalProjSecNum / rulerStepSec);
+  // InShot-style Adaptive Time Ruler (Item 2)
+  // Scaling tick density with timelineZoom:
+  // Zoom >= 3.5x: Major ticks every 1s (00:01, 00:02...) with 0.5s minor ticks
+  // Zoom >= 2x: Major ticks every 2s (00:02, 00:04...) with 1s minor ticks
+  // Zoom < 2x: Major ticks every 5s (00:05, 00:10...) with 1s minor ticks
+  const rulerMajorStepSec = timelineZoom >= 3.5 ? 1 : timelineZoom >= 2 ? 2 : 5;
+  const rulerMinorStepSec = rulerMajorStepSec === 1 ? 0.5 : 1;
+  const totalDurationSec = project.totalProjectDurationMs / 1000;
+  const majorTickCount = Math.floor(totalDurationSec / rulerMajorStepSec);
+  const minorTickCount = Math.floor(totalDurationSec / rulerMinorStepSec);
 
   return (
     <div className="h-screen w-screen bg-[#0F1117] text-gray-100 flex flex-col overflow-hidden select-none">
@@ -452,7 +560,7 @@ export const Screen2Workspace: React.FC = () => {
         {/* Left Collapsible Panel: Transcript & Chapters */}
         <div
           className={`border-r border-gray-800 bg-[#12141D] flex flex-col transition-all duration-200 z-10 ${
-            isLeftOpen ? 'w-72' : 'w-10'
+            isLeftOpen ? 'w-80' : 'w-10'
           }`}
         >
           <div className="h-10 border-b border-gray-800 flex items-center justify-between px-3">
@@ -485,61 +593,260 @@ export const Screen2Workspace: React.FC = () => {
           </div>
 
           {isLeftOpen && (
-            <div className="flex-1 overflow-y-auto p-3 space-y-2 text-xs">
+            <div className="flex-1 overflow-y-auto p-3 space-y-3 text-xs">
               {leftTab === 'transcript' ? (
-                <div className="space-y-2">
-                  <p className="text-[11px] text-gray-400 italic">Click any word to seek video:</p>
-                  <div className="leading-relaxed space-x-1">
-                    {project.transcript.map((w) => {
-                      const projMs = mapSourceToProjectMs(w.sourceStartMs, project.items);
-                      const isDeleted = projMs === null;
-                      const isCurrent =
-                        projMs !== null &&
-                        currentProjectMs >= projMs &&
-                        currentProjectMs < projMs + (w.sourceEndMs - w.sourceStartMs);
-
-                      return (
-                        <span
-                          key={w.id}
-                          onClick={() => {
-                            if (projMs !== null) handleSeek(projMs);
-                          }}
-                          className={`inline-block px-1 py-0.5 rounded cursor-pointer transition-colors ${
-                            isDeleted
-                              ? 'line-through text-gray-600 bg-gray-900/50 cursor-not-allowed'
-                              : isCurrent
-                              ? 'bg-indigo-600 text-white font-bold'
-                              : 'text-gray-300 hover:bg-gray-800'
+                <div className="space-y-3">
+                  {/* Language Selector & Controls Bar */}
+                  <div className="p-2.5 rounded-lg bg-gray-900/80 border border-gray-800 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center space-x-1.5 text-[11px] text-gray-400 font-medium">
+                        <Languages className="w-3.5 h-3.5 text-indigo-400" />
+                        <span>Language:</span>
+                      </div>
+                      <div className="flex items-center space-x-1 bg-gray-950 p-0.5 rounded-md border border-gray-800">
+                        <button
+                          type="button"
+                          onClick={() => setSelectedLanguage('english')}
+                          disabled={transcriptionStatus === 'downloading_model' || transcriptionStatus === 'transcribing'}
+                          className={`px-2 py-0.5 rounded text-[11px] font-medium transition-all ${
+                            selectedLanguage === 'english'
+                              ? 'bg-indigo-600 text-white'
+                              : 'text-gray-400 hover:text-gray-200'
                           }`}
                         >
-                          {w.word}
-                        </span>
-                      );
-                    })}
+                          English
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setSelectedLanguage('hindi')}
+                          disabled={transcriptionStatus === 'downloading_model' || transcriptionStatus === 'transcribing'}
+                          className={`px-2 py-0.5 rounded text-[11px] font-medium transition-all ${
+                            selectedLanguage === 'hindi'
+                              ? 'bg-indigo-600 text-white'
+                              : 'text-gray-400 hover:text-gray-200'
+                          }`}
+                        >
+                          Hindi
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center space-x-2 pt-1">
+                      <button
+                        type="button"
+                        onClick={() => generateTranscript(selectedLanguage)}
+                        disabled={transcriptionStatus === 'downloading_model' || transcriptionStatus === 'transcribing'}
+                        className="flex-1 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white font-medium py-1.5 px-3 rounded-md text-xs flex items-center justify-center space-x-1.5 shadow transition-all"
+                      >
+                        {transcriptionStatus === 'downloading_model' || transcriptionStatus === 'transcribing' ? (
+                          <>
+                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                            <span>Processing...</span>
+                          </>
+                        ) : project.transcript.length > 0 && !project.isDemoSample ? (
+                          <>
+                            <RefreshCw className="w-3.5 h-3.5" />
+                            <span>Regenerate</span>
+                          </>
+                        ) : (
+                          <>
+                            <Sparkles className="w-3.5 h-3.5" />
+                            <span>Generate Transcript</span>
+                          </>
+                        )}
+                      </button>
+
+                      {project.transcript.length > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => downloadTranscriptAsTxt(project.transcript, `${project.title.replace(/\.[^/.]+$/, '')}_transcript.txt`)}
+                          title="Download transcript as .txt"
+                          className="bg-gray-800 hover:bg-gray-700 text-gray-300 p-1.5 rounded-md border border-gray-700 transition-colors"
+                        >
+                          <Download className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                    </div>
+
+                    {project.transcript.length > 0 && !project.isDemoSample && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const res = suggestNonSpeechSilences();
+                          alert(res.message);
+                        }}
+                        className="w-full bg-amber-950/40 hover:bg-amber-950/70 border border-amber-800/60 text-amber-300 py-1 px-2 rounded text-[11px] flex items-center justify-center space-x-1 transition-all"
+                      >
+                        <ShieldAlert className="w-3 h-3 text-amber-400" />
+                        <span>Suggest Non-Speech Cuts</span>
+                      </button>
+                    )}
                   </div>
+
+                  {/* Status Banner: Downloading Model */}
+                  {transcriptionStatus === 'downloading_model' && (
+                    <div className="p-3 rounded-lg bg-indigo-950/50 border border-indigo-700/60 space-y-2">
+                      <div className="flex items-center justify-between text-xs text-indigo-300 font-medium">
+                        <span className="flex items-center space-x-1.5">
+                          <Loader2 className="w-3.5 h-3.5 animate-spin text-indigo-400" />
+                          <span>Downloading Whisper Model</span>
+                        </span>
+                        <span>{transcriptionDownloadPercent}%</span>
+                      </div>
+                      <div className="w-full bg-indigo-950 rounded-full h-1.5 overflow-hidden">
+                        <div
+                          className="bg-indigo-500 h-1.5 rounded-full transition-all duration-200"
+                          style={{ width: `${transcriptionDownloadPercent}%` }}
+                        />
+                      </div>
+                      <p className="text-[10px] text-indigo-200/70">
+                        First use downloads the speech model (about 75 MB), only once.
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Status Banner: Transcribing */}
+                  {transcriptionStatus === 'transcribing' && (
+                    <div className="p-3 rounded-lg bg-purple-950/50 border border-purple-700/60 flex items-center space-x-2.5">
+                      <Loader2 className="w-4 h-4 animate-spin text-purple-400 flex-shrink-0" />
+                      <div>
+                        <p className="text-xs font-medium text-purple-200">Transcribing speech...</p>
+                        <p className="text-[10px] text-purple-300/70">Running Whisper AI in background Web Worker</p>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Status Banner: Error */}
+                  {transcriptionStatus === 'error' && (
+                    <div className="p-3 rounded-lg bg-red-950/60 border border-red-700/60 space-y-1.5">
+                      <div className="flex items-center space-x-1.5 text-xs font-semibold text-red-300">
+                        <AlertCircle className="w-3.5 h-3.5 text-red-400 flex-shrink-0" />
+                        <span>Transcription Failed</span>
+                      </div>
+                      <p className="text-[11px] text-red-200 leading-snug">{transcriptionError}</p>
+                      <button
+                        type="button"
+                        onClick={() => generateTranscript(selectedLanguage)}
+                        className="text-[10px] text-red-300 hover:text-white underline mt-1 font-medium"
+                      >
+                        Try Again
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Transcript Content List */}
+                  {project.transcript.length === 0 && transcriptionStatus === 'idle' ? (
+                    <div className="p-4 rounded-xl bg-gray-900/40 border border-gray-800 text-center space-y-2">
+                      <p className="text-gray-300 text-xs">No transcript generated yet.</p>
+                      <p className="text-[11px] text-gray-500 leading-relaxed">
+                        Click "Generate Transcript" above to transcribe using in-browser Whisper AI. First use downloads the model (about 75 MB), only once.
+                      </p>
+                    </div>
+                  ) : project.transcript.length > 0 ? (
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between text-[11px] text-gray-400 pb-1 border-b border-gray-800/80">
+                        <span>Click any word to seek:</span>
+                        {project.isDemoSample ? (
+                          <span className="text-[10px] bg-amber-950/60 text-amber-300 border border-amber-800/60 px-1.5 py-0.2 rounded">
+                            Sample transcript
+                          </span>
+                        ) : (
+                          <span className="text-[10px] bg-indigo-950/60 text-indigo-300 border border-indigo-800/60 px-1.5 py-0.2 rounded">
+                            Whisper Base ({project.transcript.length} words)
+                          </span>
+                        )}
+                      </div>
+
+                      <div className="leading-relaxed space-x-1 font-sans text-xs">
+                        {project.transcript.map((w) => {
+                          const projMs = mapSourceToProjectMs(w.sourceStartMs, project.items);
+                          const isDeleted = projMs === null;
+                          const isCurrent =
+                            projMs !== null &&
+                            currentProjectMs >= projMs &&
+                            currentProjectMs < projMs + (w.sourceEndMs - w.sourceStartMs);
+
+                          return (
+                            <span
+                              key={w.id}
+                              onClick={() => {
+                                if (projMs !== null) {
+                                  handleSeek(projMs);
+                                } else {
+                                  // Jump to next active moment
+                                  const activeItems = project.items.filter(
+                                    (it) => it.status === 'ACTIVE' || it.status === 'SUGGESTED_MEME'
+                                  );
+                                  const nextActive = activeItems.find((it) => it.sourceStartMs >= w.sourceStartMs);
+                                  if (nextActive) {
+                                    handleSeek(nextActive.projectStartMs);
+                                  } else if (activeItems.length > 0) {
+                                    handleSeek(activeItems[0].projectStartMs);
+                                  }
+                                }
+                              }}
+                              title={isDeleted ? 'Word was cut. Click to seek to next active video.' : `Source: ${(w.sourceStartMs / 1000).toFixed(1)}s`}
+                              className={`inline-block px-1 py-0.5 rounded cursor-pointer transition-colors ${
+                                isDeleted
+                                  ? 'line-through text-gray-500 bg-gray-900/50 hover:text-gray-300'
+                                  : isCurrent
+                                  ? 'bg-indigo-600 text-white font-bold shadow-sm'
+                                  : 'text-gray-300 hover:bg-gray-800 hover:text-white'
+                              }`}
+                            >
+                              {w.word}
+                            </span>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ) : null}
                 </div>
               ) : (
                 <div className="space-y-2">
-                  {project.chapters.map((ch) => {
-                    const projMs = mapSourceToProjectMs(ch.sourceMs, project.items);
-                    return (
-                      <div
-                        key={ch.id}
-                        onClick={() => {
-                          if (projMs !== null) handleSeek(projMs);
-                        }}
-                        className="p-2 rounded-lg bg-gray-800/40 hover:bg-gray-800 border border-gray-750 cursor-pointer flex items-center justify-between"
-                      >
-                        <div className="flex items-center space-x-2">
-                          <Bookmark className="w-3.5 h-3.5 text-indigo-400" />
-                          <span className="font-medium text-gray-200">{ch.title}</span>
+                  <div className="flex items-center justify-between text-[11px] text-gray-400 pb-1 border-b border-gray-800/80">
+                    <span className="font-medium text-gray-300">Chapters (Auto-generated, approximate)</span>
+                    <span className="text-[10px] text-gray-500">{project.chapters.length} markers</span>
+                  </div>
+
+                  {project.chapters.length === 0 ? (
+                    <div className="p-4 rounded-xl bg-gray-900/40 border border-gray-800 text-center space-y-2">
+                      <Bookmark className="w-5 h-5 text-gray-600 mx-auto" />
+                      <p className="text-gray-300 text-xs">No chapters yet.</p>
+                      <p className="text-[11px] text-gray-500 leading-relaxed">
+                        Generate a transcript to automatically build chapter timestamps from natural speech pauses and 20s intervals.
+                      </p>
+                    </div>
+                  ) : (
+                    project.chapters.map((ch) => {
+                      const projMs = mapSourceToProjectMs(ch.sourceMs, project.items);
+                      return (
+                        <div
+                          key={ch.id}
+                          onClick={() => {
+                            if (projMs !== null) {
+                              handleSeek(projMs);
+                            } else {
+                              const activeItems = project.items.filter(
+                                (it) => it.status === 'ACTIVE' || it.status === 'SUGGESTED_MEME'
+                              );
+                              const nextActive = activeItems.find((it) => it.sourceStartMs >= ch.sourceMs);
+                              if (nextActive) handleSeek(nextActive.projectStartMs);
+                            }
+                          }}
+                          className="p-2 rounded-lg bg-gray-800/40 hover:bg-gray-800 border border-gray-750 cursor-pointer flex items-center justify-between transition-colors"
+                        >
+                          <div className="flex items-center space-x-2 truncate mr-2">
+                            <Bookmark className="w-3.5 h-3.5 text-indigo-400 flex-shrink-0" />
+                            <span className="font-medium text-gray-200 truncate">{ch.title}</span>
+                          </div>
+                          <span className="text-[10px] text-gray-400 font-mono flex-shrink-0">
+                            {projMs !== null ? `${(projMs / 1000).toFixed(1)}s` : 'Cut'}
+                          </span>
                         </div>
-                        <span className="text-[10px] text-gray-400 font-mono">
-                          {projMs !== null ? `${(projMs / 1000).toFixed(1)}s` : 'Cut'}
-                        </span>
-                      </div>
-                    );
-                  })}
+                      );
+                    })
+                  )}
                 </div>
               )}
             </div>
@@ -806,7 +1113,7 @@ export const Screen2Workspace: React.FC = () => {
       </div>
 
       {/* Bottom Timeline Section (Spec 1 & Spec 2) */}
-      <footer className="h-44 border-t border-gray-800 bg-[#10121A] flex flex-col p-3 z-20">
+      <footer className="h-48 border-t border-gray-800 bg-[#10121A] flex flex-col p-3 z-20">
         {/* Timeline Toolbar */}
         <div className="flex flex-wrap items-center justify-between pb-2 text-xs gap-2">
           <div className="flex items-center space-x-3">
@@ -924,32 +1231,61 @@ export const Screen2Workspace: React.FC = () => {
         >
           {/* Inner scalable track container */}
           <div
+            ref={trackContainerRef}
             style={{ width: `${timelineZoom * 100}%`, minWidth: '100%' }}
-            onClick={(e) => {
-              const rect = e.currentTarget.getBoundingClientRect();
-              const clickX = e.clientX - rect.left;
-              const pct = Math.max(0, Math.min(1, clickX / rect.width));
-              handleSeek(pct * project.totalProjectDurationMs);
-            }}
-            className="relative h-full flex flex-col justify-between cursor-pointer select-none"
+            onMouseDown={handleTrackMouseDown}
+            onMouseMove={handleTrackMouseMove}
+            onMouseLeave={handleTrackMouseLeave}
+            className="relative h-full flex flex-col justify-between cursor-pointer select-none pt-6 pb-1"
           >
-            {/* Adaptive Time Ruler (Item 1B) */}
-            <div className="w-full h-4 border-b border-gray-800/80 relative text-[9px] font-mono text-gray-500 select-none pointer-events-none">
-              {Array.from({ length: rulerTickCount + 1 }).map((_, i) => {
-                const tickSec = i * rulerStepSec;
+            {/* Floating Scrub / Hover Time Readout (Item 2) */}
+            {(isScrubbing || hoverPct !== null) && (
+              <div
+                style={{
+                  left: `${isScrubbing ? (project.totalProjectDurationMs > 0 ? (currentProjectMs / project.totalProjectDurationMs) * 100 : 0) : (hoverPct ?? 0)}%`
+                }}
+                className="absolute top-0 transform -translate-x-1/2 z-40 pointer-events-none flex flex-col items-center"
+              >
+                <div className="bg-gray-900/95 border border-indigo-500/80 text-indigo-300 font-mono text-[10px] font-bold px-1.5 py-0.5 rounded shadow-lg whitespace-nowrap">
+                  {formatReadout(isScrubbing ? currentProjectMs : (hoverTimeMs ?? currentProjectMs))}
+                </div>
+                <div className="w-0 h-0 border-x-4 border-x-transparent border-t-4 border-t-indigo-500" />
+              </div>
+            )}
+
+            {/* Thin Time Ruler Row (Item 2) */}
+            <div className="w-full h-5 border-b border-gray-800/80 relative font-mono text-[9px] text-gray-400 select-none pointer-events-none">
+              {/* Minor Ticks */}
+              {Array.from({ length: minorTickCount + 1 }).map((_, i) => {
+                const tickSec = i * rulerMinorStepSec;
                 const tickMs = tickSec * 1000;
                 if (tickMs > project.totalProjectDurationMs) return null;
-                const leftPct = project.totalProjectDurationMs > 0 ? (tickMs / project.totalProjectDurationMs) * 100 : 0;
+                const leftPct = (tickMs / project.totalProjectDurationMs) * 100;
+                return (
+                  <div
+                    key={`minor_${i}`}
+                    style={{ left: `${leftPct}%` }}
+                    className="absolute bottom-0 h-1.5 w-[1px] bg-gray-700/60 transform -translate-x-1/2"
+                  />
+                );
+              })}
+
+              {/* Major Ticks with labels (00:02, 00:04, 00:06...) */}
+              {Array.from({ length: majorTickCount + 1 }).map((_, i) => {
+                const tickSec = i * rulerMajorStepSec;
+                const tickMs = tickSec * 1000;
+                if (tickMs > project.totalProjectDurationMs) return null;
+                const leftPct = (tickMs / project.totalProjectDurationMs) * 100;
                 const mm = Math.floor(tickSec / 60).toString().padStart(2, '0');
                 const ss = Math.floor(tickSec % 60).toString().padStart(2, '0');
                 return (
                   <div
-                    key={i}
+                    key={`major_${i}`}
                     style={{ left: `${leftPct}%` }}
                     className="absolute top-0 bottom-0 flex flex-col items-center transform -translate-x-1/2"
                   >
-                    <div className="h-1.5 w-[1px] bg-gray-700" />
-                    <span>{mm}:{ss}</span>
+                    <span className="leading-none text-[8.5px] text-gray-400">{mm}:{ss}</span>
+                    <div className="h-2 w-[1px] bg-gray-500 mt-auto" />
                   </div>
                 );
               })}
@@ -960,9 +1296,12 @@ export const Screen2Workspace: React.FC = () => {
               style={{
                 left: `${project.totalProjectDurationMs > 0 ? (currentProjectMs / project.totalProjectDurationMs) * 100 : 0}%`
               }}
-              className="absolute top-0 bottom-0 w-[2px] bg-red-500 z-30 pointer-events-none"
+              className="absolute top-6 bottom-0 w-[2px] bg-red-500 z-30 pointer-events-none"
             >
               <div className="w-3 h-3 bg-red-500 transform -translate-x-1/2 -translate-y-1 rotate-45 rounded-sm shadow-md" />
+              <div className="absolute top-0 transform -translate-x-1/2 -translate-y-4 px-1 rounded bg-red-600 text-white font-mono text-[8px] font-bold shadow pointer-events-none whitespace-nowrap">
+                {formatReadout(currentProjectMs)}
+              </div>
             </div>
 
             {/* Timeline Items Track */}
@@ -982,7 +1321,9 @@ export const Screen2Workspace: React.FC = () => {
                 const isMeme = item.kind === 'MEME_CLIP';
                 const hasThumbnails = Object.keys(thumbnails).length > 0;
                 const isNarrow = item.durationMs < 2000;
-                const tileCount = Math.max(1, Math.round(item.durationMs / 1000));
+                const isHighZoom = timelineZoom >= 3;
+                const frameIntervalMs = isHighZoom ? 500 : 1000;
+                const tileCount = Math.max(1, Math.round(item.durationMs / frameIntervalMs));
 
                 return (
                   <div
@@ -1007,20 +1348,24 @@ export const Screen2Workspace: React.FC = () => {
                   >
                     {/* Filmstrip Frame Thumbnails (Item 1) */}
                     {hasThumbnails && item.kind === 'SOURCE_CLIP' && !isSilence && (
-                      <div className="absolute inset-0 flex flex-row overflow-hidden pointer-events-none opacity-80">
+                      <div className="absolute inset-0 flex flex-row overflow-hidden pointer-events-none opacity-85">
                         {Array.from({ length: tileCount }).map((_, tileIdx) => {
                           const tileSourceMs = item.sourceStartMs + (tileIdx * item.durationMs) / tileCount;
-                          const tileSec = Math.floor(tileSourceMs / 1000);
-                          const frameUrl = thumbnails[tileSec];
+                          const nearestMs = Math.round(tileSourceMs / 500) * 500;
+                          const frameUrl = thumbnails[nearestMs] || thumbnails[Math.floor(tileSourceMs / 1000)] || thumbnails[0];
                           return (
                             <div
                               key={tileIdx}
                               className="flex-1 h-full bg-cover bg-center border-r border-black/25"
-                              style={frameUrl ? { backgroundImage: `url(${frameUrl})` } : { backgroundColor: '#312e81' }}
+                              style={{
+                                backgroundImage: frameUrl ? `url(${frameUrl})` : undefined,
+                                backgroundColor: frameUrl ? undefined : '#312e81',
+                                imageRendering: 'auto'
+                              }}
                             />
                           );
                         })}
-                        <div className="absolute inset-0 bg-gradient-to-b from-black/70 via-black/20 to-black/75 pointer-events-none" />
+                        <div className="absolute inset-0 bg-gradient-to-b from-black/70 via-black/15 to-black/75 pointer-events-none" />
                       </div>
                     )}
 

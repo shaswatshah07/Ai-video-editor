@@ -7,9 +7,10 @@ export interface ThumbnailProgress {
 }
 
 /**
- * Generates video thumbnails (1 per source second, up to 300 total)
+ * Generates video thumbnails (1 per 0.5s or 1.0s of source, up to 300 total)
  * using a dedicated hidden, muted <video> element.
- * Sequentially seeks, waits for 'seeked', and draws to a small 64px-height canvas.
+ * Sequentially seeks, waits for 'seeked', and draws to a 96px-height canvas
+ * at the video's native aspect ratio with 0.85 JPEG quality.
  * Yields to main thread so the UI never stutters.
  */
 export async function generateSourceThumbnails(
@@ -18,8 +19,11 @@ export async function generateSourceThumbnails(
   onProgress?: (current: number, total: number) => void
 ): Promise<ThumbnailMap> {
   const thumbnails: ThumbnailMap = {};
-  const durationSec = Math.max(1, Math.floor(sourceDurationMs / 1000));
-  const totalThumbnails = Math.min(300, durationSec);
+  const durationSec = Math.max(1, sourceDurationMs / 1000);
+  
+  // Step 0.5s if total frames <= 300, else 1.0s (capped at 300)
+  const stepSec = (durationSec / 300) > 0.5 ? 1.0 : 0.5;
+  const totalThumbnails = Math.min(300, Math.floor(durationSec / stepSec));
 
   const videoUrl = typeof videoBlobOrUrl === 'string'
     ? videoBlobOrUrl
@@ -48,8 +52,8 @@ export async function generateSourceThumbnails(
     const aspect = (video.videoWidth && video.videoHeight)
       ? (video.videoWidth / video.videoHeight)
       : (9 / 16);
-    const canvasHeight = 64;
-    const canvasWidth = Math.max(20, Math.min(120, Math.round(canvasHeight * aspect)));
+    const canvasHeight = 96;
+    const canvasWidth = Math.max(30, Math.min(240, Math.round(canvasHeight * aspect)));
 
     const canvas = document.createElement('canvas');
     canvas.width = canvasWidth;
@@ -60,8 +64,9 @@ export async function generateSourceThumbnails(
       return thumbnails;
     }
 
-    for (let sec = 0; sec < totalThumbnails; sec++) {
-      const targetTime = Math.min(sec + 0.1, Math.max(0, (video.duration || durationSec) - 0.05));
+    for (let i = 0; i < totalThumbnails; i++) {
+      const timeSec = i * stepSec;
+      const targetTime = Math.min(timeSec + 0.05, Math.max(0, (video.duration || durationSec) - 0.05));
 
       await new Promise<void>((res) => {
         let settled = false;
@@ -86,13 +91,16 @@ export async function generateSourceThumbnails(
 
       try {
         ctx.drawImage(video, 0, 0, canvasWidth, canvasHeight);
-        thumbnails[sec] = canvas.toDataURL('image/jpeg', 0.6);
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
+        const timeMs = Math.round(timeSec * 1000);
+        thumbnails[timeMs] = dataUrl;
+        thumbnails[Math.floor(timeSec)] = dataUrl;
       } catch (drawErr) {
-        console.warn(`Failed to capture frame at ${sec}s:`, drawErr);
+        console.warn(`Failed to capture frame at ${timeSec}s:`, drawErr);
       }
 
       if (onProgress) {
-        onProgress(sec + 1, totalThumbnails);
+        onProgress(i + 1, totalThumbnails);
       }
 
       // Yield to event loop between frames
