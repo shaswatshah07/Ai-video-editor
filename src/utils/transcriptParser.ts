@@ -74,9 +74,9 @@ export function collapseRepetitionsAndCheckQuality(rawWords: TranscriptWord[]): 
   const lowQualityWarning = shouldWarn ? HINDI_LOW_QUALITY_WARNING : null;
 
   return {
-    words: isSevereRepeat ? [] : collapsedWords,
+    words: collapsedWords,
     lowQualityWarning,
-    suppressWordRender: isSevereRepeat
+    suppressWordRender: false
   };
 }
 

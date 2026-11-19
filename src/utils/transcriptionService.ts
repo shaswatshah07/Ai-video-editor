@@ -27,6 +27,10 @@ export interface TranscriptionServiceResult {
 // In-memory cache keyed by `${videoUrl}_${quality}_${mode}`
 const transcriptCache = new Map<string, TranscriptionServiceResult>();
 
+export function clearTranscriptCache(): void {
+  transcriptCache.clear();
+}
+
 let workerInstance: Worker | null = null;
 
 function getWorker(): Worker {
@@ -46,13 +50,14 @@ export async function transcribeVideoAudio(
   videoBlobOrUrl: Blob | string,
   quality: TranscriptModelQuality = 'accurate',
   mode: TranscriptMode = 'translate_en',
-  onProgress?: (state: TranscriptionProgressState) => void
+  onProgress?: (state: TranscriptionProgressState) => void,
+  bypassCache: boolean = false
 ): Promise<TranscriptionServiceResult> {
   const cacheKey = typeof videoBlobOrUrl === 'string'
     ? `${videoBlobOrUrl}_${quality}_${mode}`
     : `blob_${videoBlobOrUrl.size}_${quality}_${mode}`;
 
-  if (transcriptCache.has(cacheKey)) {
+  if (!bypassCache && transcriptCache.has(cacheKey)) {
     const cached = transcriptCache.get(cacheKey)!;
     if (onProgress) {
       onProgress({
@@ -89,7 +94,11 @@ export async function transcribeVideoAudio(
       if (msg.type === 'STATUS') {
         if (msg.status === 'loading_model') {
           if (onProgress) {
-            const sizeLabel = quality === 'accurate' ? 'about 285 MB' : 'about 75 MB';
+            const sizeLabel = mode === 'transcribe_hinglish'
+              ? 'about 72 MB'
+              : quality === 'accurate'
+              ? 'about 285 MB'
+              : 'about 75 MB';
             onProgress({
               status: 'downloading_model',
               downloadPercent: 0,
@@ -129,13 +138,19 @@ export async function transcribeVideoAudio(
       } else if (msg.type === 'COMPLETE') {
         cleanup();
         try {
-          const { words, lowQualityWarning, suppressWordRender } = parseTranscriptionResult(msg.result);
+          const { words, lowQualityWarning } = parseTranscriptionResult(msg.result);
           const chapters = generateChaptersFromTranscript(words);
           const arabicPercent = detectArabicScriptPercentage(words);
           const hasUrduWarning = mode === 'transcribe_hi' && arabicPercent > 25;
 
+          const defaultModelName = mode === 'transcribe_hinglish'
+            ? 'Whisper Hinglish (swift)'
+            : quality === 'accurate'
+            ? 'Whisper Small'
+            : 'Whisper Base';
+
           const meta: TranscriptionMeta = {
-            modelName: msg.modelName || (quality === 'accurate' ? 'Whisper Small' : 'Whisper Base'),
+            modelName: msg.modelName || defaultModelName,
             modelQuality: msg.modelQuality || quality,
             mode: msg.mode || mode,
             device: msg.device || 'WASM',
@@ -143,7 +158,7 @@ export async function transcribeVideoAudio(
             arabicScriptPercent: arabicPercent,
             hasUrduWarning,
             lowQualityWarning,
-            suppressWordRender
+            suppressWordRender: false
           };
 
           const resultPayload: TranscriptionServiceResult = { words, chapters, meta };

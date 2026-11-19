@@ -47,16 +47,16 @@ export function apply80HzHighPassFilter(input: Float32Array, sampleRate = 16000)
 }
 
 /**
- * Peak normalizes audio buffer to -3 dB (~0.7079 peak amplitude).
+ * Peak normalizes audio buffer to ~0.9 peak amplitude.
+ * Boosts soft phone/WhatsApp recordings so Whisper does not hallucinate on low-volume speech.
  */
-export function peakNormalizeMinus3dB(input: Float32Array): Float32Array {
+export function peakNormalizeTo09(input: Float32Array, targetPeak = 0.9): Float32Array {
   let maxPeak = 0;
   for (let i = 0; i < input.length; i++) {
     const abs = Math.abs(input[i]);
     if (abs > maxPeak) maxPeak = abs;
   }
-  if (maxPeak > 0) {
-    const targetPeak = Math.pow(10, -3 / 20); // ~0.70794578
+  if (maxPeak > 0.0001) {
     const scale = targetPeak / maxPeak;
     for (let i = 0; i < input.length; i++) {
       input[i] *= scale;
@@ -66,11 +66,16 @@ export function peakNormalizeMinus3dB(input: Float32Array): Float32Array {
 }
 
 /**
- * Applies gentle 80 Hz high-pass + -3 dB peak normalization to 16 kHz Float32Array.
+ * Backward compatibility alias for peakNormalizeMinus3dB
+ */
+export const peakNormalizeMinus3dB = (input: Float32Array) => peakNormalizeTo09(input, 0.9);
+
+/**
+ * Applies gentle 80 Hz high-pass + peak amplitude normalization (~0.9) to 16 kHz Float32Array.
  */
 export function preprocessAudioFloat32(rawFloat32: Float32Array, sampleRate = 16000): Float32Array {
   const filtered = apply80HzHighPassFilter(rawFloat32, sampleRate);
-  return peakNormalizeMinus3dB(filtered);
+  return peakNormalizeTo09(filtered, 0.9);
 }
 
 export async function extract16kHzMonoAudio(

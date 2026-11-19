@@ -4,15 +4,13 @@ import { pipeline, env } from '@huggingface/transformers';
 env.allowLocalModels = false;
 env.useBrowserCache = true;
 
-let loadedTranscriber: any = null;
-let loadedQuality: 'accurate' | 'fast' | null = null;
+const loadedTranscribers = new Map<string, any>();
 let currentDevice: 'webgpu' | 'wasm' = 'wasm';
 
-async function getTranscriber(requestedQuality: 'accurate' | 'fast') {
-  if (loadedTranscriber && loadedQuality === requestedQuality) {
-    return { transcriber: loadedTranscriber, quality: loadedQuality, device: currentDevice };
-  }
-
+async function getTranscriber(
+  requestedQuality: 'accurate' | 'fast',
+  requestedMode: 'translate_en' | 'transcribe_en' | 'transcribe_hi' | 'transcribe_hinglish'
+) {
   // Check WebGPU support
   try {
     if (typeof navigator !== 'undefined' && 'gpu' in navigator && (navigator as any).gpu) {
@@ -24,10 +22,33 @@ async function getTranscriber(requestedQuality: 'accurate' | 'fast') {
     currentDevice = 'wasm';
   }
 
-  const modelId = requestedQuality === 'accurate' ? 'onnx-community/whisper-small' : 'onnx-community/whisper-base';
+  let modelId = 'onnx-community/whisper-small';
+  let modelDtype: any = { encoder_model: 'q4', decoder_model_merged: 'q4' };
+
+  if (requestedMode === 'transcribe_hinglish') {
+    modelId = 'ishaan-g/whisper-hinglish-swift_timestamped';
+    modelDtype = 'q8';
+  } else if (requestedQuality === 'fast') {
+    modelId = 'onnx-community/whisper-base';
+    modelDtype = { encoder_model: 'fp32', decoder_model_merged: 'q4' };
+  } else {
+    modelId = 'onnx-community/whisper-small';
+    modelDtype = { encoder_model: 'q4', decoder_model_merged: 'q4' };
+  }
+
+  const cacheKey = `${modelId}_${currentDevice}`;
+  if (loadedTranscribers.has(cacheKey)) {
+    return {
+      transcriber: loadedTranscribers.get(cacheKey),
+      quality: requestedQuality,
+      modelId,
+      device: currentDevice
+    };
+  }
 
   const pipelineOptions: any = {
     device: currentDevice,
+    dtype: modelDtype,
     progress_callback: (p: any) => {
       if (p.status === 'progress') {
         self.postMessage({
@@ -51,24 +72,36 @@ async function getTranscriber(requestedQuality: 'accurate' | 'fast') {
     }
   };
 
-  if (requestedQuality === 'accurate') {
-    // Whisper Small ONNX q4 (~285 MB total)
-    pipelineOptions.dtype = {
-      encoder_model: 'q4',
-      decoder_model_merged: 'q4'
-    };
-  } else {
-    // Whisper Base ONNX (~75 MB total)
-    pipelineOptions.dtype = {
-      encoder_model: 'fp32',
-      decoder_model_merged: 'q4'
-    };
+  try {
+    const transcriber = await pipeline('automatic-speech-recognition', modelId, pipelineOptions);
+    loadedTranscribers.set(cacheKey, transcriber);
+    return { transcriber, quality: requestedQuality, modelId, device: currentDevice };
+  } catch (err: any) {
+    if (requestedMode === 'transcribe_hinglish') {
+      console.warn('Hinglish model load failed, falling back to multilingual whisper-small:', err);
+      self.postMessage({
+        type: 'FALLBACK_TO_BASE',
+        message: 'Whisper Hinglish model unavailable; falling back to multilingual Whisper Small.'
+      });
+      const fallbackModelId = 'onnx-community/whisper-small';
+      pipelineOptions.dtype = { encoder_model: 'q4', decoder_model_merged: 'q4' };
+      const fallbackTranscriber = await pipeline('automatic-speech-recognition', fallbackModelId, pipelineOptions);
+      loadedTranscribers.set(`${fallbackModelId}_${currentDevice}`, fallbackTranscriber);
+      return { transcriber: fallbackTranscriber, quality: 'accurate', modelId: fallbackModelId, device: currentDevice };
+    } else if (requestedQuality === 'accurate') {
+      console.warn('Whisper Small failed, falling back to Whisper Base:', err);
+      self.postMessage({
+        type: 'FALLBACK_TO_BASE',
+        message: 'Whisper Small could not be loaded; falling back to Whisper Base.'
+      });
+      const fallbackModelId = 'onnx-community/whisper-base';
+      pipelineOptions.dtype = { encoder_model: 'fp32', decoder_model_merged: 'q4' };
+      const fallbackTranscriber = await pipeline('automatic-speech-recognition', fallbackModelId, pipelineOptions);
+      loadedTranscribers.set(`${fallbackModelId}_${currentDevice}`, fallbackTranscriber);
+      return { transcriber: fallbackTranscriber, quality: 'fast', modelId: fallbackModelId, device: currentDevice };
+    }
+    throw err;
   }
-
-  const transcriber = await pipeline('automatic-speech-recognition', modelId, pipelineOptions);
-  loadedTranscriber = transcriber;
-  loadedQuality = requestedQuality;
-  return { transcriber, quality: requestedQuality, device: currentDevice };
 }
 
 self.onmessage = async (event: MessageEvent) => {
@@ -79,67 +112,78 @@ self.onmessage = async (event: MessageEvent) => {
     try {
       self.postMessage({ type: 'STATUS', status: 'loading_model' });
 
-      let transcriberInfo;
-      try {
-        transcriberInfo = await getTranscriber(quality);
-      } catch (err: any) {
-        if (quality === 'accurate') {
-          console.warn('Accurate (Small) failed, falling back to Fast (Base):', err);
-          self.postMessage({
-            type: 'FALLBACK_TO_BASE',
-            message: 'Whisper Small could not be loaded; falling back to Whisper Base.'
+      const transcriberInfo = await getTranscriber(quality, mode);
+      const { transcriber, quality: usedQuality, modelId, device } = transcriberInfo;
+
+      self.postMessage({ type: 'STATUS', status: 'transcribing' });
+
+      let result: any;
+
+      if (mode === 'transcribe_hi') {
+        // Exact version-compatible parameters for Hindi
+        // Multilingual model, repetition_penalty 1.15, no_repeat_ngram_size 3, return_timestamps: true
+        result = await transcriber(audioData, {
+          language: 'hindi',
+          task: 'transcribe',
+          chunk_length_s: 30,
+          stride_length_s: 5,
+          repetition_penalty: 1.15,
+          no_repeat_ngram_size: 3,
+          return_timestamps: true
+        });
+        result.isSegmentLevelFallback = true;
+      } else if (mode === 'transcribe_hinglish') {
+        // Hinglish fine-tuned model (or multilingual fallback)
+        result = await transcriber(audioData, {
+          language: 'en',
+          task: 'transcribe',
+          chunk_length_s: 30,
+          stride_length_s: 5,
+          repetition_penalty: 1.15,
+          no_repeat_ngram_size: 3,
+          return_timestamps: true
+        });
+        result.isSegmentLevelFallback = true;
+      } else if (mode === 'translate_en') {
+        // English translated from Hindi speech
+        result = await transcriber(audioData, {
+          language: 'hindi',
+          task: 'translate',
+          chunk_length_s: 30,
+          stride_length_s: 5,
+          return_timestamps: true
+        });
+        result.isSegmentLevelFallback = true;
+      } else {
+        // English (as spoken)
+        try {
+          result = await transcriber(audioData, {
+            language: 'english',
+            task: 'transcribe',
+            chunk_length_s: 30,
+            stride_length_s: 5,
+            return_timestamps: 'word'
           });
-          transcriberInfo = await getTranscriber('fast');
-        } else {
-          throw err;
+          result.isSegmentLevelFallback = false;
+        } catch (wordErr: any) {
+          console.warn('Word-level timestamps unavailable, falling back to segment timestamps:', wordErr);
+          result = await transcriber(audioData, {
+            language: 'english',
+            task: 'transcribe',
+            chunk_length_s: 30,
+            stride_length_s: 5,
+            return_timestamps: true
+          });
+          result.isSegmentLevelFallback = true;
         }
       }
 
-      const { transcriber, quality: usedQuality, device } = transcriberInfo;
-      self.postMessage({ type: 'STATUS', status: 'transcribing' });
-
-      // Map explicit mode to language & task
-      // a) translate_en: task = 'translate', language = 'hindi' (English translated from speech)
-      // b) transcribe_en: task = 'transcribe', language = 'english' (English as spoken)
-      // c) transcribe_hi: task = 'transcribe', language = 'hindi' (Hindi as spoken)
-      let task: 'translate' | 'transcribe' = 'translate';
-      let language: 'hindi' | 'english' = 'hindi';
-
-      if (mode === 'transcribe_en') {
-        task = 'transcribe';
-        language = 'english';
-      } else if (mode === 'transcribe_hi') {
-        task = 'transcribe';
-        language = 'hindi';
-      } else {
-        task = 'translate';
-        language = 'hindi';
-      }
-
-      let result: any;
-      try {
-        result = await transcriber(audioData, {
-          language,
-          task,
-          return_timestamps: 'word',
-          chunk_length_s: 30,
-          stride_length_s: 5
-        });
-        result.isSegmentLevelFallback = false;
-      } catch (wordErr: any) {
-        console.warn('Word-level timestamps unavailable, falling back to segment timestamps:', wordErr);
-        result = await transcriber(audioData, {
-          language,
-          task,
-          return_timestamps: true,
-          chunk_length_s: 30,
-          stride_length_s: 5
-        });
-        result.isSegmentLevelFallback = true;
-      }
-
       const durationMs = Date.now() - startTime;
-      const modelName = usedQuality === 'accurate' ? 'Whisper Small' : 'Whisper Base';
+      const modelName = modelId.includes('hinglish')
+        ? 'Whisper Hinglish (swift)'
+        : modelId.includes('small')
+        ? 'Whisper Small'
+        : 'Whisper Base';
 
       self.postMessage({
         type: 'COMPLETE',

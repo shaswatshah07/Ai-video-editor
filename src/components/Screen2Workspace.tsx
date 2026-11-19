@@ -612,8 +612,8 @@ export const Screen2Workspace: React.FC = () => {
                       <select
                         value={transcriptQuality}
                         onChange={(e) => setTranscriptQuality(e.target.value as any)}
-                        disabled={transcriptionStatus === 'downloading_model' || transcriptionStatus === 'transcribing'}
-                        className="bg-gray-950 border border-gray-800 text-gray-200 text-[11px] rounded px-2 py-1 focus:outline-none focus:border-indigo-500 cursor-pointer"
+                        disabled={transcriptionStatus === 'downloading_model' || transcriptionStatus === 'transcribing' || transcriptMode === 'transcribe_hinglish'}
+                        className="bg-gray-950 border border-gray-800 text-gray-200 text-[11px] rounded px-2 py-1 focus:outline-none focus:border-indigo-500 cursor-pointer disabled:opacity-50"
                       >
                         <option value="accurate">Accurate (Small, ~285 MB)</option>
                         <option value="fast">Fast (Base, ~75 MB)</option>
@@ -632,10 +632,13 @@ export const Screen2Workspace: React.FC = () => {
                         <option value="translate_en">English (translated from speech)</option>
                         <option value="transcribe_en">English (as spoken)</option>
                         <option value="transcribe_hi">Hindi (as spoken)</option>
+                        <option value="transcribe_hinglish">Hinglish (Hindi + English)</option>
                       </select>
                     </div>
 
-                    <p className="text-[10px] text-gray-500">First use downloads the model once.</p>
+                    <p className="text-[10px] text-gray-500">
+                      First use downloads the model ({transcriptMode === 'transcribe_hinglish' ? 'about 72 MB' : transcriptQuality === 'accurate' ? 'about 285 MB' : 'about 75 MB'}), only once.
+                    </p>
 
                     <div className="flex items-center space-x-2 pt-1">
                       <button
@@ -644,10 +647,15 @@ export const Screen2Workspace: React.FC = () => {
                         disabled={transcriptionStatus === 'downloading_model' || transcriptionStatus === 'transcribing'}
                         className="flex-1 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white font-medium py-1.5 px-3 rounded-md text-xs flex items-center justify-center space-x-1.5 shadow transition-all"
                       >
-                        {transcriptionStatus === 'downloading_model' || transcriptionStatus === 'transcribing' ? (
+                        {transcriptionStatus === 'downloading_model' ? (
                           <>
                             <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                            <span>Processing...</span>
+                            <span>Loading model... {transcriptionDownloadPercent}%</span>
+                          </>
+                        ) : transcriptionStatus === 'transcribing' ? (
+                          <>
+                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                            <span>Transcribing...</span>
                           </>
                         ) : project.transcript.length > 0 && !project.isDemoSample ? (
                           <>
@@ -722,7 +730,7 @@ export const Screen2Workspace: React.FC = () => {
                         />
                       </div>
                       <p className="text-[10px] text-indigo-200/70">
-                        First use downloads the model ({transcriptQuality === 'accurate' ? 'about 285 MB' : 'about 75 MB'}), only once.
+                        First use downloads the model ({transcriptMode === 'transcribe_hinglish' ? 'about 72 MB' : transcriptQuality === 'accurate' ? 'about 285 MB' : 'about 75 MB'}), only once.
                       </p>
                     </div>
                   )}
@@ -757,16 +765,7 @@ export const Screen2Workspace: React.FC = () => {
                   )}
 
                   {/* Transcript Content List */}
-                  {project.transcriptionMeta?.suppressWordRender ? (
-                    <div className="p-3.5 rounded-xl bg-amber-950/60 border border-amber-600/70 text-amber-200 text-xs leading-relaxed space-y-2">
-                      <div className="flex items-start space-x-2">
-                        <AlertCircle className="w-4 h-4 flex-shrink-0 text-amber-400 mt-0.5" />
-                        <span className="font-medium">
-                          {project.transcriptionMeta.lowQualityWarning || "⚠️ Hindi transcription quality is low for this audio. Try 'English (translated)' mode for better results."}
-                        </span>
-                      </div>
-                    </div>
-                  ) : project.transcript.length === 0 && transcriptionStatus === 'idle' ? (
+                  {project.transcript.length === 0 && transcriptionStatus === 'idle' ? (
                     <div className="p-4 rounded-xl bg-gray-900/40 border border-gray-800 text-center space-y-2">
                       <p className="text-gray-300 text-xs">No transcript generated yet.</p>
                       <p className="text-[11px] text-gray-500 leading-relaxed">
@@ -891,7 +890,9 @@ export const Screen2Workspace: React.FC = () => {
                               ? 'English (translated from speech)'
                               : (project.transcriptionMeta?.mode || transcriptMode) === 'transcribe_en'
                               ? 'English (as spoken)'
-                              : 'Hindi (as spoken)'
+                              : (project.transcriptionMeta?.mode || transcriptMode) === 'transcribe_hi'
+                              ? 'Hindi (as spoken)'
+                              : 'Hinglish (Hindi + English)'
                           }
                         </div>
                         <p className="text-[10px] text-gray-500 italic">

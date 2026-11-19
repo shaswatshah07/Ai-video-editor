@@ -244,8 +244,18 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     minSilenceDurationMs: SILENCE_PRESETS[silenceSensitivity]?.minSilenceMs ?? 500
   }),
   setSelectedLanguage: (selectedLanguage) => set({ selectedLanguage }),
-  setTranscriptQuality: (transcriptQuality) => set({ transcriptQuality }),
-  setTranscriptMode: (transcriptMode) => set({ transcriptMode }),
+  setTranscriptQuality: (transcriptQuality) => set({
+    transcriptQuality,
+    transcriptionError: null,
+    transcriptionFallbackNotice: null,
+    transcriptionStatus: 'idle'
+  }),
+  setTranscriptMode: (transcriptMode) => set({
+    transcriptMode,
+    transcriptionError: null,
+    transcriptionFallbackNotice: null,
+    transcriptionStatus: 'idle'
+  }),
 
   updateTranscriptWord: (wordId, newText) => {
     const { project } = get();
@@ -297,7 +307,8 @@ export const useEditorStore = create<EditorState>((set, get) => ({
             transcriptionError: progress.errorMessage,
             transcriptionFallbackNotice: progress.fallbackMessage || null
           });
-        }
+        },
+        true // bypassCache on explicit generate/regenerate request
       );
 
       set((s) => ({
@@ -916,9 +927,10 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         appliedMessage: payload.enabled ? 'Low-cut filter activated (80-120Hz high-pass for rumble attenuation).' : 'Low-cut filter disabled.'
       });
     } else if (action === 'GENERATE_TRANSCRIPT') {
-      const isHindi = rawInput.toLowerCase().includes('hindi');
+      const isHinglish = rawInput.toLowerCase().includes('hinglish');
+      const isHindi = !isHinglish && rawInput.toLowerCase().includes('hindi');
       const isEnglishSpoken = rawInput.toLowerCase().includes('english') && rawInput.toLowerCase().includes('spoken');
-      const mode = isHindi ? 'transcribe_hi' : isEnglishSpoken ? 'transcribe_en' : 'translate_en';
+      const mode = isHinglish ? 'transcribe_hinglish' : isHindi ? 'transcribe_hi' : isEnglishSpoken ? 'transcribe_en' : 'translate_en';
       await store.generateTranscript(store.transcriptQuality, mode);
     } else if (action === 'GENERATE_TIMESTAMPS') {
       let curChapters = store.project?.chapters || [];
