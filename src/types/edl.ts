@@ -35,6 +35,20 @@ export interface TranscriptWord {
   sourceEndMs: number;
   confidence: number;
   approximate?: boolean;
+  edited?: boolean;
+}
+
+export type TranscriptModelQuality = 'accurate' | 'fast';
+export type TranscriptMode = 'translate_en' | 'transcribe_en' | 'transcribe_hi';
+
+export interface TranscriptionMeta {
+  modelName: string;
+  modelQuality: TranscriptModelQuality;
+  mode: TranscriptMode;
+  device: 'WebGPU' | 'WASM';
+  durationMs: number;
+  arabicScriptPercent?: number;
+  hasUrduWarning?: boolean;
 }
 
 export interface ChapterMarker {
@@ -67,6 +81,8 @@ export interface ProjectEDL {
   chapters: ChapterMarker[];
   isDemoSample?: boolean;
   transcriptLanguage?: 'english' | 'hindi';
+  transcriptMode?: TranscriptMode;
+  transcriptionMeta?: TranscriptionMeta;
   audioSettings: AudioSettings;
   createdAt: number;
   updatedAt: number;

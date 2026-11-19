@@ -2,7 +2,7 @@ import React, { useRef, useEffect, useState, useCallback } from 'react';
 import {
   Play, Pause, RotateCcw, RotateCw, Scissors, Trash2, Volume2,
   Sparkles, Send, Upload, ChevronRight, ChevronLeft, ArrowRight,
-  Bookmark, Check, X, Wand2, ShieldAlert, Download, Languages,
+  Bookmark, Check, X, Wand2, ShieldAlert, Download,
   Loader2, AlertCircle, RefreshCw
 } from 'lucide-react';
 import { useEditorStore } from '../store/useEditorStore';
@@ -31,7 +31,9 @@ export const Screen2Workspace: React.FC = () => {
     transcriptionStatus,
     transcriptionDownloadPercent,
     transcriptionError,
-    selectedLanguage,
+    transcriptionFallbackNotice,
+    transcriptQuality,
+    transcriptMode,
     setScreen,
     setCurrentProjectMs,
     setIsPlaying,
@@ -39,7 +41,9 @@ export const Screen2Workspace: React.FC = () => {
     zoomIn,
     zoomOut,
     setSilenceSensitivity,
-    setSelectedLanguage,
+    setTranscriptQuality,
+    setTranscriptMode,
+    updateTranscriptWord,
     generateTranscript,
     suggestNonSpeechSilences,
     setSelectedItemId,
@@ -88,6 +92,10 @@ export const Screen2Workspace: React.FC = () => {
   const [isScrubbing, setIsScrubbing] = useState<boolean>(false);
   const [hoverTimeMs, setHoverTimeMs] = useState<number | null>(null);
   const [hoverPct, setHoverPct] = useState<number | null>(null);
+
+  // Editable transcript word state
+  const [editingWordId, setEditingWordId] = useState<string | null>(null);
+  const [editingWordText, setEditingWordText] = useState<string>('');
 
   const timelineContainerRef = useRef<HTMLDivElement | null>(null);
   const trackContainerRef = useRef<HTMLDivElement | null>(null);
@@ -596,45 +604,43 @@ export const Screen2Workspace: React.FC = () => {
             <div className="flex-1 overflow-y-auto p-3 space-y-3 text-xs">
               {leftTab === 'transcript' ? (
                 <div className="space-y-3">
-                  {/* Language Selector & Controls Bar */}
+                  {/* Quality & Mode Controls Bar */}
                   <div className="p-2.5 rounded-lg bg-gray-900/80 border border-gray-800 space-y-2">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center space-x-1.5 text-[11px] text-gray-400 font-medium">
-                        <Languages className="w-3.5 h-3.5 text-indigo-400" />
-                        <span>Language:</span>
-                      </div>
-                      <div className="flex items-center space-x-1 bg-gray-950 p-0.5 rounded-md border border-gray-800">
-                        <button
-                          type="button"
-                          onClick={() => setSelectedLanguage('english')}
-                          disabled={transcriptionStatus === 'downloading_model' || transcriptionStatus === 'transcribing'}
-                          className={`px-2 py-0.5 rounded text-[11px] font-medium transition-all ${
-                            selectedLanguage === 'english'
-                              ? 'bg-indigo-600 text-white'
-                              : 'text-gray-400 hover:text-gray-200'
-                          }`}
-                        >
-                          English
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setSelectedLanguage('hindi')}
-                          disabled={transcriptionStatus === 'downloading_model' || transcriptionStatus === 'transcribing'}
-                          className={`px-2 py-0.5 rounded text-[11px] font-medium transition-all ${
-                            selectedLanguage === 'hindi'
-                              ? 'bg-indigo-600 text-white'
-                              : 'text-gray-400 hover:text-gray-200'
-                          }`}
-                        >
-                          Hindi
-                        </button>
-                      </div>
+                    {/* Quality Selector */}
+                    <div className="flex items-center justify-between text-[11px]">
+                      <span className="text-gray-400 font-medium">Quality:</span>
+                      <select
+                        value={transcriptQuality}
+                        onChange={(e) => setTranscriptQuality(e.target.value as any)}
+                        disabled={transcriptionStatus === 'downloading_model' || transcriptionStatus === 'transcribing'}
+                        className="bg-gray-950 border border-gray-800 text-gray-200 text-[11px] rounded px-2 py-1 focus:outline-none focus:border-indigo-500 cursor-pointer"
+                      >
+                        <option value="accurate">Accurate (Small, ~285 MB)</option>
+                        <option value="fast">Fast (Base, ~75 MB)</option>
+                      </select>
                     </div>
+
+                    {/* Mode Selector */}
+                    <div className="flex items-center justify-between text-[11px]">
+                      <span className="text-gray-400 font-medium">Mode:</span>
+                      <select
+                        value={transcriptMode}
+                        onChange={(e) => setTranscriptMode(e.target.value as any)}
+                        disabled={transcriptionStatus === 'downloading_model' || transcriptionStatus === 'transcribing'}
+                        className="bg-gray-950 border border-gray-800 text-gray-200 text-[11px] rounded px-2 py-1 max-w-[175px] truncate focus:outline-none focus:border-indigo-500 cursor-pointer"
+                      >
+                        <option value="translate_en">English (translated from speech)</option>
+                        <option value="transcribe_en">English (as spoken)</option>
+                        <option value="transcribe_hi">Hindi (as spoken)</option>
+                      </select>
+                    </div>
+
+                    <p className="text-[10px] text-gray-500">First use downloads the model once.</p>
 
                     <div className="flex items-center space-x-2 pt-1">
                       <button
                         type="button"
-                        onClick={() => generateTranscript(selectedLanguage)}
+                        onClick={() => generateTranscript(transcriptQuality, transcriptMode)}
                         disabled={transcriptionStatus === 'downloading_model' || transcriptionStatus === 'transcribing'}
                         className="flex-1 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white font-medium py-1.5 px-3 rounded-md text-xs flex items-center justify-center space-x-1.5 shadow transition-all"
                       >
@@ -683,6 +689,22 @@ export const Screen2Workspace: React.FC = () => {
                     )}
                   </div>
 
+                  {/* Fallback Notice if Small model fell back to Base */}
+                  {transcriptionFallbackNotice && (
+                    <div className="p-2.5 rounded-lg bg-amber-950/50 border border-amber-700/60 text-amber-300 text-[11px] flex items-start space-x-2">
+                      <ShieldAlert className="w-4 h-4 flex-shrink-0 text-amber-400 mt-0.5" />
+                      <span>{transcriptionFallbackNotice}</span>
+                    </div>
+                  )}
+
+                  {/* Urdu Script Warning Banner (Requirement 5) */}
+                  {(project.transcriptionMeta?.hasUrduWarning || (transcriptMode === 'transcribe_hi' && (project.transcriptionMeta?.arabicScriptPercent ?? 0) > 25)) && (
+                    <div className="p-2.5 rounded-lg bg-amber-950/60 border border-amber-600/70 text-amber-200 text-[11px] flex items-start space-x-2">
+                      <AlertCircle className="w-4 h-4 flex-shrink-0 text-amber-400 mt-0.5" />
+                      <span>Output contains Urdu-script text. For a cleaner result use &apos;English (translated from speech)&apos; mode.</span>
+                    </div>
+                  )}
+
                   {/* Status Banner: Downloading Model */}
                   {transcriptionStatus === 'downloading_model' && (
                     <div className="p-3 rounded-lg bg-indigo-950/50 border border-indigo-700/60 space-y-2">
@@ -700,7 +722,7 @@ export const Screen2Workspace: React.FC = () => {
                         />
                       </div>
                       <p className="text-[10px] text-indigo-200/70">
-                        First use downloads the speech model (about 75 MB), only once.
+                        First use downloads the model ({transcriptQuality === 'accurate' ? 'about 285 MB' : 'about 75 MB'}), only once.
                       </p>
                     </div>
                   )}
@@ -726,7 +748,7 @@ export const Screen2Workspace: React.FC = () => {
                       <p className="text-[11px] text-red-200 leading-snug">{transcriptionError}</p>
                       <button
                         type="button"
-                        onClick={() => generateTranscript(selectedLanguage)}
+                        onClick={() => generateTranscript(transcriptQuality, transcriptMode)}
                         className="text-[10px] text-red-300 hover:text-white underline mt-1 font-medium"
                       >
                         Try Again
@@ -739,20 +761,20 @@ export const Screen2Workspace: React.FC = () => {
                     <div className="p-4 rounded-xl bg-gray-900/40 border border-gray-800 text-center space-y-2">
                       <p className="text-gray-300 text-xs">No transcript generated yet.</p>
                       <p className="text-[11px] text-gray-500 leading-relaxed">
-                        Click "Generate Transcript" above to transcribe using in-browser Whisper AI. First use downloads the model (about 75 MB), only once.
+                        Click &quot;Generate Transcript&quot; above to transcribe using in-browser Whisper AI. First use downloads the model once.
                       </p>
                     </div>
                   ) : project.transcript.length > 0 ? (
                     <div className="space-y-2">
                       <div className="flex items-center justify-between text-[11px] text-gray-400 pb-1 border-b border-gray-800/80">
-                        <span>Click any word to seek:</span>
+                        <span>Click to seek • Double-click to edit:</span>
                         {project.isDemoSample ? (
                           <span className="text-[10px] bg-amber-950/60 text-amber-300 border border-amber-800/60 px-1.5 py-0.2 rounded">
                             Sample transcript
                           </span>
                         ) : (
                           <span className="text-[10px] bg-indigo-950/60 text-indigo-300 border border-indigo-800/60 px-1.5 py-0.2 rounded">
-                            Whisper Base ({project.transcript.length} words)
+                            {project.transcriptionMeta?.modelName || (transcriptQuality === 'accurate' ? 'Whisper Small' : 'Whisper Base')} ({project.transcript.length} words)
                           </span>
                         )}
                       </div>
@@ -765,6 +787,32 @@ export const Screen2Workspace: React.FC = () => {
                             projMs !== null &&
                             currentProjectMs >= projMs &&
                             currentProjectMs < projMs + (w.sourceEndMs - w.sourceStartMs);
+
+                          if (editingWordId === w.id) {
+                            return (
+                              <input
+                                key={w.id}
+                                type="text"
+                                autoFocus
+                                value={editingWordText}
+                                onChange={(e) => setEditingWordText(e.target.value)}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter') {
+                                    updateTranscriptWord(w.id, editingWordText);
+                                    setEditingWordId(null);
+                                  } else if (e.key === 'Escape') {
+                                    setEditingWordId(null);
+                                  }
+                                }}
+                                onBlur={() => {
+                                  updateTranscriptWord(w.id, editingWordText);
+                                  setEditingWordId(null);
+                                }}
+                                onClick={(e) => e.stopPropagation()}
+                                className="bg-gray-800 text-white font-medium border border-indigo-500 rounded px-1 py-0.5 text-xs outline-none w-20 inline-block shadow-sm"
+                              />
+                            );
+                          }
 
                           return (
                             <span
@@ -785,19 +833,54 @@ export const Screen2Workspace: React.FC = () => {
                                   }
                                 }
                               }}
-                              title={isDeleted ? 'Word was cut. Click to seek to next active video.' : `Source: ${(w.sourceStartMs / 1000).toFixed(1)}s`}
+                              onDoubleClick={(e) => {
+                                e.stopPropagation();
+                                setEditingWordId(w.id);
+                                setEditingWordText(w.word);
+                              }}
+                              title={
+                                isDeleted
+                                  ? 'Word was cut. Click to seek to next active video. (Double-click to edit)'
+                                  : `${w.edited ? '[Edited] ' : ''}Source: ${(w.sourceStartMs / 1000).toFixed(1)}s (Double-click to edit)`
+                              }
                               className={`inline-block px-1 py-0.5 rounded cursor-pointer transition-colors ${
                                 isDeleted
                                   ? 'line-through text-gray-500 bg-gray-900/50 hover:text-gray-300'
                                   : isCurrent
                                   ? 'bg-indigo-600 text-white font-bold shadow-sm'
                                   : 'text-gray-300 hover:bg-gray-800 hover:text-white'
-                              }`}
+                              } ${w.edited ? 'ring-1 ring-indigo-400/50 bg-indigo-950/30' : ''}`}
                             >
                               {w.word}
+                              {w.edited && <span className="text-[9px] text-indigo-300 ml-0.5 font-bold">*</span>}
                             </span>
                           );
                         })}
+                      </div>
+
+                      {/* Labels under the transcript (Requirement 7) */}
+                      <div className="pt-2.5 mt-2 border-t border-gray-800 text-[11px] text-gray-400 space-y-1">
+                        <div className="flex items-center justify-between text-[10px] text-gray-400 font-mono">
+                          <span>
+                            {project.transcriptionMeta?.modelName || (transcriptQuality === 'accurate' ? 'Whisper Small' : 'Whisper Base')} ({project.transcriptionMeta?.device || 'WASM'})
+                          </span>
+                          <span>
+                            {project.transcriptionMeta?.durationMs ? `${(project.transcriptionMeta.durationMs / 1000).toFixed(1)}s` : ''}
+                          </span>
+                        </div>
+                        <div className="text-[10px] text-gray-400">
+                          Mode:{' '}
+                          {
+                            (project.transcriptionMeta?.mode || transcriptMode) === 'translate_en'
+                              ? 'English (translated from speech)'
+                              : (project.transcriptionMeta?.mode || transcriptMode) === 'transcribe_en'
+                              ? 'English (as spoken)'
+                              : 'Hindi (as spoken)'
+                          }
+                        </div>
+                        <p className="text-[10px] text-gray-500 italic">
+                          Auto-generated, may contain errors. Double-click a word to fix it.
+                        </p>
                       </div>
                     </div>
                   ) : null}

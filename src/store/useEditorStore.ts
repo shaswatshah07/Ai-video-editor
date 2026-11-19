@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { ProjectEDL, TimelineItem, TransitionType } from '../types/edl';
+import { ProjectEDL, TimelineItem, TransitionType, TranscriptModelQuality, TranscriptMode } from '../types/edl';
 import { AICommand, CommandLogEntry } from '../types/commands';
 import {
   recalculateTimeline,
@@ -40,12 +40,15 @@ interface EditorState {
   isAudioEnhanceActive: boolean;
   isNoiseReductionActive: boolean;
 
-  // Real Web Worker Transcription State (Part A)
+  // Real Web Worker Transcription State (Part A & Quality/Mode Options)
   transcriptionStatus: TranscriptionStatus;
   transcriptionDownloadPercent: number;
   transcriptionCurrentFile: string;
   transcriptionError: string | null;
+  transcriptionFallbackNotice: string | null;
   selectedLanguage: 'english' | 'hindi';
+  transcriptQuality: TranscriptModelQuality;
+  transcriptMode: TranscriptMode;
 
   // Actions
   setScreen: (screen: ScreenState) => void;
@@ -66,7 +69,10 @@ interface EditorState {
   setMinSilenceDurationMs: (ms: number) => void;
   setSilenceSensitivity: (sensitivity: SilenceSensitivity) => void;
   setSelectedLanguage: (lang: 'english' | 'hindi') => void;
-  generateTranscript: (language?: 'english' | 'hindi') => Promise<void>;
+  setTranscriptQuality: (quality: TranscriptModelQuality) => void;
+  setTranscriptMode: (mode: TranscriptMode) => void;
+  updateTranscriptWord: (wordId: string, newText: string) => void;
+  generateTranscript: (quality?: TranscriptModelQuality, mode?: TranscriptMode) => Promise<void>;
   suggestNonSpeechSilences: () => { count: number; totalDurationMs: number; message: string };
   setSelectedItemId: (id: string | null) => void;
   addCommandLog: (log: CommandLogEntry) => void;
@@ -114,7 +120,10 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   transcriptionDownloadPercent: 0,
   transcriptionCurrentFile: '',
   transcriptionError: null,
+  transcriptionFallbackNotice: null,
   selectedLanguage: 'english',
+  transcriptQuality: 'accurate',
+  transcriptMode: 'translate_en',
 
   setScreen: (screen) => set({ screen }),
 
@@ -235,30 +244,58 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     minSilenceDurationMs: SILENCE_PRESETS[silenceSensitivity]?.minSilenceMs ?? 500
   }),
   setSelectedLanguage: (selectedLanguage) => set({ selectedLanguage }),
+  setTranscriptQuality: (transcriptQuality) => set({ transcriptQuality }),
+  setTranscriptMode: (transcriptMode) => set({ transcriptMode }),
 
-  generateTranscript: async (lang) => {
-    const { project, selectedLanguage } = get();
+  updateTranscriptWord: (wordId, newText) => {
+    const { project } = get();
+    if (!project) return;
+    const trimmed = newText.trim();
+    if (!trimmed) return;
+    const updated = project.transcript.map((w) => {
+      if (w.id === wordId) {
+        return { ...w, word: trimmed, edited: true };
+      }
+      return w;
+    });
+    set({
+      project: {
+        ...project,
+        transcript: updated,
+        updatedAt: Date.now()
+      }
+    });
+  },
+
+  generateTranscript: async (qual, m) => {
+    const { project, transcriptQuality, transcriptMode } = get();
     if (!project) return;
 
-    const targetLang = lang ?? selectedLanguage ?? 'english';
+    const chosenQuality = qual ?? transcriptQuality ?? 'accurate';
+    const chosenMode = m ?? transcriptMode ?? 'translate_en';
+
     set({
-      selectedLanguage: targetLang,
+      transcriptQuality: chosenQuality,
+      transcriptMode: chosenMode,
       transcriptionStatus: 'extracting_audio',
       transcriptionDownloadPercent: 0,
       transcriptionCurrentFile: 'Extracting 16kHz audio...',
-      transcriptionError: null
+      transcriptionError: null,
+      transcriptionFallbackNotice: null
     });
 
     try {
-      const { words, chapters } = await transcribeVideoAudio(
+      const { words, chapters, meta } = await transcribeVideoAudio(
         project.sourceVideoUrl,
-        targetLang,
+        chosenQuality,
+        chosenMode,
         (progress) => {
           set({
             transcriptionStatus: progress.status,
             transcriptionDownloadPercent: progress.downloadPercent,
             transcriptionCurrentFile: progress.currentDownloadFile,
-            transcriptionError: progress.errorMessage
+            transcriptionError: progress.errorMessage,
+            transcriptionFallbackNotice: progress.fallbackMessage || null
           });
         }
       );
@@ -268,26 +305,29 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         transcriptionDownloadPercent: 100,
         transcriptionCurrentFile: '',
         transcriptionError: null,
+        transcriptQuality: meta.modelQuality,
+        transcriptMode: meta.mode,
         project: s.project ? {
           ...s.project,
           transcript: words,
           chapters,
-          transcriptLanguage: targetLang,
+          transcriptMode: meta.mode,
+          transcriptionMeta: meta,
           updatedAt: Date.now()
         } : null
       }));
 
       get().addCommandLog({
         id: `cmd_${Date.now()}`,
-        rawInput: `Generate transcript (${targetLang})`,
+        rawInput: `Generate transcript (${meta.modelName}, ${meta.mode})`,
         timestamp: Date.now(),
         parsedCommand: {
           action: 'GENERATE_TRANSCRIPT',
           payload: {},
-          explanation: `Generated ${words.length} words and ${chapters.length} auto-chapters (${targetLang}).`
+          explanation: `Generated ${words.length} words and ${chapters.length} auto-chapters using ${meta.modelName} (${meta.device}) in ${(meta.durationMs / 1000).toFixed(1)}s.`
         },
         status: 'SUCCESS',
-        appliedMessage: `Generated ${words.length} words and ${chapters.length} auto-chapters (${targetLang}).`
+        appliedMessage: `Generated ${words.length} words and ${chapters.length} auto-chapters (${meta.modelName}, ${(meta.durationMs / 1000).toFixed(1)}s).`
       });
     } catch (err: any) {
       const errMsg = err?.message || 'Transcription failed.';
@@ -297,7 +337,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       });
       get().addCommandLog({
         id: `cmd_${Date.now()}`,
-        rawInput: `Generate transcript (${targetLang})`,
+        rawInput: `Generate transcript (${chosenQuality}, ${chosenMode})`,
         timestamp: Date.now(),
         parsedCommand: {
           action: 'GENERATE_TRANSCRIPT',
@@ -877,7 +917,9 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       });
     } else if (action === 'GENERATE_TRANSCRIPT') {
       const isHindi = rawInput.toLowerCase().includes('hindi');
-      await store.generateTranscript(isHindi ? 'hindi' : 'english');
+      const isEnglishSpoken = rawInput.toLowerCase().includes('english') && rawInput.toLowerCase().includes('spoken');
+      const mode = isHindi ? 'transcribe_hi' : isEnglishSpoken ? 'transcribe_en' : 'translate_en';
+      await store.generateTranscript(store.transcriptQuality, mode);
     } else if (action === 'GENERATE_TIMESTAMPS') {
       let curChapters = store.project?.chapters || [];
       if (curChapters.length === 0 || !store.project?.transcript || store.project.transcript.length === 0) {

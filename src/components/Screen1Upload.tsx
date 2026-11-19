@@ -154,7 +154,7 @@ export const Screen1Upload: React.FC = () => {
       );
 
       if (isAutoMode && autoOptions.transcript) {
-        generateTranscript('english');
+        generateTranscript('accurate', 'translate_en');
       }
 
       setIsProcessing(false);

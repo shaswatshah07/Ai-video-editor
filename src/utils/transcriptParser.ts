@@ -188,6 +188,16 @@ export function generateChaptersFromTranscript(words: TranscriptWord[]): Chapter
 }
 
 /**
+ * Computes the percentage of words containing Arabic-script characters (U+0600 - U+06FF).
+ */
+export function detectArabicScriptPercentage(words: TranscriptWord[]): number {
+  if (words.length === 0) return 0;
+  const arabicRegex = /[\u0600-\u06FF]/;
+  const arabicCount = words.filter(w => arabicRegex.test(w.word)).length;
+  return Math.round((arabicCount / words.length) * 100);
+}
+
+/**
  * Downloads transcript as a plain .txt file with timestamps
  */
 export function downloadTranscriptAsTxt(words: TranscriptWord[], fileName = 'transcript.txt'): void {

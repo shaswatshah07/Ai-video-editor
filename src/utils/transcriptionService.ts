@@ -1,6 +1,6 @@
 import { extract16kHzMonoAudio } from './audioExtractor';
-import { parseTranscriptionResult, generateChaptersFromTranscript } from './transcriptParser';
-import { TranscriptWord, ChapterMarker, TimelineItem } from '../types/edl';
+import { parseTranscriptionResult, generateChaptersFromTranscript, detectArabicScriptPercentage } from './transcriptParser';
+import { TranscriptWord, ChapterMarker, TimelineItem, TranscriptModelQuality, TranscriptMode, TranscriptionMeta } from '../types/edl';
 
 export type TranscriptionStatus =
   | 'idle'
@@ -15,10 +15,17 @@ export interface TranscriptionProgressState {
   downloadPercent: number;
   currentDownloadFile: string;
   errorMessage: string | null;
+  fallbackMessage?: string | null;
 }
 
-// In-memory cache keyed by `${videoUrl}_${language}`
-const transcriptCache = new Map<string, { words: TranscriptWord[]; chapters: ChapterMarker[] }>();
+export interface TranscriptionServiceResult {
+  words: TranscriptWord[];
+  chapters: ChapterMarker[];
+  meta: TranscriptionMeta;
+}
+
+// In-memory cache keyed by `${videoUrl}_${quality}_${mode}`
+const transcriptCache = new Map<string, TranscriptionServiceResult>();
 
 let workerInstance: Worker | null = null;
 
@@ -33,16 +40,17 @@ function getWorker(): Worker {
 }
 
 /**
- * Transcribes audio from a video blob or URL using the Web Worker with Whisper base.
+ * Transcribes audio from a video blob or URL using the Web Worker with Whisper Small or Base.
  */
 export async function transcribeVideoAudio(
   videoBlobOrUrl: Blob | string,
-  language: 'english' | 'hindi' = 'english',
+  quality: TranscriptModelQuality = 'accurate',
+  mode: TranscriptMode = 'translate_en',
   onProgress?: (state: TranscriptionProgressState) => void
-): Promise<{ words: TranscriptWord[]; chapters: ChapterMarker[] }> {
+): Promise<TranscriptionServiceResult> {
   const cacheKey = typeof videoBlobOrUrl === 'string'
-    ? `${videoBlobOrUrl}_${language}`
-    : `blob_${videoBlobOrUrl.size}_${language}`;
+    ? `${videoBlobOrUrl}_${quality}_${mode}`
+    : `blob_${videoBlobOrUrl.size}_${quality}_${mode}`;
 
   if (transcriptCache.has(cacheKey)) {
     const cached = transcriptCache.get(cacheKey)!;
@@ -57,12 +65,12 @@ export async function transcribeVideoAudio(
     return cached;
   }
 
-  // 1. Extract & resample audio to 16kHz mono Float32Array
+  // 1. Extract, 80Hz filter & resample audio to 16kHz mono Float32Array (-3 dB peak normalized)
   if (onProgress) {
     onProgress({
       status: 'extracting_audio',
       downloadPercent: 0,
-      currentDownloadFile: 'Extracting audio track...',
+      currentDownloadFile: 'Extracting & filtering audio track...',
       errorMessage: null
     });
   }
@@ -81,10 +89,11 @@ export async function transcribeVideoAudio(
       if (msg.type === 'STATUS') {
         if (msg.status === 'loading_model') {
           if (onProgress) {
+            const sizeLabel = quality === 'accurate' ? 'about 285 MB' : 'about 75 MB';
             onProgress({
               status: 'downloading_model',
               downloadPercent: 0,
-              currentDownloadFile: 'Speech model (about 75 MB, downloads once)...',
+              currentDownloadFile: `Speech model (${sizeLabel}, downloads once)...`,
               errorMessage: null
             });
           }
@@ -97,6 +106,16 @@ export async function transcribeVideoAudio(
               errorMessage: null
             });
           }
+        }
+      } else if (msg.type === 'FALLBACK_TO_BASE') {
+        if (onProgress) {
+          onProgress({
+            status: 'downloading_model',
+            downloadPercent: 0,
+            currentDownloadFile: msg.message || 'Whisper Small unavailable, falling back to Base...',
+            errorMessage: null,
+            fallbackMessage: msg.message
+          });
         }
       } else if (msg.type === 'DOWNLOAD_PROGRESS') {
         if (onProgress) {
@@ -112,8 +131,20 @@ export async function transcribeVideoAudio(
         try {
           const words = parseTranscriptionResult(msg.result);
           const chapters = generateChaptersFromTranscript(words);
+          const arabicPercent = detectArabicScriptPercentage(words);
+          const hasUrduWarning = mode === 'transcribe_hi' && arabicPercent > 25;
 
-          const resultPayload = { words, chapters };
+          const meta: TranscriptionMeta = {
+            modelName: msg.modelName || (quality === 'accurate' ? 'Whisper Small' : 'Whisper Base'),
+            modelQuality: msg.modelQuality || quality,
+            mode: msg.mode || mode,
+            device: msg.device || 'WASM',
+            durationMs: msg.durationMs || 0,
+            arabicScriptPercent: arabicPercent,
+            hasUrduWarning
+          };
+
+          const resultPayload: TranscriptionServiceResult = { words, chapters, meta };
           transcriptCache.set(cacheKey, resultPayload);
 
           if (onProgress) {
@@ -160,7 +191,8 @@ export async function transcribeVideoAudio(
         {
           type: 'TRANSCRIBE',
           audioData: audioFloat32,
-          language
+          quality,
+          mode
         },
         [audioFloat32.buffer]
       );
@@ -169,7 +201,8 @@ export async function transcribeVideoAudio(
       worker.postMessage({
         type: 'TRANSCRIBE',
         audioData: audioFloat32,
-        language
+        quality,
+        mode
       });
     }
 
