@@ -629,10 +629,9 @@ export const Screen2Workspace: React.FC = () => {
                         disabled={transcriptionStatus === 'downloading_model' || transcriptionStatus === 'transcribing'}
                         className="bg-gray-950 border border-gray-800 text-gray-200 text-[11px] rounded px-2 py-1 max-w-[175px] truncate focus:outline-none focus:border-indigo-500 cursor-pointer"
                       >
-                        <option value="translate_en">English (translated from speech)</option>
-                        <option value="transcribe_en">English (as spoken)</option>
-                        <option value="transcribe_hi">Hindi (as spoken)</option>
                         <option value="transcribe_hinglish">Hinglish (Hindi + English)</option>
+                        <option value="translate_en">English (translated)</option>
+                        <option value="transcribe_en">English (as spoken)</option>
                       </select>
                     </div>
 
@@ -706,10 +705,10 @@ export const Screen2Workspace: React.FC = () => {
                   )}
 
                   {/* Urdu Script Warning Banner (Requirement 5) */}
-                  {(project.transcriptionMeta?.hasUrduWarning || (transcriptMode === 'transcribe_hi' && (project.transcriptionMeta?.arabicScriptPercent ?? 0) > 25)) && (
+                  {project.transcriptionMeta?.hasUrduWarning && (
                     <div className="p-2.5 rounded-lg bg-amber-950/60 border border-amber-600/70 text-amber-200 text-[11px] flex items-start space-x-2">
                       <AlertCircle className="w-4 h-4 flex-shrink-0 text-amber-400 mt-0.5" />
-                      <span>Output contains Urdu-script text. For a cleaner result use &apos;English (translated from speech)&apos; mode.</span>
+                      <span>Output contains Urdu-script text. For a cleaner result use &apos;English (translated)&apos; mode.</span>
                     </div>
                   )}
 
@@ -886,13 +885,11 @@ export const Screen2Workspace: React.FC = () => {
                         <div className="text-[10px] text-gray-400">
                           Mode:{' '}
                           {
-                            (project.transcriptionMeta?.mode || transcriptMode) === 'translate_en'
-                              ? 'English (translated from speech)'
+                            (project.transcriptionMeta?.mode || transcriptMode) === 'transcribe_hinglish'
+                              ? 'Hinglish (Hindi + English)'
                               : (project.transcriptionMeta?.mode || transcriptMode) === 'transcribe_en'
                               ? 'English (as spoken)'
-                              : (project.transcriptionMeta?.mode || transcriptMode) === 'transcribe_hi'
-                              ? 'Hindi (as spoken)'
-                              : 'Hinglish (Hindi + English)'
+                              : 'English (translated)'
                           }
                         </div>
                         <p className="text-[10px] text-gray-500 italic">

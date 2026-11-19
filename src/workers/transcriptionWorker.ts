@@ -9,7 +9,7 @@ let currentDevice: 'webgpu' | 'wasm' = 'wasm';
 
 async function getTranscriber(
   requestedQuality: 'accurate' | 'fast',
-  requestedMode: 'translate_en' | 'transcribe_en' | 'transcribe_hi' | 'transcribe_hinglish'
+  requestedMode: 'translate_en' | 'transcribe_en' | 'transcribe_hinglish'
 ) {
   // Check WebGPU support
   try {
@@ -25,25 +25,12 @@ async function getTranscriber(
   let modelId = 'onnx-community/whisper-small';
   let modelDtype: any = { encoder_model: 'q4', decoder_model_merged: 'q4' };
 
-  if (requestedMode === 'transcribe_hinglish') {
-    modelId = 'ishaan-g/whisper-hinglish-swift_timestamped';
-    modelDtype = 'q8';
-  } else if (requestedQuality === 'fast') {
+  if (requestedQuality === 'fast') {
     modelId = 'onnx-community/whisper-base';
     modelDtype = { encoder_model: 'fp32', decoder_model_merged: 'q4' };
   } else {
     modelId = 'onnx-community/whisper-small';
     modelDtype = { encoder_model: 'q4', decoder_model_merged: 'q4' };
-  }
-
-  const cacheKey = `${modelId}_${currentDevice}`;
-  if (loadedTranscribers.has(cacheKey)) {
-    return {
-      transcriber: loadedTranscribers.get(cacheKey),
-      quality: requestedQuality,
-      modelId,
-      device: currentDevice
-    };
   }
 
   const pipelineOptions: any = {
@@ -72,23 +59,69 @@ async function getTranscriber(
     }
   };
 
+  if (requestedMode === 'transcribe_hinglish') {
+    modelId = 'ishaan-g/whisper-hinglish-swift_timestamped';
+    const cacheKey = `${modelId}_${currentDevice}`;
+    if (loadedTranscribers.has(cacheKey)) {
+      return {
+        transcriber: loadedTranscribers.get(cacheKey),
+        quality: requestedQuality,
+        modelId,
+        device: currentDevice
+      };
+    }
+
+    // Try loading with dtype: { encoder_model: 'fp32', decoder_model_merged: 'q8' }
+    // If fp32 encoder fails to load from Hugging Face, automatically catch and fall back to dtype: 'q8'
+    try {
+      const transcriber = await pipeline('automatic-speech-recognition', modelId, {
+        ...pipelineOptions,
+        dtype: { encoder_model: 'fp32', decoder_model_merged: 'q8' }
+      });
+      loadedTranscribers.set(cacheKey, transcriber);
+      return { transcriber, quality: requestedQuality, modelId, device: currentDevice };
+    } catch (fp32Err: any) {
+      console.warn('Hinglish fp32 encoder load failed; falling back to q8:', fp32Err);
+      try {
+        const transcriber = await pipeline('automatic-speech-recognition', modelId, {
+          ...pipelineOptions,
+          dtype: 'q8'
+        });
+        loadedTranscribers.set(cacheKey, transcriber);
+        return { transcriber, quality: requestedQuality, modelId, device: currentDevice };
+      } catch (q8Err: any) {
+        console.warn('Hinglish q8 load failed; falling back to multilingual whisper-small:', q8Err);
+        self.postMessage({
+          type: 'FALLBACK_TO_BASE',
+          message: 'Whisper Hinglish model unavailable; falling back to multilingual Whisper Small.'
+        });
+        const fallbackModelId = 'onnx-community/whisper-small';
+        const fallbackTranscriber = await pipeline('automatic-speech-recognition', fallbackModelId, {
+          ...pipelineOptions,
+          dtype: { encoder_model: 'q4', decoder_model_merged: 'q4' }
+        });
+        loadedTranscribers.set(`${fallbackModelId}_${currentDevice}`, fallbackTranscriber);
+        return { transcriber: fallbackTranscriber, quality: 'accurate', modelId: fallbackModelId, device: currentDevice };
+      }
+    }
+  }
+
+  const cacheKey = `${modelId}_${currentDevice}`;
+  if (loadedTranscribers.has(cacheKey)) {
+    return {
+      transcriber: loadedTranscribers.get(cacheKey),
+      quality: requestedQuality,
+      modelId,
+      device: currentDevice
+    };
+  }
+
   try {
     const transcriber = await pipeline('automatic-speech-recognition', modelId, pipelineOptions);
     loadedTranscribers.set(cacheKey, transcriber);
     return { transcriber, quality: requestedQuality, modelId, device: currentDevice };
   } catch (err: any) {
-    if (requestedMode === 'transcribe_hinglish') {
-      console.warn('Hinglish model load failed, falling back to multilingual whisper-small:', err);
-      self.postMessage({
-        type: 'FALLBACK_TO_BASE',
-        message: 'Whisper Hinglish model unavailable; falling back to multilingual Whisper Small.'
-      });
-      const fallbackModelId = 'onnx-community/whisper-small';
-      pipelineOptions.dtype = { encoder_model: 'q4', decoder_model_merged: 'q4' };
-      const fallbackTranscriber = await pipeline('automatic-speech-recognition', fallbackModelId, pipelineOptions);
-      loadedTranscribers.set(`${fallbackModelId}_${currentDevice}`, fallbackTranscriber);
-      return { transcriber: fallbackTranscriber, quality: 'accurate', modelId: fallbackModelId, device: currentDevice };
-    } else if (requestedQuality === 'accurate') {
+    if (requestedQuality === 'accurate') {
       console.warn('Whisper Small failed, falling back to Whisper Base:', err);
       self.postMessage({
         type: 'FALLBACK_TO_BASE',
@@ -119,31 +152,39 @@ self.onmessage = async (event: MessageEvent) => {
 
       let result: any;
 
-      if (mode === 'transcribe_hi') {
-        // Exact version-compatible parameters for Hindi
-        // Multilingual model, repetition_penalty 1.15, no_repeat_ngram_size 3, return_timestamps: true
-        result = await transcriber(audioData, {
-          language: 'hindi',
-          task: 'transcribe',
-          chunk_length_s: 30,
-          stride_length_s: 5,
-          repetition_penalty: 1.15,
-          no_repeat_ngram_size: 3,
-          return_timestamps: true
-        });
-        result.isSegmentLevelFallback = true;
-      } else if (mode === 'transcribe_hinglish') {
-        // Hinglish fine-tuned model (or multilingual fallback)
-        result = await transcriber(audioData, {
+      if (mode === 'transcribe_hinglish') {
+        const hinglishParams: any = {
           language: 'en',
           task: 'transcribe',
-          chunk_length_s: 30,
-          stride_length_s: 5,
-          repetition_penalty: 1.15,
+          chunk_length_s: 20,
+          stride_length_s: 4,
+          temperature: 0,
+          repetition_penalty: 1.08,
           no_repeat_ngram_size: 3,
-          return_timestamps: true
-        });
-        result.isSegmentLevelFallback = true;
+          return_timestamps: 'word'
+        };
+
+        try {
+          result = await transcriber(audioData, hinglishParams);
+          const hasWordChunks = result && Array.isArray(result.chunks) && result.chunks.length > 0;
+          if (!hasWordChunks) {
+            console.warn('Word-level timestamps returned empty chunks; re-running with segment timestamps.');
+            result = await transcriber(audioData, {
+              ...hinglishParams,
+              return_timestamps: true
+            });
+            result.isSegmentLevelFallback = true;
+          } else {
+            result.isSegmentLevelFallback = false;
+          }
+        } catch (wordErr: any) {
+          console.warn('Word-level timestamps failed; falling back to segment timestamps:', wordErr);
+          result = await transcriber(audioData, {
+            ...hinglishParams,
+            return_timestamps: true
+          });
+          result.isSegmentLevelFallback = true;
+        }
       } else if (mode === 'translate_en') {
         // English translated from Hindi speech
         result = await transcriber(audioData, {

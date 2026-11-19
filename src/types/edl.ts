@@ -39,7 +39,7 @@ export interface TranscriptWord {
 }
 
 export type TranscriptModelQuality = 'accurate' | 'fast';
-export type TranscriptMode = 'translate_en' | 'transcribe_en' | 'transcribe_hi' | 'transcribe_hinglish';
+export type TranscriptMode = 'transcribe_hinglish' | 'translate_en' | 'transcribe_en';
 
 export interface TranscriptionMeta {
   modelName: string;

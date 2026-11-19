@@ -1,5 +1,5 @@
-import { extract16kHzMonoAudio } from './audioExtractor';
-import { parseTranscriptionResult, generateChaptersFromTranscript, detectArabicScriptPercentage } from './transcriptParser';
+import { extract16kHzMonoAudio, extractHinglish16kHzMonoAudio } from './audioExtractor';
+import { parseTranscriptionResult, generateChaptersFromTranscript, detectArabicScriptPercentage, cleanHinglishWords } from './transcriptParser';
 import { TranscriptWord, ChapterMarker, TimelineItem, TranscriptModelQuality, TranscriptMode, TranscriptionMeta } from '../types/edl';
 
 export type TranscriptionStatus =
@@ -80,7 +80,9 @@ export async function transcribeVideoAudio(
     });
   }
 
-  const audioFloat32 = await extract16kHzMonoAudio(videoBlobOrUrl);
+  const audioFloat32 = mode === 'transcribe_hinglish'
+    ? await extractHinglish16kHzMonoAudio(videoBlobOrUrl)
+    : await extract16kHzMonoAudio(videoBlobOrUrl);
 
   // 2. Dispatch to dedicated Web Worker
   const worker = getWorker();
@@ -138,10 +140,11 @@ export async function transcribeVideoAudio(
       } else if (msg.type === 'COMPLETE') {
         cleanup();
         try {
-          const { words, lowQualityWarning } = parseTranscriptionResult(msg.result);
+          const { words: parsedWords, lowQualityWarning } = parseTranscriptionResult(msg.result);
+          const words = mode === 'transcribe_hinglish' ? cleanHinglishWords(parsedWords) : parsedWords;
           const chapters = generateChaptersFromTranscript(words);
           const arabicPercent = detectArabicScriptPercentage(words);
-          const hasUrduWarning = mode === 'transcribe_hi' && arabicPercent > 25;
+          const hasUrduWarning = false;
 
           const defaultModelName = mode === 'transcribe_hinglish'
             ? 'Whisper Hinglish (swift)'
@@ -157,7 +160,7 @@ export async function transcribeVideoAudio(
             durationMs: msg.durationMs || 0,
             arabicScriptPercent: arabicPercent,
             hasUrduWarning,
-            lowQualityWarning,
+            lowQualityWarning: mode === 'transcribe_hinglish' ? null : lowQualityWarning,
             suppressWordRender: false
           };
 

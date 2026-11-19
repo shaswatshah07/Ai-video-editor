@@ -927,10 +927,9 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         appliedMessage: payload.enabled ? 'Low-cut filter activated (80-120Hz high-pass for rumble attenuation).' : 'Low-cut filter disabled.'
       });
     } else if (action === 'GENERATE_TRANSCRIPT') {
-      const isHinglish = rawInput.toLowerCase().includes('hinglish');
-      const isHindi = !isHinglish && rawInput.toLowerCase().includes('hindi');
+      const isHinglish = rawInput.toLowerCase().includes('hinglish') || rawInput.toLowerCase().includes('hindi');
       const isEnglishSpoken = rawInput.toLowerCase().includes('english') && rawInput.toLowerCase().includes('spoken');
-      const mode = isHinglish ? 'transcribe_hinglish' : isHindi ? 'transcribe_hi' : isEnglishSpoken ? 'transcribe_en' : 'translate_en';
+      const mode: TranscriptMode = isHinglish ? 'transcribe_hinglish' : isEnglishSpoken ? 'transcribe_en' : 'translate_en';
       await store.generateTranscript(store.transcriptQuality, mode);
     } else if (action === 'GENERATE_TIMESTAMPS') {
       let curChapters = store.project?.chapters || [];

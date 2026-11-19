@@ -299,3 +299,70 @@ export function downloadTranscriptAsTxt(words: TranscriptWord[], fileName = 'tra
   document.body.removeChild(a);
   URL.revokeObjectURL(url);
 }
+
+/**
+ * Dedicated text and timestamp cleanup for Hinglish mode (applied ONLY to Hinglish output):
+ * 1. Filters out empty tokens and Whisper hallucination tags (e.g., [Music], [Blank_Audio], (music), ...).
+ * 2. Collapses immediate consecutive duplicate words caused by chunk stride overlap (e.g., "toh toh" -> "toh"),
+ *    keeping the earlier sourceStartMs and later sourceEndMs.
+ * 3. Preserves valid integer milliseconds for seamless mapping to T_proj and clickable word seeking.
+ */
+export function cleanHinglishWords(rawWords: TranscriptWord[]): TranscriptWord[] {
+  if (rawWords.length === 0) return [];
+
+  // Filter hallucination tags and punctuation-only/empty tokens
+  const filtered: TranscriptWord[] = [];
+  const tagRegex = /^(\[|\()(music|blank_audio|applause|laughter|silence|cough|noise|sound|screaming|cheering|ambient|bells|singing|sigh|gasp)(\]|\))$/i;
+  const punctOnlyRegex = /^([.…,\-_:;!?*~`"'/\\|]+)$/;
+
+  for (const w of rawWords) {
+    const trimmed = w.word.trim();
+    if (!trimmed) continue;
+    if (punctOnlyRegex.test(trimmed)) continue;
+    if (trimmed === '...' || trimmed === '…') continue;
+    if (tagRegex.test(trimmed)) continue;
+    if (/^(\[|\().*(\]|\))$/.test(trimmed)) {
+      const inner = trimmed.slice(1, -1).trim().toLowerCase();
+      if (['music', 'blank_audio', 'applause', 'laughter', 'silence', 'noise', 'sound'].includes(inner)) {
+        continue;
+      }
+    }
+    filtered.push(w);
+  }
+
+  if (filtered.length === 0) return [];
+
+  // Collapse immediate consecutive duplicate words caused by chunk stride overlap
+  const collapsed: TranscriptWord[] = [];
+  let i = 0;
+
+  while (i < filtered.length) {
+    const current = filtered[i];
+    const currentNorm = current.word.toLowerCase().replace(/[.,!?;:…"'()\[\]]/g, '').trim();
+
+    let j = i + 1;
+    let maxEndMs = current.sourceEndMs;
+
+    while (j < filtered.length) {
+      const nextWord = filtered[j];
+      const nextNorm = nextWord.word.toLowerCase().replace(/[.,!?;:…"'()\[\]]/g, '').trim();
+
+      if (currentNorm.length > 0 && nextNorm === currentNorm) {
+        maxEndMs = Math.max(maxEndMs, nextWord.sourceEndMs);
+        j++;
+      } else {
+        break;
+      }
+    }
+
+    collapsed.push({
+      ...current,
+      sourceStartMs: current.sourceStartMs,
+      sourceEndMs: maxEndMs
+    });
+
+    i = j;
+  }
+
+  return collapsed;
+}
