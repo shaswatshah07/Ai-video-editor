@@ -1487,22 +1487,23 @@ export const Screen2Workspace: React.FC = () => {
             <div className="flex items-center space-x-1.5 pl-3 border-l border-gray-800">
               <span className="text-gray-400 text-[11px] font-medium">Sensitivity:</span>
               <select
-                value={silenceSensitivity}
+                value={silenceSensitivity === 'Tight' ? 'Sensitive' : silenceSensitivity === 'Gentle' ? 'Strict' : silenceSensitivity}
                 onChange={(e) => setSilenceSensitivity(e.target.value as SilenceSensitivity)}
                 className="bg-gray-800 text-gray-200 border border-gray-700 rounded px-1.5 py-0.5 text-[11px]"
-                title="Gentle: >=800ms (+8dB) | Normal: >=500ms (+10dB) | Tight: >=350ms (+12dB)"
+                title="Sensitive: >=350ms (base drop 5.0dB) | Normal: >=500ms (base drop 7.0dB) | Strict: >=900ms (base drop 9.5dB)"
               >
-                <option value="Gentle">Gentle (800ms)</option>
+                <option value="Sensitive">Sensitive (350ms)</option>
                 <option value="Normal">Normal (500ms)</option>
-                <option value="Tight">Tight (350ms)</option>
+                <option value="Strict">Strict (900ms)</option>
               </select>
               <button
                 onClick={async () => {
-                  const res = await detectSilencesOnly(silenceSensitivity);
-                  const cfg = SILENCE_PRESETS[silenceSensitivity];
+                  const effectiveSens = silenceSensitivity === 'Tight' ? 'Sensitive' : silenceSensitivity === 'Gentle' ? 'Strict' : silenceSensitivity;
+                  const res = await detectSilencesOnly(effectiveSens);
+                  const cfg = SILENCE_PRESETS[effectiveSens] || SILENCE_PRESETS.Normal;
                   addCommandLog({
                     id: `cmd_${Date.now()}`,
-                    rawInput: `Detect pauses (${silenceSensitivity} mode)`,
+                    rawInput: `Detect pauses (${effectiveSens} mode)`,
                     timestamp: Date.now(),
                     parsedCommand: {
                       action: 'REMOVE_SILENCE',

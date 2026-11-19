@@ -573,12 +573,12 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     if (!project) return { count: 0, message: 'No video project loaded.' };
 
     const effectiveSensitivity: SilenceSensitivity = typeof param === 'string'
-      ? param
+      ? (param === 'Tight' ? 'Sensitive' : param === 'Gentle' ? 'Strict' : param as SilenceSensitivity)
       : typeof param === 'number'
-      ? (param >= 700 ? 'Gentle' : param <= 400 ? 'Tight' : 'Normal')
+      ? (param >= 700 ? 'Strict' : param <= 400 ? 'Sensitive' : 'Normal')
       : (silenceSensitivity ?? 'Normal');
 
-    // FIX 1: Run detection on denoised, speech-band audio
+    // Run detection on denoised, speech-band audio
     let targetBlob = denoisedAudioBlob;
     if (!targetBlob && project.sourceVideoUrl) {
       try {
@@ -590,16 +590,22 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       }
     }
 
+    const transcriptWords = project.transcript && project.transcript.length >= 3 ? project.transcript : undefined;
+
     const res = await detectSilenceInVideo(
       project.sourceVideoUrl,
       project.sourceDurationMs,
       effectiveSensitivity,
       targetBlob,
-      (blob, url) => setDenoisedAudio(blob, url)
+      (blob, url) => setDenoisedAudio(blob, url),
+      transcriptWords
     );
 
+    const msg = res.diagnosticMessage || (res.silences.length === 0
+      ? (res.warning || `No pauses detected (${effectiveSensitivity} mode).`)
+      : `Found ${res.silences.length} pause(s).`);
+
     if (res.silences.length === 0) {
-      const msg = res.warning || `No pauses detected (${effectiveSensitivity} mode, speech ${res.speechLevelDb.toFixed(1)} dB, noise floor ${res.noiseFloorDb.toFixed(1)} dB, threshold ${res.thresholdDb.toFixed(1)} dB).`;
       return { count: 0, message: msg };
     }
 
@@ -617,8 +623,6 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       }
     });
 
-    const totalSec = res.silences.reduce((acc, s) => acc + s.durationMs, 0) / 1000;
-    const msg = `Found ${res.rawGapsCount} raw gaps -> ${res.silences.length} merged regions (${totalSec.toFixed(1)}s, speech ${res.speechLevelDb.toFixed(1)} dB, noise ${res.noiseFloorDb.toFixed(1)} dB, threshold ${res.thresholdDb.toFixed(1)} dB). Amber blocks added to timeline.`;
     return { count: res.silences.length, message: msg };
   },
 
@@ -627,9 +631,9 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     if (!project) return { changed: false, message: 'No video project loaded.' };
 
     const effectiveSensitivity: SilenceSensitivity = typeof param === 'string'
-      ? param
+      ? (param === 'Tight' ? 'Sensitive' : param === 'Gentle' ? 'Strict' : param as SilenceSensitivity)
       : typeof param === 'number'
-      ? (param >= 700 ? 'Gentle' : param <= 400 ? 'Tight' : 'Normal')
+      ? (param >= 700 ? 'Strict' : param <= 400 ? 'Sensitive' : 'Normal')
       : (silenceSensitivity ?? 'Normal');
     let items = [...project.items];
     let existingSuggested = items.filter(it => it.status === 'SUGGESTED_SILENCE_CUT');
@@ -651,12 +655,15 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         }
       }
 
+      const transcriptWords = project.transcript && project.transcript.length >= 3 ? project.transcript : undefined;
+
       const res = await detectSilenceInVideo(
         project.sourceVideoUrl,
         project.sourceDurationMs,
         effectiveSensitivity,
         targetBlob,
-        (blob, url) => setDenoisedAudio(blob, url)
+        (blob, url) => setDenoisedAudio(blob, url),
+        transcriptWords
       );
       rawGapsCount = res.rawGapsCount;
       noiseFloorDb = res.noiseFloorDb;
@@ -666,7 +673,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       if (res.silences.length === 0) {
         return {
           changed: false,
-          message: res.warning || `No pauses detected (${effectiveSensitivity} mode, speech ${res.speechLevelDb.toFixed(1)} dB, noise floor ${res.noiseFloorDb.toFixed(1)} dB, threshold ${res.thresholdDb.toFixed(1)} dB).`
+          message: res.diagnosticMessage || res.warning || `No pauses detected (${effectiveSensitivity} mode).`
         };
       }
       items = injectSilenceCutsIntoTimeline(items, res.silences);
