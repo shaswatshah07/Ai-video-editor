@@ -37,6 +37,9 @@ interface EditorState {
   customMemeClips: CustomMeme[];
   undoStack: TimelineItem[][];
   redoStack: TimelineItem[][];
+  voiceEnhanceEnabled: boolean;
+  noiseRemovalEnabled: boolean;
+  isAudioBypassed: boolean;
   isAudioEnhanceActive: boolean;
   isNoiseReductionActive: boolean;
 
@@ -93,7 +96,9 @@ interface EditorState {
   insertLibraryMeme: (memeId: 'fail_trombone' | 'wait_what' | 'victory_cheer' | 'shocked_blink', atProjectMs: number) => Promise<void>;
   insertUserClip: (clipId: string, atProjectMs: number) => void;
   toggleVoiceEnhance: (enabled?: boolean) => void;
+  toggleNoiseRemoval: (enabled?: boolean) => void;
   toggleNoiseReduction: (enabled?: boolean) => void;
+  toggleAudioBypass: (bypassed?: boolean) => void;
   addCustomMeme: (file: File) => Promise<CustomMeme>;
   applyAICommand: (command: AICommand, rawInput?: string) => Promise<void>;
 }
@@ -114,6 +119,9 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   customMemeClips: [],
   undoStack: [],
   redoStack: [],
+  voiceEnhanceEnabled: false,
+  noiseRemovalEnabled: false,
+  isAudioBypassed: false,
   isAudioEnhanceActive: false,
   isNoiseReductionActive: false,
   transcriptionStatus: 'idle',
@@ -187,10 +195,11 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       isDemoSample,
       audioSettings: {
         voiceEnhanceEnabled: false,
+        noiseRemovalEnabled: false,
         noiseReductionEnabled: false,
         highPassFreq: 80,
         eqPeakFreq: 3000,
-        eqGainDb: 3,
+        eqGainDb: 4,
         compressorThresholdDb: -20
       },
       createdAt: Date.now(),
@@ -786,9 +795,10 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   },
 
   toggleVoiceEnhance: (enabled) => {
-    const cur = get().isAudioEnhanceActive;
+    const cur = get().voiceEnhanceEnabled;
     const next = enabled !== undefined ? enabled : !cur;
     set((s) => ({
+      voiceEnhanceEnabled: next,
       isAudioEnhanceActive: next,
       project: s.project
         ? {
@@ -802,21 +812,33 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     }));
   },
 
-  toggleNoiseReduction: (enabled) => {
-    const cur = get().isNoiseReductionActive;
+  toggleNoiseRemoval: (enabled) => {
+    const cur = get().noiseRemovalEnabled;
     const next = enabled !== undefined ? enabled : !cur;
     set((s) => ({
+      noiseRemovalEnabled: next,
       isNoiseReductionActive: next,
       project: s.project
         ? {
             ...s.project,
             audioSettings: {
               ...s.project.audioSettings,
+              noiseRemovalEnabled: next,
               noiseReductionEnabled: next
             }
           }
         : null
     }));
+  },
+
+  toggleNoiseReduction: (enabled) => {
+    get().toggleNoiseRemoval(enabled);
+  },
+
+  toggleAudioBypass: (bypassed) => {
+    const cur = get().isAudioBypassed;
+    const next = bypassed !== undefined ? bypassed : !cur;
+    set({ isAudioBypassed: next });
   },
 
   addCustomMeme: async (file: File) => {
@@ -914,17 +936,33 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         timestamp: Date.now(),
         parsedCommand: command,
         status: 'SUCCESS',
-        appliedMessage: payload.enabled ? 'Voice Enhancement enabled (+3dB 3kHz boost, 80Hz HPF, compressor).' : 'Voice Enhancement disabled.'
+        appliedMessage: payload.enabled
+          ? 'Speaker Voice Enhancement activated (80Hz HPF + 250Hz warmth cut + 3kHz boost + dynamic leveling).'
+          : 'Speaker Voice Enhancement disabled.'
       });
     } else if (action === 'REMOVE_NOISE') {
-      store.toggleNoiseReduction(payload.enabled);
+      store.toggleNoiseRemoval(payload.enabled);
       store.addCommandLog({
         id: `cmd_${Date.now()}`,
         rawInput,
         timestamp: Date.now(),
         parsedCommand: command,
         status: 'SUCCESS',
-        appliedMessage: payload.enabled ? 'Low-cut filter activated (80-120Hz high-pass for rumble attenuation).' : 'Low-cut filter disabled.'
+        appliedMessage: payload.enabled
+          ? 'Background Noise Removal activated (100Hz HPF + 7500Hz LPF + dynamic noise-floor gate).'
+          : 'Background Noise Removal disabled.'
+      });
+    } else if (action === 'RESET_AUDIO') {
+      store.toggleVoiceEnhance(false);
+      store.toggleNoiseRemoval(false);
+      store.toggleAudioBypass(false);
+      store.addCommandLog({
+        id: `cmd_${Date.now()}`,
+        rawInput,
+        timestamp: Date.now(),
+        parsedCommand: command,
+        status: 'SUCCESS',
+        appliedMessage: 'Audio reset: Speaker Voice Enhancement and Background Noise Removal disabled.'
       });
     } else if (action === 'GENERATE_TRANSCRIPT') {
       const isHinglish = rawInput.toLowerCase().includes('hinglish') || rawInput.toLowerCase().includes('hindi');

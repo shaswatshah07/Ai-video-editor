@@ -26,6 +26,8 @@ export interface ExportResult {
   elapsedTimeMs: number;
   hasAudio: boolean;
   warnings: string[];
+  voiceEnhanceBaked: boolean;
+  noiseRemovalBaked: boolean;
 }
 
 let ffmpegInstance: FFmpeg | null = null;
@@ -232,82 +234,112 @@ export async function exportProjectVideo(
   const sourceData = await fetchFile(project.sourceVideoUrl);
   await ffmpeg.writeFile('input.mp4', sourceData);
 
-  // Build Filtergraph for N segments
+  // Active Audio Enhancement Settings
+  const voiceEnhanceActive = !!project.audioSettings.voiceEnhanceEnabled;
+  const noiseRemovalActive = !!(project.audioSettings.noiseRemovalEnabled ?? project.audioSettings.noiseReductionEnabled);
   const N = activeSourceClips.length;
-  const filterParts: string[] = [];
 
-  for (let i = 0; i < N; i++) {
-    const start = (activeSourceClips[i].sourceStartMs / 1000).toFixed(3);
-    const end = (activeSourceClips[i].sourceEndMs / 1000).toFixed(3);
+  // Helper to construct filtergraph & ffmpeg arguments
+  const buildArgs = (useFallbackNoiseFilter: boolean) => {
+    const filterParts: string[] = [];
 
-    // Video trim
-    filterParts.push(`[0:v]trim=start=${start}:end=${end},setpts=PTS-STARTPTS[v${i}]`);
+    // Video & Audio Trim filters per active segment
+    for (let i = 0; i < N; i++) {
+      const start = (activeSourceClips[i].sourceStartMs / 1000).toFixed(3);
+      const end = (activeSourceClips[i].sourceEndMs / 1000).toFixed(3);
 
-    // Audio trim if audio present
+      filterParts.push(`[0:v]trim=start=${start}:end=${end},setpts=PTS-STARTPTS[v${i}]`);
+
+      if (hasAudio) {
+        filterParts.push(`[0:a]atrim=start=${start}:end=${end},asetpts=PTS-STARTPTS[a${i}]`);
+      }
+    }
+
+    // Build Concat stream inputs
     if (hasAudio) {
-      filterParts.push(`[0:a]atrim=start=${start}:end=${end},asetpts=PTS-STARTPTS[a${i}]`);
-    }
-  }
-
-  // Build Concat stream inputs
-  if (hasAudio) {
-    let concatInputs = '';
-    for (let i = 0; i < N; i++) {
-      concatInputs += `[v${i}][a${i}]`;
-    }
-    filterParts.push(`${concatInputs}concat=n=${N}:v=1:a=1[vconcat][aconcat]`);
-  } else {
-    let concatInputs = '';
-    for (let i = 0; i < N; i++) {
-      concatInputs += `[v${i}]`;
-    }
-    filterParts.push(`${concatInputs}concat=n=${N}:v=1:a=0[vconcat]`);
-  }
-
-  // Audio enhancement filters
-  let finalAudioMap = '[aconcat]';
-  if (hasAudio) {
-    const audioFilters: string[] = [];
-    if (project.audioSettings.voiceEnhanceEnabled) {
-      audioFilters.push('highpass=f=80,equalizer=f=3000:t=q:w=1.5:g=3,acompressor,loudnorm=I=-16:TP=-1.5:LRA=11');
-    }
-    if (project.audioSettings.noiseReductionEnabled) {
-      audioFilters.push('afftdn=nf=-25');
+      let concatInputs = '';
+      for (let i = 0; i < N; i++) {
+        concatInputs += `[v${i}][a${i}]`;
+      }
+      filterParts.push(`${concatInputs}concat=n=${N}:v=1:a=1[vconcat][aconcat]`);
+    } else {
+      let concatInputs = '';
+      for (let i = 0; i < N; i++) {
+        concatInputs += `[v${i}]`;
+      }
+      filterParts.push(`${concatInputs}concat=n=${N}:v=1:a=0[vconcat]`);
     }
 
-    if (audioFilters.length > 0) {
-      filterParts.push(`[aconcat]${audioFilters.join(',')}[aout]`);
-      finalAudioMap = '[aout]';
+    // Audio enhancement filter chain
+    let finalAudioMap = '[aconcat]';
+    if (hasAudio) {
+      const noiseFilter = useFallbackNoiseFilter
+        ? 'agate=threshold=-35dB:ratio=3:attack=10:release=80'
+        : 'afftdn=nf=-25:tn=1';
+
+      let audioChain: string | null = null;
+      if (noiseRemovalActive && voiceEnhanceActive) {
+        // Both true: Noise Removal first, then Speaker Voice Enhancement (skipping duplicate 80Hz HPF)
+        audioChain = `highpass=f=100,lowpass=f=7500,${noiseFilter},equalizer=f=250:t=q:w=1.2:g=-2,equalizer=f=3000:t=q:w=1.4:g=4,acompressor=threshold=-20dB:ratio=4:attack=5:release=150:makeup=2,loudnorm=I=-16:TP=-1.5:LRA=11`;
+      } else if (noiseRemovalActive) {
+        // Noise Removal only
+        audioChain = `highpass=f=100,lowpass=f=7500,${noiseFilter}`;
+      } else if (voiceEnhanceActive) {
+        // Speaker Voice Enhancement only
+        audioChain = `highpass=f=80,equalizer=f=250:t=q:w=1.2:g=-2,equalizer=f=3000:t=q:w=1.4:g=4,acompressor=threshold=-20dB:ratio=4:attack=5:release=150:makeup=2,loudnorm=I=-16:TP=-1.5:LRA=11`;
+      }
+
+      if (audioChain) {
+        filterParts.push(`[aconcat]${audioChain}[aout]`);
+        finalAudioMap = '[aout]';
+      }
     }
-  }
 
-  const filterComplexStr = filterParts.join(';');
+    const filterComplexStr = filterParts.join(';');
 
-  const ffmpegArgs: string[] = [
-    '-i', 'input.mp4',
-    '-filter_complex', filterComplexStr,
-    '-map', '[vconcat]'
-  ];
+    const args: string[] = [
+      '-i', 'input.mp4',
+      '-filter_complex', filterComplexStr,
+      '-map', '[vconcat]'
+    ];
 
-  if (hasAudio) {
-    ffmpegArgs.push('-map', finalAudioMap);
-    ffmpegArgs.push('-c:a', 'aac', '-b:a', '128k');
-  }
+    if (hasAudio) {
+      args.push('-map', finalAudioMap);
+      args.push('-c:a', 'aac', '-b:a', '192k');
+    }
 
-  ffmpegArgs.push(
-    '-c:v', 'libx264',
-    '-preset', 'ultrafast',
-    '-crf', '23',
-    '-pix_fmt', 'yuv420p',
-    '-movflags', '+faststart',
-    'output.mp4'
-  );
+    args.push(
+      '-c:v', 'libx264',
+      '-preset', 'ultrafast',
+      '-crf', '23',
+      '-pix_fmt', 'yuv420p',
+      '-movflags', '+faststart',
+      'output.mp4'
+    );
+
+    return args;
+  };
+
+  let ffmpegArgs = buildArgs(false);
 
   if (onProgress) {
     onProgress({ ratio: 0.25, stage: 'Executing 1-pass filtergraph re-encode...' });
   }
 
-  const exitCode = await ffmpeg.exec(ffmpegArgs);
+  let exitCode = await ffmpeg.exec(ffmpegArgs);
+
+  // Safety Guard: if FFmpeg ever fails on afftdn in WASM, automatically retry with agate fallback
+  if (exitCode !== 0 && noiseRemovalActive) {
+    const logs = ffmpegLogs.join('\n').toLowerCase();
+    if (logs.includes('afftdn') || logs.includes('filter') || logs.includes('error')) {
+      console.warn('FFmpeg failed with afftdn, retrying with agate noise gate fallback...');
+      if (onProgress) {
+        onProgress({ ratio: 0.25, stage: 'Retrying with noise gate fallback...' });
+      }
+      ffmpegArgs = buildArgs(true);
+      exitCode = await ffmpeg.exec(ffmpegArgs);
+    }
+  }
 
   if (exitCode !== 0) {
     const last20 = ffmpegLogs.slice(-20).join('\n');
@@ -336,6 +368,8 @@ export async function exportProjectVideo(
     fileSizeBytes: blob.size,
     elapsedTimeMs,
     hasAudio,
-    warnings
+    warnings,
+    voiceEnhanceBaked: voiceEnhanceActive && hasAudio,
+    noiseRemovalBaked: noiseRemovalActive && hasAudio
   };
 }

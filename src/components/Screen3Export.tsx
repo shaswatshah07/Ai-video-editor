@@ -210,21 +210,28 @@ export const Screen3Export: React.FC = () => {
             )}
 
             {/* Edit Summary Card */}
-            <div className="grid grid-cols-3 gap-4 pt-2">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-2">
               <div className="bg-gray-800/40 border border-gray-750 p-3 rounded-xl text-center">
                 <span className="text-[10px] uppercase font-bold text-gray-400 tracking-wider">Cuts Applied</span>
-                <p className="text-lg font-bold text-indigo-400">{cutsCount} Cuts</p>
+                <p className="text-base font-bold text-indigo-400">{cutsCount} Cuts</p>
               </div>
 
               <div className="bg-gray-800/40 border border-gray-750 p-3 rounded-xl text-center">
-                <span className="text-[10px] uppercase font-bold text-gray-400 tracking-wider">Active Source Segments</span>
-                <p className="text-lg font-bold text-emerald-400">{activeClipsCount} Segments</p>
+                <span className="text-[10px] uppercase font-bold text-gray-400 tracking-wider">Source Clips</span>
+                <p className="text-base font-bold text-emerald-400">{activeClipsCount} Segments</p>
               </div>
 
               <div className="bg-gray-800/40 border border-gray-750 p-3 rounded-xl text-center">
-                <span className="text-[10px] uppercase font-bold text-gray-400 tracking-wider">File Size</span>
-                <p className="text-lg font-bold text-purple-400">
-                  {exportResult ? `${(exportResult.fileSizeBytes / (1024 * 1024)).toFixed(2)} MB` : '--'}
+                <span className="text-[10px] uppercase font-bold text-gray-400 tracking-wider">Voice Enhance</span>
+                <p className={`text-base font-bold ${exportResult?.voiceEnhanceBaked ? 'text-emerald-400' : 'text-gray-500'}`}>
+                  {exportResult?.voiceEnhanceBaked ? 'Baked In' : 'Off'}
+                </p>
+              </div>
+
+              <div className="bg-gray-800/40 border border-gray-750 p-3 rounded-xl text-center">
+                <span className="text-[10px] uppercase font-bold text-gray-400 tracking-wider">Noise Removal</span>
+                <p className={`text-base font-bold ${exportResult?.noiseRemovalBaked ? 'text-indigo-400' : 'text-gray-500'}`}>
+                  {exportResult?.noiseRemovalBaked ? 'Baked In' : 'Off'}
                 </p>
               </div>
             </div>
@@ -269,7 +276,19 @@ export const Screen3Export: React.FC = () => {
                   </div>
                   <div>
                     <span className="text-gray-500">Audio Track: </span>
-                    <span className="text-gray-200">{exportResult.hasAudio ? 'Present (AAC 128k)' : 'None'}</span>
+                    <span className="text-gray-200">{exportResult.hasAudio ? 'Present (AAC 192k)' : 'None'}</span>
+                  </div>
+                  <div>
+                    <span className="text-gray-500">Speaker Voice Enhance: </span>
+                    <span className={exportResult.voiceEnhanceBaked ? 'text-emerald-400 font-bold' : 'text-gray-400'}>
+                      {exportResult.voiceEnhanceBaked ? 'Baked into MP4 (80Hz HPF + 250Hz cut + 3kHz boost + Compressor + Loudnorm)' : 'Disabled'}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-gray-500">Background Noise Removal: </span>
+                    <span className={exportResult.noiseRemovalBaked ? 'text-indigo-400 font-bold' : 'text-gray-400'}>
+                      {exportResult.noiseRemovalBaked ? 'Baked into MP4 (100Hz HPF + 7500Hz LPF + afftdn)' : 'Disabled'}
+                    </span>
                   </div>
                 </div>
 

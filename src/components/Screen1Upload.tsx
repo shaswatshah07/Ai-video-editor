@@ -133,15 +133,10 @@ export const Screen1Upload: React.FC = () => {
         }
       ];
 
-      if (isAutoMode) {
-        if (autoOptions.detectSilence) {
-          setProcessingStatus('Scanning audio RMS energy for awkward pauses (Normal preset)...');
-          const { silences } = await detectSilenceInVideo(selectedFile, durationMs, 'Normal');
-          items = injectSilenceCutsIntoTimeline(items, silences);
-        }
-
-        if (autoOptions.voiceEnhance) toggleVoiceEnhance(true);
-        if (autoOptions.noiseReduction) toggleNoiseReduction(true);
+      if (isAutoMode && autoOptions.detectSilence) {
+        setProcessingStatus('Scanning audio RMS energy for awkward pauses (Normal preset)...');
+        const { silences } = await detectSilenceInVideo(selectedFile, durationMs, 'Normal');
+        items = injectSilenceCutsIntoTimeline(items, silences);
       }
 
       loadProject(
@@ -152,6 +147,11 @@ export const Screen1Upload: React.FC = () => {
         items,
         false
       );
+
+      if (isAutoMode) {
+        if (autoOptions.voiceEnhance) toggleVoiceEnhance(true);
+        if (autoOptions.noiseReduction) toggleNoiseReduction(true);
+      }
 
       if (isAutoMode && autoOptions.transcript) {
         generateTranscript('accurate', 'translate_en');
@@ -321,8 +321,8 @@ export const Screen1Upload: React.FC = () => {
               {[
                 { key: 'transcript', label: 'Generate Word-Level Transcript' },
                 { key: 'timestamps', label: 'Create Chapter Timestamps' },
-                { key: 'voiceEnhance', label: 'Enhance Voice (+3dB 3kHz EQ & Compressor)' },
-                { key: 'noiseReduction', label: 'Low-Cut Filter (80-120Hz AC & Rumble Attenuation)' },
+                { key: 'voiceEnhance', label: 'Enhance speaker audio' },
+                { key: 'noiseReduction', label: 'Remove background noise' },
                 { key: 'detectSilence', label: 'Detect Awkward Silences (>800ms Pauses)' },
                 { key: 'suggestMemes', label: 'Enable Meme Reaction Library' },
               ].map(({ key, label }) => (

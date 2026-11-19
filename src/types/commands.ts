@@ -78,6 +78,11 @@ export const AICommandSchema = z.discriminatedUnion('action', [
     explanation: z.string()
   }),
   z.object({
+    action: z.literal('RESET_AUDIO'),
+    payload: z.object({}),
+    explanation: z.string()
+  }),
+  z.object({
     action: z.literal('GENERATE_TRANSCRIPT'),
     payload: z.object({}),
     explanation: z.string()

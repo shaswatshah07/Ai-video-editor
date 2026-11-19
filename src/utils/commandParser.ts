@@ -160,7 +160,22 @@ export function parseLocalCommand(
     };
   }
 
-  // 6. ENHANCE AUDIO
+  // 6. RESET AUDIO
+  if (
+    lower.includes('reset audio') ||
+    lower.includes('original audio') ||
+    lower.includes('bypass audio') ||
+    lower.includes('clear audio') ||
+    lower.includes('turn off all audio')
+  ) {
+    return {
+      action: 'RESET_AUDIO',
+      payload: {},
+      explanation: 'Resetting audio enhancements and noise removal to default (off).'
+    };
+  }
+
+  // 7. ENHANCE AUDIO (Speaker Voice Enhancement)
   if (
     lower.includes('enhance') ||
     lower.includes('voice') ||
@@ -172,23 +187,28 @@ export function parseLocalCommand(
     return {
       action: 'ENHANCE_AUDIO',
       payload: { enabled: !isDisable },
-      explanation: isDisable ? 'Disabling voice enhancement filter.' : 'Activating 80Hz HPF + 3kHz peak EQ voice enhancement.'
+      explanation: isDisable
+        ? 'Disabling speaker voice enhancement.'
+        : 'Activating Speaker Voice Enhancement (80Hz HPF, 250Hz warmth cut, 3kHz presence boost, dynamics leveling).'
     };
   }
 
-  // 7. REMOVE NOISE
+  // 8. REMOVE NOISE (Background Noise Removal)
   if (
     lower.includes('noise') ||
     lower.includes('hiss') ||
     lower.includes('hum') ||
     lower.includes('background sound') ||
-    lower.includes('clean audio')
+    lower.includes('clean audio') ||
+    lower.includes('rumble')
   ) {
     const isDisable = lower.includes('disable') || lower.includes('off') || lower.includes('turn off');
     return {
       action: 'REMOVE_NOISE',
       payload: { enabled: !isDisable },
-      explanation: isDisable ? 'Disabling low-cut filter.' : 'Activating low-cut audio filter (80-120Hz high-pass) to attenuate rumble and AC hum.'
+      explanation: isDisable
+        ? 'Disabling background noise removal.'
+        : 'Activating Background Noise Removal (100Hz HPF, 7500Hz LPF, dynamic noise-floor gate).'
     };
   }
 
