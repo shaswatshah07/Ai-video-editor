@@ -4,7 +4,7 @@ import { useEditorStore } from '../store/useEditorStore';
 import { exportProjectVideo, verifyRenderedVideo, RenderProgress, ExportResult } from '../utils/ffmpegExporter';
 
 export const Screen3Export: React.FC = () => {
-  const { project, setScreen } = useEditorStore();
+  const { project, setScreen, denoisedAudioBlob } = useEditorStore();
 
   const [isExporting, setIsExporting] = useState<boolean>(true);
   const [progress, setProgress] = useState<RenderProgress>({ ratio: 0, stage: 'Preparing media files...' });
@@ -24,9 +24,13 @@ export const Screen3Export: React.FC = () => {
     setExportResult(null);
 
     try {
-      const res = await exportProjectVideo(project, (p) => {
-        setProgress(p);
-      });
+      const res = await exportProjectVideo(
+        project,
+        (p) => {
+          setProgress(p);
+        },
+        denoisedAudioBlob
+      );
 
       // Verification Gate (Step 3)
       setProgress({ ratio: 0.95, stage: 'Verifying output duration & stream integrity...' });
@@ -281,13 +285,13 @@ export const Screen3Export: React.FC = () => {
                   <div>
                     <span className="text-gray-500">Speaker Voice Enhance: </span>
                     <span className={exportResult.voiceEnhanceBaked ? 'text-emerald-400 font-bold' : 'text-gray-400'}>
-                      {exportResult.voiceEnhanceBaked ? 'Baked into MP4 (80Hz HPF + 250Hz cut + 3kHz boost + Compressor + Loudnorm)' : 'Disabled'}
+                      {exportResult.voiceEnhanceBaked ? 'Baked into MP4 (100Hz HPF + 260Hz cut + 3.2kHz boost + 8kHz shelf + Compressor + Loudnorm)' : 'Disabled'}
                     </span>
                   </div>
                   <div>
                     <span className="text-gray-500">Background Noise Removal: </span>
                     <span className={exportResult.noiseRemovalBaked ? 'text-indigo-400 font-bold' : 'text-gray-400'}>
-                      {exportResult.noiseRemovalBaked ? 'Baked into MP4 (100Hz HPF + 7500Hz LPF + afftdn)' : 'Disabled'}
+                      {exportResult.noiseRemovalBaked ? 'Baked into MP4 (Adaptive STFT Wiener Spectral Denoiser)' : 'Disabled'}
                     </span>
                   </div>
                 </div>

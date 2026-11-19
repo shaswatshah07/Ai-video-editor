@@ -1,6 +1,7 @@
 import { FFmpeg } from '@ffmpeg/ffmpeg';
 import { toBlobURL, fetchFile } from '@ffmpeg/util';
 import { ProjectEDL } from '../types/edl';
+import { generateDenoisedAudio } from './audioDenoiser';
 
 export interface RenderProgress {
   ratio: number; // 0 to 1
@@ -180,7 +181,8 @@ export async function verifyRenderedVideo(
  */
 export async function exportProjectVideo(
   project: ProjectEDL,
-  onProgress?: (p: RenderProgress) => void
+  onProgress?: (p: RenderProgress) => void,
+  cachedDenoisedBlob?: Blob | null
 ): Promise<ExportResult> {
   const startTime = performance.now();
 
@@ -237,11 +239,44 @@ export async function exportProjectVideo(
   // Active Audio Enhancement Settings
   const voiceEnhanceActive = !!project.audioSettings.voiceEnhanceEnabled;
   const noiseRemovalActive = !!(project.audioSettings.noiseRemovalEnabled ?? project.audioSettings.noiseReductionEnabled);
+
+  // If noise removal is active, get or generate the adaptive spectral denoised audio WAV
+  let hasDenoisedWavFile = false;
+  if (hasAudio && noiseRemovalActive) {
+    let denoisedBlob: Blob | null = cachedDenoisedBlob || null;
+    if (!denoisedBlob) {
+      if (onProgress) {
+        onProgress({ ratio: 0.18, stage: 'Generating adaptive spectral denoised audio...' });
+      }
+      try {
+        const res = await generateDenoisedAudio(project.sourceVideoUrl, (stage, ratio) => {
+          if (onProgress) {
+            onProgress({ ratio: 0.18 + ratio * 0.07, stage: `Denoising audio: ${stage}` });
+          }
+        });
+        denoisedBlob = res.blob;
+      } catch (err) {
+        console.warn('Adaptive spectral denoiser failed before export, falling back to filter:', err);
+      }
+    }
+
+    if (denoisedBlob) {
+      try {
+        const denoisedData = await fetchFile(denoisedBlob);
+        await ffmpeg.writeFile('denoised_source.wav', denoisedData);
+        hasDenoisedWavFile = true;
+      } catch (err) {
+        console.warn('Failed to write denoised_source.wav to FFmpeg FS:', err);
+      }
+    }
+  }
+
   const N = activeSourceClips.length;
 
   // Helper to construct filtergraph & ffmpeg arguments
   const buildArgs = (useFallbackNoiseFilter: boolean) => {
     const filterParts: string[] = [];
+    const audioInputIndex = hasDenoisedWavFile ? 1 : 0;
 
     // Video & Audio Trim filters per active segment
     for (let i = 0; i < N; i++) {
@@ -251,7 +286,7 @@ export async function exportProjectVideo(
       filterParts.push(`[0:v]trim=start=${start}:end=${end},setpts=PTS-STARTPTS[v${i}]`);
 
       if (hasAudio) {
-        filterParts.push(`[0:a]atrim=start=${start}:end=${end},asetpts=PTS-STARTPTS[a${i}]`);
+        filterParts.push(`[${audioInputIndex}:a]atrim=start=${start}:end=${end},asetpts=PTS-STARTPTS[a${i}]`);
       }
     }
 
@@ -273,20 +308,27 @@ export async function exportProjectVideo(
     // Audio enhancement filter chain
     let finalAudioMap = '[aconcat]';
     if (hasAudio) {
-      const noiseFilter = useFallbackNoiseFilter
-        ? 'agate=threshold=-35dB:ratio=3:attack=10:release=80'
-        : 'afftdn=nf=-25:tn=1';
+      const voiceEnhanceFilter = 'highpass=f=100,equalizer=f=260:t=q:w=1.2:g=-3.5,equalizer=f=3200:t=q:w=1.2:g=5.5,equalizer=f=8000:t=h:g=2,acompressor=threshold=-24dB:ratio=5:attack=4:release=140:makeup=3,loudnorm=I=-16:TP=-1.5:LRA=11';
 
       let audioChain: string | null = null;
-      if (noiseRemovalActive && voiceEnhanceActive) {
-        // Both true: Noise Removal first, then Speaker Voice Enhancement (skipping duplicate 80Hz HPF)
-        audioChain = `highpass=f=100,lowpass=f=7500,${noiseFilter},equalizer=f=250:t=q:w=1.2:g=-2,equalizer=f=3000:t=q:w=1.4:g=4,acompressor=threshold=-20dB:ratio=4:attack=5:release=150:makeup=2,loudnorm=I=-16:TP=-1.5:LRA=11`;
+      if (hasDenoisedWavFile) {
+        // Audio was already filtered with adaptive STFT Wiener spectral denoiser
+        if (voiceEnhanceActive) {
+          audioChain = voiceEnhanceFilter;
+        }
       } else if (noiseRemovalActive) {
-        // Noise Removal only
-        audioChain = `highpass=f=100,lowpass=f=7500,${noiseFilter}`;
+        // Fallback filter if spectral denoiser WAV wasn't available
+        const fallbackNoise = useFallbackNoiseFilter
+          ? 'agate=threshold=-35dB:ratio=3:attack=10:release=80'
+          : 'highpass=f=130,lowpass=f=7500,afftdn=nr=28:nf=-22:tn=1:gs=6';
+
+        if (voiceEnhanceActive) {
+          audioChain = `${fallbackNoise},${voiceEnhanceFilter}`;
+        } else {
+          audioChain = fallbackNoise;
+        }
       } else if (voiceEnhanceActive) {
-        // Speaker Voice Enhancement only
-        audioChain = `highpass=f=80,equalizer=f=250:t=q:w=1.2:g=-2,equalizer=f=3000:t=q:w=1.4:g=4,acompressor=threshold=-20dB:ratio=4:attack=5:release=150:makeup=2,loudnorm=I=-16:TP=-1.5:LRA=11`;
+        audioChain = voiceEnhanceFilter;
       }
 
       if (audioChain) {
@@ -297,11 +339,15 @@ export async function exportProjectVideo(
 
     const filterComplexStr = filterParts.join(';');
 
-    const args: string[] = [
-      '-i', 'input.mp4',
+    const args: string[] = ['-i', 'input.mp4'];
+    if (hasDenoisedWavFile) {
+      args.push('-i', 'denoised_source.wav');
+    }
+
+    args.push(
       '-filter_complex', filterComplexStr,
       '-map', '[vconcat]'
-    ];
+    );
 
     if (hasAudio) {
       args.push('-map', finalAudioMap);
@@ -344,6 +390,9 @@ export async function exportProjectVideo(
   if (exitCode !== 0) {
     const last20 = ffmpegLogs.slice(-20).join('\n');
     await ffmpeg.deleteFile('input.mp4').catch(() => {});
+    if (hasDenoisedWavFile) {
+      await ffmpeg.deleteFile('denoised_source.wav').catch(() => {});
+    }
     throw new Error(`FFmpeg re-encode failed with exit code ${exitCode}:\n${last20}`);
   }
 
@@ -353,6 +402,9 @@ export async function exportProjectVideo(
 
   // Clean up memory files
   await ffmpeg.deleteFile('input.mp4').catch(() => {});
+  if (hasDenoisedWavFile) {
+    await ffmpeg.deleteFile('denoised_source.wav').catch(() => {});
+  }
   await ffmpeg.deleteFile('output.mp4').catch(() => {});
 
   const elapsedTimeMs = Math.round(performance.now() - startTime);

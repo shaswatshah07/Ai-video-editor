@@ -39,9 +39,12 @@ interface EditorState {
   redoStack: TimelineItem[][];
   voiceEnhanceEnabled: boolean;
   noiseRemovalEnabled: boolean;
-  isAudioBypassed: boolean;
   isAudioEnhanceActive: boolean;
   isNoiseReductionActive: boolean;
+  denoisedAudioUrl: string | null;
+  denoisedAudioBlob: Blob | null;
+  isDenoising: boolean;
+  denoiseProgress: string;
 
   // Real Web Worker Transcription State (Part A & Quality/Mode Options)
   transcriptionStatus: TranscriptionStatus;
@@ -98,7 +101,10 @@ interface EditorState {
   toggleVoiceEnhance: (enabled?: boolean) => void;
   toggleNoiseRemoval: (enabled?: boolean) => void;
   toggleNoiseReduction: (enabled?: boolean) => void;
-  toggleAudioBypass: (bypassed?: boolean) => void;
+  setDenoisedAudio: (blob: Blob, url: string) => void;
+  clearDenoisedAudio: () => void;
+  setIsDenoising: (val: boolean) => void;
+  setDenoiseProgress: (msg: string) => void;
   addCustomMeme: (file: File) => Promise<CustomMeme>;
   applyAICommand: (command: AICommand, rawInput?: string) => Promise<void>;
 }
@@ -121,9 +127,12 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   redoStack: [],
   voiceEnhanceEnabled: false,
   noiseRemovalEnabled: false,
-  isAudioBypassed: false,
   isAudioEnhanceActive: false,
   isNoiseReductionActive: false,
+  denoisedAudioUrl: null,
+  denoisedAudioBlob: null,
+  isDenoising: false,
+  denoiseProgress: '',
   transcriptionStatus: 'idle',
   transcriptionDownloadPercent: 0,
   transcriptionCurrentFile: '',
@@ -206,6 +215,9 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       updatedAt: Date.now()
     };
 
+    const oldDenoisedUrl = get().denoisedAudioUrl;
+    if (oldDenoisedUrl) URL.revokeObjectURL(oldDenoisedUrl);
+
     set({
       project,
       currentProjectMs: 0,
@@ -218,7 +230,11 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       transcriptionStatus: 'idle',
       transcriptionDownloadPercent: 0,
       transcriptionCurrentFile: '',
-      transcriptionError: null
+      transcriptionError: null,
+      denoisedAudioUrl: null,
+      denoisedAudioBlob: null,
+      isDenoising: false,
+      denoiseProgress: ''
     });
 
     // Generate thumbnails in background (1 per second, up to 300 total)
@@ -835,11 +851,22 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     get().toggleNoiseRemoval(enabled);
   },
 
-  toggleAudioBypass: (bypassed) => {
-    const cur = get().isAudioBypassed;
-    const next = bypassed !== undefined ? bypassed : !cur;
-    set({ isAudioBypassed: next });
+  setDenoisedAudio: (blob, url) => {
+    // Revoke old URL if exists
+    const oldUrl = get().denoisedAudioUrl;
+    if (oldUrl) URL.revokeObjectURL(oldUrl);
+    set({ denoisedAudioBlob: blob, denoisedAudioUrl: url, isDenoising: false, denoiseProgress: '' });
   },
+
+  clearDenoisedAudio: () => {
+    const oldUrl = get().denoisedAudioUrl;
+    if (oldUrl) URL.revokeObjectURL(oldUrl);
+    set({ denoisedAudioBlob: null, denoisedAudioUrl: null, isDenoising: false, denoiseProgress: '' });
+  },
+
+  setIsDenoising: (val) => set({ isDenoising: val }),
+
+  setDenoiseProgress: (msg) => set({ denoiseProgress: msg }),
 
   addCustomMeme: async (file: File) => {
     const blobUrl = URL.createObjectURL(file);
@@ -955,7 +982,6 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     } else if (action === 'RESET_AUDIO') {
       store.toggleVoiceEnhance(false);
       store.toggleNoiseRemoval(false);
-      store.toggleAudioBypass(false);
       store.addCommandLog({
         id: `cmd_${Date.now()}`,
         rawInput,

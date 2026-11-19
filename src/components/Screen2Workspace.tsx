@@ -1,6 +1,6 @@
 import React, { useRef, useEffect, useState, useCallback } from 'react';
 import {
-  Play, Pause, RotateCcw, RotateCw, Scissors, Trash2, VolumeX,
+  Play, Pause, RotateCcw, RotateCw, Scissors, Trash2,
   Sparkles, Send, Upload, ChevronRight, ChevronLeft, ArrowRight,
   Bookmark, Check, X, Wand2, ShieldAlert, Download,
   Loader2, AlertCircle, RefreshCw
@@ -11,6 +11,7 @@ import { parseCommandWithFallback } from '../utils/commandParser';
 import { TransitionType } from '../types/edl';
 import { SilenceSensitivity, SILENCE_PRESETS } from '../utils/silenceDetector';
 import { downloadTranscriptAsTxt } from '../utils/transcriptParser';
+import { generateDenoisedAudio } from '../utils/audioDenoiser';
 
 export const Screen2Workspace: React.FC = () => {
   const {
@@ -26,7 +27,10 @@ export const Screen2Workspace: React.FC = () => {
     commandLogs,
     voiceEnhanceEnabled,
     noiseRemovalEnabled,
-    isAudioBypassed,
+    denoisedAudioUrl,
+    denoisedAudioBlob,
+    isDenoising,
+    denoiseProgress,
     undoStack,
     redoStack,
     transcriptionStatus,
@@ -56,7 +60,9 @@ export const Screen2Workspace: React.FC = () => {
     setTransition,
     toggleVoiceEnhance,
     toggleNoiseRemoval,
-    toggleAudioBypass,
+    setDenoisedAudio,
+    setIsDenoising,
+    setDenoiseProgress,
     undo,
     redo,
     addCustomMeme,
@@ -74,27 +80,23 @@ export const Screen2Workspace: React.FC = () => {
   const lastTickTimeRef = useRef<number | null>(null);
   const activeMemeIdRef = useRef<string | null>(null);
 
-  // Web Audio Context WeakMap Guard (Spec 4: single attachment per element in StrictMode)
+  // Web Audio Context & Node Refs
   const audioContextRef = useRef<AudioContext | null>(null);
-  const audioSourceAttachedRef = useRef<boolean>(false);
+  const rawSourceAttachedRef = useRef<boolean>(false);
+  const denoisedSourceAttachedRef = useRef<boolean>(false);
+  const denoisedAudioRef = useRef<HTMLAudioElement | null>(null);
 
-  // Background Noise Removal stage refs
-  const nrHighPassRef = useRef<BiquadFilterNode | null>(null);
-  const nrLowPassRef = useRef<BiquadFilterNode | null>(null);
-  const nrGateGainRef = useRef<GainNode | null>(null);
-  const nrAnalyserRef = useRef<AnalyserNode | null>(null);
-  const nrAnalyserBufferRef = useRef<Float32Array | null>(null);
+  // Crossfade gain nodes
+  const rawGainRef = useRef<GainNode | null>(null);
+  const denoisedGainRef = useRef<GainNode | null>(null);
 
-  // Speaker Voice Enhancement stage refs
+  // Speaker Voice Enhancement stage refs (Stronger Spec)
   const veHighPassRef = useRef<BiquadFilterNode | null>(null);
   const veWarmthCutRef = useRef<BiquadFilterNode | null>(null);
   const vePresenceBoostRef = useRef<BiquadFilterNode | null>(null);
+  const veHighShelfRef = useRef<BiquadFilterNode | null>(null);
   const veCompressorRef = useRef<DynamicsCompressorNode | null>(null);
   const veMakeupGainRef = useRef<GainNode | null>(null);
-
-  // Effective audio processing states considering A/B Bypass
-  const effectiveVoiceEnhance = !isAudioBypassed && voiceEnhanceEnabled;
-  const effectiveNoiseRemoval = !isAudioBypassed && noiseRemovalEnabled;
 
   // UI state
   const [activeTransitionClass, setActiveTransitionClass] = useState<string>('');
@@ -117,142 +119,180 @@ export const Screen2Workspace: React.FC = () => {
   const timelineContainerRef = useRef<HTMLDivElement | null>(null);
   const trackContainerRef = useRef<HTMLDivElement | null>(null);
 
+  // Connect denoised <audio> element to Web Audio gain node
+  const connectDenoisedSource = useCallback(() => {
+    const ctx = audioContextRef.current;
+    const audioEl = denoisedAudioRef.current;
+    if (!ctx || !audioEl || denoisedSourceAttachedRef.current || !denoisedGainRef.current) return;
+    try {
+      const dSource = ctx.createMediaElementSource(audioEl);
+      dSource.connect(denoisedGainRef.current);
+      denoisedSourceAttachedRef.current = true;
+    } catch {
+      // Element might already be connected
+    }
+  }, []);
+
   // Setup Web Audio Node Chain on user gesture or mount
   const setupWebAudio = useCallback(() => {
-    if (!mainVideoRef.current || audioSourceAttachedRef.current) return;
+    if (!mainVideoRef.current) return;
 
     try {
-      const AudioCtxClass = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
-      const ctx = new AudioCtxClass();
-      audioContextRef.current = ctx;
+      if (!audioContextRef.current) {
+        const AudioCtxClass = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+        audioContextRef.current = new AudioCtxClass();
+      }
+      const ctx = audioContextRef.current;
 
-      const source = ctx.createMediaElementSource(mainVideoRef.current);
+      // 1. Build Voice Enhancement Chain once if not yet initialized
+      if (!veHighPassRef.current) {
+        // High-pass filter at 100 Hz (transparent at 10 Hz when OFF)
+        const veHighPass = ctx.createBiquadFilter();
+        veHighPass.type = 'highpass';
+        veHighPass.frequency.value = voiceEnhanceEnabled ? 100 : 10;
+        veHighPass.Q.value = 0.7071;
+        veHighPassRef.current = veHighPass;
 
-      // --- Stage 1: Background Noise Removal Chain ---
-      // 1. High-pass filter at 100 Hz (transparent at 10 Hz when OFF)
-      const nrHighPass = ctx.createBiquadFilter();
-      nrHighPass.type = 'highpass';
-      nrHighPass.frequency.value = effectiveNoiseRemoval ? 100 : 10;
-      nrHighPass.Q.value = 0.7071;
-      nrHighPassRef.current = nrHighPass;
+        // Warmth cut: peaking filter at 260 Hz, Q = 1.2, -3.5 dB (0 dB when OFF)
+        const veWarmthCut = ctx.createBiquadFilter();
+        veWarmthCut.type = 'peaking';
+        veWarmthCut.frequency.value = 260;
+        veWarmthCut.Q.value = 1.2;
+        veWarmthCut.gain.value = voiceEnhanceEnabled ? -3.5 : 0;
+        veWarmthCutRef.current = veWarmthCut;
 
-      // 2. Low-pass filter at 7500 Hz (transparent at 22050 Hz when OFF)
-      const nrLowPass = ctx.createBiquadFilter();
-      nrLowPass.type = 'lowpass';
-      nrLowPass.frequency.value = effectiveNoiseRemoval ? 7500 : 22050;
-      nrLowPass.Q.value = 0.7071;
-      nrLowPassRef.current = nrLowPass;
+        // Vocal presence boost: peaking filter at 3200 Hz, Q = 1.2, +5.5 dB (0 dB when OFF)
+        const vePresenceBoost = ctx.createBiquadFilter();
+        vePresenceBoost.type = 'peaking';
+        vePresenceBoost.frequency.value = 3200;
+        vePresenceBoost.Q.value = 1.2;
+        vePresenceBoost.gain.value = voiceEnhanceEnabled ? 5.5 : 0;
+        vePresenceBoostRef.current = vePresenceBoost;
 
-      // 3. RMS Noise-Floor Gate Gain Node
-      const nrGateGain = ctx.createGain();
-      nrGateGain.gain.value = 1.0;
-      nrGateGainRef.current = nrGateGain;
+        // Vocal air / clarity shelf at 8000 Hz, +2.0 dB (0 dB when OFF)
+        const veHighShelf = ctx.createBiquadFilter();
+        veHighShelf.type = 'highshelf';
+        veHighShelf.frequency.value = 8000;
+        veHighShelf.gain.value = voiceEnhanceEnabled ? 2.0 : 0;
+        veHighShelfRef.current = veHighShelf;
 
-      // 4. Analyser Node for noise-floor monitoring (fftSize = 512)
-      const nrAnalyser = ctx.createAnalyser();
-      nrAnalyser.fftSize = 512;
-      nrAnalyserRef.current = nrAnalyser;
-      nrAnalyserBufferRef.current = new Float32Array(512);
+        // Dynamics Compressor (ratio 5:1, threshold -24, knee 15, attack 0.004, release 0.14)
+        const veCompressor = ctx.createDynamicsCompressor();
+        veCompressor.threshold.value = voiceEnhanceEnabled ? -24 : 0;
+        veCompressor.knee.value = 15;
+        veCompressor.ratio.value = voiceEnhanceEnabled ? 5 : 1;
+        veCompressor.attack.value = 0.004;
+        veCompressor.release.value = 0.14;
+        veCompressorRef.current = veCompressor;
 
-      // --- Stage 2: Speaker Voice Enhancement Chain ---
-      // 1. High-pass filter at 80 Hz (transparent at 10 Hz when OFF)
-      const veHighPass = ctx.createBiquadFilter();
-      veHighPass.type = 'highpass';
-      veHighPass.frequency.value = effectiveVoiceEnhance ? 80 : 10;
-      veHighPass.Q.value = 0.7071;
-      veHighPassRef.current = veHighPass;
+        // Makeup Gain: 1.45 when ON, 1.0 when OFF
+        const veMakeupGain = ctx.createGain();
+        veMakeupGain.gain.value = voiceEnhanceEnabled ? 1.45 : 1.0;
+        veMakeupGainRef.current = veMakeupGain;
 
-      // 2. Warmth cut: peaking filter at 250 Hz, Q = 1.2, -2 dB (0 dB when OFF)
-      const veWarmthCut = ctx.createBiquadFilter();
-      veWarmthCut.type = 'peaking';
-      veWarmthCut.frequency.value = 250;
-      veWarmthCut.Q.value = 1.2;
-      veWarmthCut.gain.value = effectiveVoiceEnhance ? -2 : 0;
-      veWarmthCutRef.current = veWarmthCut;
+        // Chain connections:
+        // veHighPass -> veWarmthCut -> vePresenceBoost -> veHighShelf -> veCompressor -> veMakeupGain -> destination
+        veHighPass.connect(veWarmthCut);
+        veWarmthCut.connect(vePresenceBoost);
+        vePresenceBoost.connect(veHighShelf);
+        veHighShelf.connect(veCompressor);
+        veCompressor.connect(veMakeupGain);
+        veMakeupGain.connect(ctx.destination);
+      }
 
-      // 3. Vocal presence boost: peaking filter at 3000 Hz, Q = 1.4, +4 dB (0 dB when OFF)
-      const vePresenceBoost = ctx.createBiquadFilter();
-      vePresenceBoost.type = 'peaking';
-      vePresenceBoost.frequency.value = 3000;
-      vePresenceBoost.Q.value = 1.4;
-      vePresenceBoost.gain.value = effectiveVoiceEnhance ? 4 : 0;
-      vePresenceBoostRef.current = vePresenceBoost;
+      // 2. Build Raw & Denoised crossfade gain nodes
+      if (!rawGainRef.current && veHighPassRef.current) {
+        const rawGain = ctx.createGain();
+        const shouldUseDenoised = noiseRemovalEnabled && !!denoisedAudioUrl;
+        rawGain.gain.value = shouldUseDenoised ? 0.0 : 1.0;
+        rawGain.connect(veHighPassRef.current);
+        rawGainRef.current = rawGain;
+      }
 
-      // 4. Dynamics Compressor (ratio 4:1, threshold -20, knee 18, attack 0.005, release 0.15)
-      // When OFF: ratio 1:1, threshold 0 (linear bypass)
-      const veCompressor = ctx.createDynamicsCompressor();
-      veCompressor.threshold.value = effectiveVoiceEnhance ? -20 : 0;
-      veCompressor.knee.value = 18;
-      veCompressor.ratio.value = effectiveVoiceEnhance ? 4 : 1;
-      veCompressor.attack.value = 0.005;
-      veCompressor.release.value = 0.15;
-      veCompressorRef.current = veCompressor;
+      if (!denoisedGainRef.current && veHighPassRef.current) {
+        const denoisedGain = ctx.createGain();
+        const shouldUseDenoised = noiseRemovalEnabled && !!denoisedAudioUrl;
+        denoisedGain.gain.value = shouldUseDenoised ? 1.0 : 0.0;
+        denoisedGain.connect(veHighPassRef.current);
+        denoisedGainRef.current = denoisedGain;
+      }
 
-      // 5. Makeup Gain: 1.25 when ON, 1.0 when OFF
-      const veMakeupGain = ctx.createGain();
-      veMakeupGain.gain.value = effectiveVoiceEnhance ? 1.25 : 1.0;
-      veMakeupGainRef.current = veMakeupGain;
+      // 3. Attach main video source
+      if (!rawSourceAttachedRef.current && mainVideoRef.current && rawGainRef.current) {
+        const rawSource = ctx.createMediaElementSource(mainVideoRef.current);
+        rawSource.connect(rawGainRef.current);
+        rawSourceAttachedRef.current = true;
+      }
 
-      // Audio Graph Connections:
-      // source -> nrHighPass -> nrLowPass -> nrGateGain
-      source.connect(nrHighPass);
-      nrHighPass.connect(nrLowPass);
-      nrLowPass.connect(nrGateGain);
-
-      // Connect lowpass to analyser for speech energy calculation
-      nrLowPass.connect(nrAnalyser);
-
-      // nrGateGain -> veHighPass -> veWarmthCut -> vePresenceBoost -> veCompressor -> veMakeupGain -> ctx.destination
-      nrGateGain.connect(veHighPass);
-      veHighPass.connect(veWarmthCut);
-      veWarmthCut.connect(vePresenceBoost);
-      vePresenceBoost.connect(veCompressor);
-      veCompressor.connect(veMakeupGain);
-      veMakeupGain.connect(ctx.destination);
-
-      audioSourceAttachedRef.current = true;
+      // 4. Attach denoised audio source if ready
+      connectDenoisedSource();
     } catch {
       // Audio element might already be connected or blocked
     }
-  }, [effectiveNoiseRemoval, effectiveVoiceEnhance]);
+  }, [voiceEnhanceEnabled, noiseRemovalEnabled, denoisedAudioUrl, connectDenoisedSource]);
 
-  // Dynamically update audio node parameters when store toggles or A/B Bypass changes
+  // Dynamically update audio node parameters when store toggles
   useEffect(() => {
     const ctx = audioContextRef.current;
     if (!ctx) return;
     const now = ctx.currentTime;
 
-    // --- Background Noise Removal Stage ---
-    if (nrHighPassRef.current) {
-      nrHighPassRef.current.frequency.setTargetAtTime(effectiveNoiseRemoval ? 100 : 10, now, 0.015);
+    // Crossfade between Raw and Denoised audio
+    const shouldUseDenoised = noiseRemovalEnabled && !!denoisedAudioUrl;
+    if (rawGainRef.current) {
+      rawGainRef.current.gain.setTargetAtTime(shouldUseDenoised ? 0.0 : 1.0, now, 0.02);
     }
-    if (nrLowPassRef.current) {
-      nrLowPassRef.current.frequency.setTargetAtTime(effectiveNoiseRemoval ? 7500 : 22050, now, 0.015);
-    }
-    if (!effectiveNoiseRemoval && nrGateGainRef.current) {
-      nrGateGainRef.current.gain.setTargetAtTime(1.0, now, 0.01);
+    if (denoisedGainRef.current) {
+      denoisedGainRef.current.gain.setTargetAtTime(shouldUseDenoised ? 1.0 : 0.0, now, 0.02);
     }
 
-    // --- Speaker Voice Enhancement Stage ---
+    // Speaker Voice Enhancement Stage
     if (veHighPassRef.current) {
-      veHighPassRef.current.frequency.setTargetAtTime(effectiveVoiceEnhance ? 80 : 10, now, 0.015);
+      veHighPassRef.current.frequency.setTargetAtTime(voiceEnhanceEnabled ? 100 : 10, now, 0.015);
     }
     if (veWarmthCutRef.current) {
-      veWarmthCutRef.current.gain.setTargetAtTime(effectiveVoiceEnhance ? -2 : 0, now, 0.015);
+      veWarmthCutRef.current.gain.setTargetAtTime(voiceEnhanceEnabled ? -3.5 : 0, now, 0.015);
     }
     if (vePresenceBoostRef.current) {
-      vePresenceBoostRef.current.gain.setTargetAtTime(effectiveVoiceEnhance ? 4 : 0, now, 0.015);
+      vePresenceBoostRef.current.gain.setTargetAtTime(voiceEnhanceEnabled ? 5.5 : 0, now, 0.015);
+    }
+    if (veHighShelfRef.current) {
+      veHighShelfRef.current.gain.setTargetAtTime(voiceEnhanceEnabled ? 2.0 : 0, now, 0.015);
     }
     if (veCompressorRef.current) {
-      veCompressorRef.current.ratio.setTargetAtTime(effectiveVoiceEnhance ? 4 : 1, now, 0.015);
-      veCompressorRef.current.threshold.setTargetAtTime(effectiveVoiceEnhance ? -20 : 0, now, 0.015);
+      veCompressorRef.current.ratio.setTargetAtTime(voiceEnhanceEnabled ? 5 : 1, now, 0.015);
+      veCompressorRef.current.threshold.setTargetAtTime(voiceEnhanceEnabled ? -24 : 0, now, 0.015);
     }
     if (veMakeupGainRef.current) {
-      veMakeupGainRef.current.gain.setTargetAtTime(effectiveVoiceEnhance ? 1.25 : 1.0, now, 0.015);
+      veMakeupGainRef.current.gain.setTargetAtTime(voiceEnhanceEnabled ? 1.45 : 1.0, now, 0.015);
     }
-  }, [effectiveVoiceEnhance, effectiveNoiseRemoval]);
+  }, [voiceEnhanceEnabled, noiseRemovalEnabled, denoisedAudioUrl]);
 
-  // Apply playback speed to video elements
+  // Generate denoised audio when noiseRemovalEnabled is turned on and not yet cached
+  useEffect(() => {
+    if (noiseRemovalEnabled && !denoisedAudioBlob && !isDenoising && project?.sourceVideoUrl) {
+      setIsDenoising(true);
+      setDenoiseProgress('Profiling audio noise...');
+      generateDenoisedAudio(project.sourceVideoUrl, (stage, ratio) => {
+        setDenoiseProgress(`${stage} (${Math.round(ratio * 100)}%)`);
+      }).then(({ blob, url }) => {
+        setDenoisedAudio(blob, url);
+      }).catch((err) => {
+        console.error('Audio denoising failed:', err);
+        setIsDenoising(false);
+        setDenoiseProgress('');
+      });
+    }
+  }, [noiseRemovalEnabled, denoisedAudioBlob, isDenoising, project?.sourceVideoUrl, setIsDenoising, setDenoiseProgress, setDenoisedAudio]);
+
+  // When denoisedAudioUrl becomes available, attach its audio element to Web Audio
+  useEffect(() => {
+    if (denoisedAudioUrl && denoisedAudioRef.current) {
+      connectDenoisedSource();
+    }
+  }, [denoisedAudioUrl, connectDenoisedSource]);
+
+  // Apply playback speed to video and audio elements
   const applyPlaybackSpeed = useCallback((speed: number) => {
     if (mainVideoRef.current) {
       mainVideoRef.current.playbackRate = speed;
@@ -261,6 +301,10 @@ export const Screen2Workspace: React.FC = () => {
     if (memeVideoRef.current) {
       memeVideoRef.current.playbackRate = speed;
       memeVideoRef.current.preservesPitch = true;
+    }
+    if (denoisedAudioRef.current) {
+      denoisedAudioRef.current.playbackRate = speed;
+      denoisedAudioRef.current.preservesPitch = true;
     }
   }, []);
 
@@ -306,6 +350,9 @@ export const Screen2Workspace: React.FC = () => {
             if (nextActiveAfter && lastSeekTargetRef.current !== nextActiveAfter.sourceStartMs) {
               lastSeekTargetRef.current = nextActiveAfter.sourceStartMs;
               mainVideoRef.current.currentTime = nextActiveAfter.sourceStartMs / 1000;
+              if (denoisedAudioRef.current) {
+                denoisedAudioRef.current.currentTime = nextActiveAfter.sourceStartMs / 1000;
+              }
               setCurrentProjectMs(nextActiveAfter.projectStartMs);
               rafIdRef.current = requestAnimationFrame(loop);
               return;
@@ -324,6 +371,9 @@ export const Screen2Workspace: React.FC = () => {
               mainVideoRef.current.currentTime = nextActive.sourceStartMs / 1000;
               lastSeekTargetRef.current = nextActive.sourceStartMs;
             }
+            if (denoisedAudioRef.current) {
+              denoisedAudioRef.current.currentTime = nextActive.sourceStartMs / 1000;
+            }
           } else {
             setIsPlaying(false);
             lastTickTimeRef.current = null;
@@ -336,6 +386,7 @@ export const Screen2Workspace: React.FC = () => {
         if (item.kind === 'MEME_CLIP') {
           setActiveMemePlaying(true);
           if (mainVideoRef.current && !mainVideoRef.current.paused) mainVideoRef.current.pause();
+          if (denoisedAudioRef.current && !denoisedAudioRef.current.paused) denoisedAudioRef.current.pause();
 
           if (memeVideoRef.current) {
             if (memeVideoRef.current.playbackRate !== previewSpeed) {
@@ -378,29 +429,18 @@ export const Screen2Workspace: React.FC = () => {
               mainVideoRef.current.play().catch(() => {});
             }
 
-            // Smooth RMS Noise-Floor Gate during active playback
-            if (
-              effectiveNoiseRemoval &&
-              nrAnalyserRef.current &&
-              nrGateGainRef.current &&
-              nrAnalyserBufferRef.current &&
-              audioContextRef.current
-            ) {
-              const buffer = nrAnalyserBufferRef.current;
-              nrAnalyserRef.current.getFloatTimeDomainData(buffer as any);
-              let sumSq = 0;
-              for (let i = 0; i < buffer.length; i++) {
-                sumSq += buffer[i] * buffer[i];
+            // Sync denoised audio element in lockstep with main video
+            if (denoisedAudioRef.current) {
+              const dDriftSec = Math.abs(denoisedAudioRef.current.currentTime - targetSec);
+              if (dDriftSec > 0.15) {
+                denoisedAudioRef.current.currentTime = targetSec;
               }
-              const rms = Math.sqrt(sumSq / buffer.length);
-              const now = audioContextRef.current.currentTime;
-
-              if (rms < 0.015) {
-                // Smoothly duck gateGain down to 0.15 (40ms release)
-                nrGateGainRef.current.gain.setTargetAtTime(0.15, now, 0.04);
-              } else {
-                // Snap back to 1.0 (10ms attack) as soon as speech starts
-                nrGateGainRef.current.gain.setTargetAtTime(1.0, now, 0.01);
+              if (denoisedAudioRef.current.playbackRate !== previewSpeed) {
+                denoisedAudioRef.current.playbackRate = previewSpeed;
+                denoisedAudioRef.current.preservesPitch = true;
+              }
+              if (denoisedAudioRef.current.paused && isPlaying && denoisedAudioUrl) {
+                denoisedAudioRef.current.play().catch(() => {});
               }
             }
           }
@@ -423,13 +463,11 @@ export const Screen2Workspace: React.FC = () => {
 
         setCurrentProjectMs(nextProjectMs);
       } else {
-        // Paused: halt both video players and reset gate gain
+        // Paused: halt both video players and denoised audio player
         lastTickTimeRef.current = null;
-        if (nrGateGainRef.current && audioContextRef.current) {
-          nrGateGainRef.current.gain.setTargetAtTime(1.0, audioContextRef.current.currentTime, 0.01);
-        }
         if (mainVideoRef.current && !mainVideoRef.current.paused) mainVideoRef.current.pause();
         if (memeVideoRef.current && !memeVideoRef.current.paused) memeVideoRef.current.pause();
+        if (denoisedAudioRef.current && !denoisedAudioRef.current.paused) denoisedAudioRef.current.pause();
       }
 
       rafIdRef.current = requestAnimationFrame(loop);
@@ -440,7 +478,7 @@ export const Screen2Workspace: React.FC = () => {
     return () => {
       if (rafIdRef.current) cancelAnimationFrame(rafIdRef.current);
     };
-  }, [isPlaying, currentProjectMs, project, activeTransitionClass, previewSpeed, effectiveNoiseRemoval, setCurrentProjectMs, setIsPlaying]);
+  }, [isPlaying, currentProjectMs, project, activeTransitionClass, previewSpeed, denoisedAudioUrl, setCurrentProjectMs, setIsPlaying]);
 
   // Auto-scroll playhead into view when playing and timeline is zoomed
   useEffect(() => {
@@ -488,9 +526,15 @@ export const Screen2Workspace: React.FC = () => {
 
     if (project) {
       const { item, sourceMs } = mapProjectToSource(clamped, project.items);
-      if (item && item.kind === 'SOURCE_CLIP' && mainVideoRef.current) {
-        mainVideoRef.current.currentTime = sourceMs / 1000;
-        lastSeekTargetRef.current = sourceMs;
+      if (item && item.kind === 'SOURCE_CLIP') {
+        const sec = sourceMs / 1000;
+        if (mainVideoRef.current) {
+          mainVideoRef.current.currentTime = sec;
+          lastSeekTargetRef.current = sourceMs;
+        }
+        if (denoisedAudioRef.current) {
+          denoisedAudioRef.current.currentTime = sec;
+        }
       }
     }
   };
@@ -657,12 +701,18 @@ export const Screen2Workspace: React.FC = () => {
           </div>
         </div>
 
-        {/* Audio Filter Controls & A/B Bypass */}
+        {/* Audio Filter Controls */}
         <div className="flex items-center space-x-2">
           {/* Speaker Voice Enhancement Toggle */}
           <button
-            onClick={() => toggleVoiceEnhance()}
-            title="Speaker Voice Enhancement: 80Hz HPF + 250Hz warmth cut + 3kHz vocal presence boost + dynamics leveling"
+            onClick={() => {
+              setupWebAudio();
+              if (audioContextRef.current && audioContextRef.current.state === 'suspended') {
+                audioContextRef.current.resume();
+              }
+              toggleVoiceEnhance();
+            }}
+            title="Speaker Voice Enhancement: 100Hz HPF + 260Hz warmth cut + 3.2kHz vocal presence boost + 8kHz air shelf + dynamics leveling"
             className={`px-2.5 py-1 rounded-md text-xs font-medium flex items-center space-x-1.5 border transition-all ${
               voiceEnhanceEnabled
                 ? 'bg-emerald-950/70 border-emerald-500/80 text-emerald-300 shadow-sm'
@@ -678,33 +728,29 @@ export const Screen2Workspace: React.FC = () => {
 
           {/* Background Noise Removal Toggle */}
           <button
-            onClick={() => toggleNoiseRemoval()}
-            title="Background Noise Removal: 100Hz HPF + 7500Hz LPF + dynamic noise-floor gate to attenuate fan rumble & room hiss"
+            onClick={() => {
+              setupWebAudio();
+              if (audioContextRef.current && audioContextRef.current.state === 'suspended') {
+                audioContextRef.current.resume();
+              }
+              toggleNoiseRemoval();
+            }}
+            title={isDenoising ? `Background Noise Removal: ${denoiseProgress || 'Cleaning audio...'}` : "Background Noise Removal: Adaptive STFT Wiener Spectral Denoiser removing ceiling fan noise and room hiss"}
             className={`px-2.5 py-1 rounded-md text-xs font-medium flex items-center space-x-1.5 border transition-all ${
               noiseRemovalEnabled
                 ? 'bg-indigo-950/70 border-indigo-500/80 text-indigo-300 shadow-sm'
                 : 'bg-gray-800/60 border-gray-700 text-gray-400 hover:text-gray-200'
             }`}
           >
-            <Wand2 className="w-3.5 h-3.5 text-indigo-400" />
+            {isDenoising ? (
+              <Loader2 className="w-3.5 h-3.5 animate-spin text-indigo-400" />
+            ) : (
+              <Wand2 className="w-3.5 h-3.5 text-indigo-400" />
+            )}
             <span>Noise Removal</span>
             <span className={`text-[10px] px-1 py-0.2 rounded font-mono font-bold ${noiseRemovalEnabled ? 'bg-indigo-800/60 text-indigo-200' : 'bg-gray-700 text-gray-400'}`}>
-              {noiseRemovalEnabled ? 'ON' : 'OFF'}
+              {isDenoising ? 'CLEANING...' : noiseRemovalEnabled ? 'ON' : 'OFF'}
             </span>
-          </button>
-
-          {/* Bypass / Original Audio A/B Comparison Toggle */}
-          <button
-            onClick={() => toggleAudioBypass()}
-            title="Instant A/B Comparison: Hear Original raw audio vs Enhanced audio in real time while playing"
-            className={`px-2.5 py-1 rounded-md text-xs font-medium flex items-center space-x-1.5 border transition-all ${
-              isAudioBypassed
-                ? 'bg-amber-950/80 border-amber-500 text-amber-300 font-bold shadow-md shadow-amber-950/50'
-                : 'bg-gray-800/60 border-gray-700 text-gray-300 hover:text-white'
-            }`}
-          >
-            <VolumeX className="w-3.5 h-3.5 text-amber-400" />
-            <span>{isAudioBypassed ? 'Bypassed (Original)' : 'Compare Original'}</span>
           </button>
 
           <div className="h-4 w-[1px] bg-gray-800 mx-1" />
@@ -1153,6 +1199,15 @@ export const Screen2Workspace: React.FC = () => {
               } ${activeTransitionClass}`}
             />
 
+            {/* Denoised Audio Element for Spectral Noise Removal */}
+            <audio
+              ref={denoisedAudioRef}
+              src={denoisedAudioUrl || undefined}
+              preload="auto"
+              playsInline
+              className="hidden"
+            />
+
             {/* Click to play overlay */}
             <div
               onClick={togglePlayPause}
@@ -1448,44 +1503,6 @@ export const Screen2Workspace: React.FC = () => {
                 title="Scan audio and display amber silence blocks on timeline without deleting them yet"
               >
                 Detect Silences
-              </button>
-            </div>
-
-            {/* Audio Processing Toggles & A/B Bypass */}
-            <div className="flex items-center space-x-1.5 pl-3 border-l border-gray-800">
-              <span className="text-gray-400 text-[11px] font-medium">Audio:</span>
-              <button
-                onClick={() => toggleVoiceEnhance()}
-                className={`px-2 py-0.5 rounded text-[11px] font-medium transition-colors border ${
-                  voiceEnhanceEnabled
-                    ? 'bg-emerald-950/80 border-emerald-600/80 text-emerald-300'
-                    : 'bg-gray-800/80 border-gray-750 text-gray-400 hover:text-gray-200'
-                }`}
-                title="Speaker Voice Enhancement (80Hz HPF + 250Hz warmth cut + 3kHz boost + compressor)"
-              >
-                Voice {voiceEnhanceEnabled ? 'ON' : 'OFF'}
-              </button>
-              <button
-                onClick={() => toggleNoiseRemoval()}
-                className={`px-2 py-0.5 rounded text-[11px] font-medium transition-colors border ${
-                  noiseRemovalEnabled
-                    ? 'bg-indigo-950/80 border-indigo-600/80 text-indigo-300'
-                    : 'bg-gray-800/80 border-gray-750 text-gray-400 hover:text-gray-200'
-                }`}
-                title="Background Noise Removal (100Hz HPF + 7500Hz LPF + dynamic noise-floor gate)"
-              >
-                Noise {noiseRemovalEnabled ? 'ON' : 'OFF'}
-              </button>
-              <button
-                onClick={() => toggleAudioBypass()}
-                className={`px-2 py-0.5 rounded text-[11px] font-medium transition-colors border ${
-                  isAudioBypassed
-                    ? 'bg-amber-950/80 border-amber-500 text-amber-300 font-bold'
-                    : 'bg-gray-800/80 border-gray-750 text-gray-300 hover:text-white'
-                }`}
-                title="A/B Compare: Instantly toggle bypass to hear original raw audio vs enhanced audio"
-              >
-                {isAudioBypassed ? 'Original (Bypassed)' : 'A/B Bypass'}
               </button>
             </div>
 
