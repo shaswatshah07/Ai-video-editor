@@ -1,11 +1,13 @@
 import { TimelineItem } from '../types/edl';
+import { generateDenoisedAudio } from './audioDenoiser';
 
 export type SilenceSensitivity = 'Gentle' | 'Normal' | 'Tight';
 
 export interface SensitivityConfig {
   name: SilenceSensitivity;
   minSilenceMs: number;
-  thresholdOffsetDb: number;
+  sensitivityOffsetDb: number;
+  thresholdOffsetDb?: number; // backwards compatibility
   postPaddingMs: number; // after-speech padding (starts silence + postPaddingMs)
   prePaddingMs: number;  // before-speech padding (ends silence - prePaddingMs)
 }
@@ -13,24 +15,27 @@ export interface SensitivityConfig {
 export const SILENCE_PRESETS: Record<SilenceSensitivity, SensitivityConfig> = {
   Gentle: {
     name: 'Gentle',
-    minSilenceMs: 800,
-    thresholdOffsetDb: 8,
+    minSilenceMs: 700,
+    sensitivityOffsetDb: -2.5,
+    thresholdOffsetDb: -2.5,
     postPaddingMs: 200,
-    prePaddingMs: 150
+    prePaddingMs: 160
   },
   Normal: {
     name: 'Normal',
     minSilenceMs: 500,
-    thresholdOffsetDb: 10,
-    postPaddingMs: 150,
-    prePaddingMs: 100
+    sensitivityOffsetDb: 0.0,
+    thresholdOffsetDb: 0.0,
+    postPaddingMs: 180,
+    prePaddingMs: 150
   },
   Tight: {
     name: 'Tight',
     minSilenceMs: 350,
-    thresholdOffsetDb: 12,
-    postPaddingMs: 120,
-    prePaddingMs: 80
+    sensitivityOffsetDb: 2.0,
+    thresholdOffsetDb: 2.0,
+    postPaddingMs: 150,
+    prePaddingMs: 120
   }
 };
 
@@ -44,62 +49,64 @@ export interface DetectedSilence {
 export interface SilenceDetectionResult {
   silences: DetectedSilence[];
   noiseFloorDb: number;
+  speechLevelDb: number;
   thresholdDb: number;
   rawGapsCount: number;
   mergedRegionsCount: number;
   totalWindows: number;
   sensitivity: SilenceSensitivity;
+  diagnosticMessage?: string;
+  warning?: string;
 }
 
 /**
- * Checks if a time range contains speech energy exceeding protectedDb for more than 60ms.
- */
-function hasProtectedSpeech(
-  windowDbs: number[],
-  startMs: number,
-  endMs: number,
-  protectedDb: number,
-  totalWindows: number
-): boolean {
-  const startW = Math.max(0, Math.floor(startMs / 50));
-  const endW = Math.min(totalWindows, Math.ceil(endMs / 50));
-  let consecutive = 0;
-
-  for (let w = startW; w < endW; w++) {
-    if (windowDbs[w] >= protectedDb) {
-      consecutive++;
-      // 2 windows of 50ms = 100ms > 60ms
-      if (consecutive >= 2) return true;
-    } else {
-      consecutive = 0;
-    }
-  }
-  return false;
-}
-
-/**
- * Decodes audio from an uploaded video file or blob URL,
- * analyzes RMS energy in 50ms windows, computes adaptive threshold,
- * applies merge rules (absorb active stretch <400ms and active slivers <300ms),
- * and enforces safety rule: never remove audio where level > threshold + 3dB for >60ms.
+ * Decodes audio from an uploaded video file, blob URL, or pre-denoised audio blob.
+ * Pre-filters through a 300 Hz HPF + 3400 Hz LPF speech band via OfflineAudioContext.
+ * Measures RMS in 50ms windows with 25ms hop (50% overlap).
+ * Calculates adaptive bimodal valley threshold (speechLevel - 7 vs noiseFloor + valleyOffset).
+ * Uses 100ms speech hangover hysteresis, safe gap merging (<150ms and below speechLevel - 3dB),
+ * and +180ms/-150ms padding with sanity guardrails.
  */
 export async function detectSilenceInVideo(
   videoFileOrBlob: Blob | File | string,
   sourceDurationMs: number,
-  sensitivity: SilenceSensitivity = 'Normal'
+  sensitivity: SilenceSensitivity = 'Normal',
+  denoisedBlob?: Blob | null,
+  onDenoisedGenerated?: (blob: Blob, url: string) => void
 ): Promise<SilenceDetectionResult> {
   const config = SILENCE_PRESETS[sensitivity] || SILENCE_PRESETS.Normal;
 
   try {
-    let blob: Blob;
-    if (typeof videoFileOrBlob === 'string') {
-      const resp = await fetch(videoFileOrBlob);
-      blob = await resp.blob();
+    let audioBlobToAnalyze: Blob;
+
+    if (denoisedBlob) {
+      audioBlobToAnalyze = denoisedBlob;
     } else {
-      blob = videoFileOrBlob;
+      try {
+        let sourceUrl: string;
+        let shouldRevoke = false;
+        if (typeof videoFileOrBlob === 'string') {
+          sourceUrl = videoFileOrBlob;
+        } else {
+          sourceUrl = URL.createObjectURL(videoFileOrBlob);
+          shouldRevoke = true;
+        }
+        const denoiseResult = await generateDenoisedAudio(sourceUrl);
+        if (shouldRevoke) URL.revokeObjectURL(sourceUrl);
+        audioBlobToAnalyze = denoiseResult.blob;
+        onDenoisedGenerated?.(denoiseResult.blob, denoiseResult.url);
+      } catch (denoiseErr) {
+        console.warn('[SilenceDetector] Denoiser unavailable/failed, analyzing original audio:', denoiseErr);
+        if (typeof videoFileOrBlob === 'string') {
+          const resp = await fetch(videoFileOrBlob);
+          audioBlobToAnalyze = await resp.blob();
+        } else {
+          audioBlobToAnalyze = videoFileOrBlob;
+        }
+      }
     }
 
-    const arrayBuffer = await blob.arrayBuffer();
+    const arrayBuffer = await audioBlobToAnalyze.arrayBuffer();
     const AudioCtxClass = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
     const audioCtx = new AudioCtxClass();
 
@@ -112,24 +119,73 @@ export async function detectSilenceInVideo(
       return {
         silences: sim,
         noiseFloorDb: -50,
+        speechLevelDb: -20,
         thresholdDb: -40,
         rawGapsCount: sim.length,
         mergedRegionsCount: sim.length,
         totalWindows: Math.floor(sourceDurationMs / 50),
-        sensitivity
+        sensitivity,
+        warning: 'Audio decode failed, loaded fallback simulated pauses.'
       };
     }
+    await audioCtx.close();
 
-    const channelData = audioBuffer.getChannelData(0);
     const sampleRate = audioBuffer.sampleRate;
-    const windowSamples = Math.floor(sampleRate * 0.05); // 50ms window
-    const totalWindows = Math.floor(channelData.length / windowSamples);
+    const length = audioBuffer.length;
 
-    if (totalWindows === 0) {
-      await audioCtx.close();
+    // Mix to mono Float32Array
+    const monoSamples = new Float32Array(length);
+    if (audioBuffer.numberOfChannels === 1) {
+      monoSamples.set(audioBuffer.getChannelData(0));
+    } else {
+      const ch0 = audioBuffer.getChannelData(0);
+      const ch1 = audioBuffer.getChannelData(1);
+      for (let i = 0; i < length; i++) {
+        monoSamples[i] = 0.5 * (ch0[i] + ch1[i]);
+      }
+    }
+
+    // FIX 1: Run speech bandpass filter (300 Hz HPF + 3400 Hz LPF) via OfflineAudioContext
+    let speechBandSamples: Float32Array;
+    try {
+      const offCtx = new OfflineAudioContext(1, length, sampleRate);
+      const srcBuf = offCtx.createBuffer(1, length, sampleRate);
+      srcBuf.getChannelData(0).set(monoSamples);
+      const srcNode = offCtx.createBufferSource();
+      srcNode.buffer = srcBuf;
+
+      const hpf = offCtx.createBiquadFilter();
+      hpf.type = 'highpass';
+      hpf.frequency.value = 300;
+      hpf.Q.value = 0.7071;
+
+      const lpf = offCtx.createBiquadFilter();
+      lpf.type = 'lowpass';
+      lpf.frequency.value = 3400;
+      lpf.Q.value = 0.7071;
+
+      srcNode.connect(hpf);
+      hpf.connect(lpf);
+      lpf.connect(offCtx.destination);
+      srcNode.start(0);
+
+      const filtered = await offCtx.startRendering();
+      speechBandSamples = filtered.getChannelData(0);
+    } catch (e) {
+      console.warn('[SilenceDetector] Speech-band filtering failed, using raw mono:', e);
+      speechBandSamples = monoSamples;
+    }
+
+    // FIX 2: Frame analysis with 50ms window, 25ms hop (50% overlap)
+    const windowSamples = Math.floor(sampleRate * 0.05); // 50ms
+    const hopSamples = Math.floor(sampleRate * 0.025);   // 25ms
+    const totalFrames = Math.max(0, Math.floor((speechBandSamples.length - windowSamples) / hopSamples) + 1);
+
+    if (totalFrames === 0) {
       return {
         silences: [],
         noiseFloorDb: -60,
+        speechLevelDb: -20,
         thresholdDb: -50,
         rawGapsCount: 0,
         mergedRegionsCount: 0,
@@ -138,54 +194,84 @@ export async function detectSilenceInVideo(
       };
     }
 
-    const windowDbs: number[] = new Array(totalWindows);
-
-    for (let w = 0; w < totalWindows; w++) {
+    const frameDbs = new Float32Array(totalFrames);
+    for (let f = 0; f < totalFrames; f++) {
+      const start = f * hopSamples;
       let sumSq = 0;
-      const start = w * windowSamples;
       for (let i = 0; i < windowSamples; i++) {
-        const s = channelData[start + i];
+        const s = speechBandSamples[start + i];
         sumSq += s * s;
       }
       const rms = Math.sqrt(sumSq / windowSamples);
-      windowDbs[w] = rms > 1e-5 ? 20 * Math.log10(rms) : -100;
+      frameDbs[f] = rms > 1e-6 ? 20 * Math.log10(rms) : -120;
     }
 
-    await audioCtx.close();
-
-    // 10th percentile for noise floor
-    const sortedDbs = [...windowDbs].sort((a, b) => a - b);
+    // Percentiles: 10th percentile for noise floor, 80th percentile for speech level
+    const sortedDbs = Array.from(frameDbs).sort((a, b) => a - b);
     const p10Index = Math.floor(sortedDbs.length * 0.10);
-    const noiseFloorDb = sortedDbs[p10Index] ?? -60;
-    const thresholdDb = noiseFloorDb + config.thresholdOffsetDb;
-    const protectedDb = thresholdDb + 3; // Safety rule (d): level stays > threshold + 3dB for > 60ms
+    const p80Index = Math.floor(sortedDbs.length * 0.80);
 
-    // 1. Scan raw silent gaps
+    const noiseFloorDb = sortedDbs[p10Index] ?? -60;
+    const speechLevelDb = sortedDbs[p80Index] ?? -20;
+    const dynamicRangeDb = speechLevelDb - noiseFloorDb;
+
+    // Guardrail: if dynamicRangeDb < 4 dB, return 0 silences
+    if (dynamicRangeDb < 4) {
+      return {
+        silences: [],
+        noiseFloorDb,
+        speechLevelDb,
+        thresholdDb: speechLevelDb - 5,
+        rawGapsCount: 0,
+        mergedRegionsCount: 0,
+        totalWindows: totalFrames,
+        sensitivity,
+        diagnosticMessage: `Uniform audio detected (dynamic range ${dynamicRangeDb.toFixed(1)} dB < 4 dB). No silences cut to protect audio.`,
+        warning: `Audio levels are uniform (noise floor ${noiseFloorDb.toFixed(1)} dB, speech level ${speechLevelDb.toFixed(1)} dB). Pauses cannot be reliably separated without risking speech clipping.`
+      };
+    }
+
+    // Bimodal valley threshold:
+    const valleyOffset = Math.min(8, dynamicRangeDb * 0.32);
+    const baseThresholdDb = Math.min(speechLevelDb - 7, noiseFloorDb + valleyOffset);
+    const sensitivityOffset = config.sensitivityOffsetDb ?? (
+      sensitivity === 'Tight' ? 2.0 : sensitivity === 'Gentle' ? -2.5 : 0.0
+    );
+    // Hard safety cap: threshold can NEVER be closer than 5 dB to the 80th percentile speech level
+    const thresholdDb = Math.min(speechLevelDb - 5, baseThresholdDb + sensitivityOffset);
+
+    // FIX 3.1: Speech Hangover (Hysteresis) - require 100ms consecutive sub-threshold frames
+    const hopMs = 25;
+    const hangoverFrames = Math.max(1, Math.round(100 / hopMs)); // 4 frames = 100ms
     const rawGaps: { startMs: number; endMs: number; durationMs: number }[] = [];
     let inSilence = false;
-    let silenceStartWindow = 0;
+    let silenceStartFrame = 0;
+    let consecutiveQuiet = 0;
 
-    for (let w = 0; w < totalWindows; w++) {
-      if (windowDbs[w] < thresholdDb) {
-        if (!inSilence) {
+    for (let f = 0; f < totalFrames; f++) {
+      const isQuiet = frameDbs[f] < thresholdDb;
+      if (isQuiet) {
+        consecutiveQuiet++;
+        if (!inSilence && consecutiveQuiet >= hangoverFrames) {
           inSilence = true;
-          silenceStartWindow = w;
+          silenceStartFrame = f - consecutiveQuiet + 1;
         }
       } else {
         if (inSilence) {
-          inSilence = false;
-          const sMs = Math.round(silenceStartWindow * 50);
-          const eMs = Math.round(w * 50);
+          const sMs = Math.round(silenceStartFrame * hopMs);
+          const eMs = Math.round(f * hopMs);
           if (eMs - sMs >= config.minSilenceMs) {
             rawGaps.push({ startMs: sMs, endMs: eMs, durationMs: eMs - sMs });
           }
+          inSilence = false;
         }
+        consecutiveQuiet = 0;
       }
     }
 
     if (inSilence) {
-      const sMs = Math.round(silenceStartWindow * 50);
-      const eMs = Math.round(totalWindows * 50);
+      const sMs = Math.round(silenceStartFrame * hopMs);
+      const eMs = Math.round(totalFrames * hopMs);
       if (eMs - sMs >= config.minSilenceMs) {
         rawGaps.push({ startMs: sMs, endMs: eMs, durationMs: eMs - sMs });
       }
@@ -193,19 +279,30 @@ export async function detectSilenceInVideo(
 
     const rawGapsCount = rawGaps.length;
 
-    // 2. Merge Rule A: Merge any two gaps separated by active stretch < 400ms (unless protected speech)
+    // FIX 3.2: Safe Gap Merging (DO NOT swallow short words)
+    // Only merge two silence gaps if sound between them < 150ms AND peak dB < speechLevelDb - 3
     const mergedGaps: { startMs: number; endMs: number; durationMs: number }[] = [];
     for (const gap of rawGaps) {
       if (mergedGaps.length === 0) {
         mergedGaps.push({ ...gap });
         continue;
       }
-      const last = mergedGaps[mergedGaps.length - 1];
-      const activeStretch = gap.startMs - last.endMs;
-      const isProtected = hasProtectedSpeech(windowDbs, last.endMs, gap.startMs, protectedDb, totalWindows);
 
-      if (activeStretch < 400 && !isProtected) {
-        // Absorb noise/breath stretch
+      const last = mergedGaps[mergedGaps.length - 1];
+      const soundBetweenMs = gap.startMs - last.endMs;
+
+      const startFrame = Math.max(0, Math.floor(last.endMs / hopMs));
+      const endFrame = Math.min(totalFrames, Math.ceil(gap.startMs / hopMs));
+      let peakDbBetween = -120;
+      for (let f = startFrame; f < endFrame; f++) {
+        if (frameDbs[f] > peakDbBetween) {
+          peakDbBetween = frameDbs[f];
+        }
+      }
+
+      const canMerge = soundBetweenMs < 150 && peakDbBetween < (speechLevelDb - 3);
+
+      if (canMerge) {
         last.endMs = gap.endMs;
         last.durationMs = last.endMs - last.startMs;
       } else {
@@ -213,68 +310,74 @@ export async function detectSilenceInVideo(
       }
     }
 
-    // 3. Apply post-speech and pre-speech safety padding
-    const paddedGaps: { startMs: number; endMs: number; durationMs: number }[] = [];
+    // FIX 3.3: Padding & Minimum Duration (+180ms start, -150ms end)
+    const finalSilences: DetectedSilence[] = [];
     for (const g of mergedGaps) {
-      const pStart = Math.min(g.endMs, g.startMs + config.postPaddingMs);
-      const pEnd = Math.max(pStart, g.endMs - config.prePaddingMs);
-      const dur = pEnd - pStart;
-      if (dur >= 200) {
-        paddedGaps.push({ startMs: pStart, endMs: pEnd, durationMs: dur });
+      const pStart = g.startMs + config.postPaddingMs;
+      const pEnd = g.endMs - config.prePaddingMs;
+      const pDur = pEnd - pStart;
+
+      if (pDur >= config.minSilenceMs) {
+        const fStart = Math.max(0, Math.floor(pStart / hopMs));
+        const fEnd = Math.min(totalFrames, Math.ceil(pEnd / hopMs));
+        let sumRms = 0;
+        let count = 0;
+        for (let f = fStart; f < fEnd; f++) {
+          sumRms += Math.pow(10, frameDbs[f] / 20);
+          count++;
+        }
+        const avgRms = count > 0 ? sumRms / count : Math.pow(10, thresholdDb / 20);
+
+        finalSilences.push({
+          startMs: pStart,
+          endMs: pEnd,
+          durationMs: pDur,
+          avgRms
+        });
       }
     }
 
-    // 4. Merge Rule B: Drop any resulting ACTIVE segment shorter than 300 ms between two silence regions
-    // by merging it into the silence on its longer side (unless first or last segment of video)
-    const finalGaps: DetectedSilence[] = [];
-    for (let i = 0; i < paddedGaps.length; i++) {
-      if (finalGaps.length === 0) {
-        finalGaps.push({
-          startMs: paddedGaps[i].startMs,
-          endMs: paddedGaps[i].endMs,
-          durationMs: paddedGaps[i].durationMs,
-          avgRms: Math.pow(10, thresholdDb / 20)
-        });
-        continue;
-      }
-
-      const prev = finalGaps[finalGaps.length - 1];
-      const curr = paddedGaps[i];
-      const activeStretch = curr.startMs - prev.endMs;
-
-      // Drop active stretch < 300ms by merging across into one continuous silence
-      if (activeStretch < 300) {
-        prev.endMs = curr.endMs;
-        prev.durationMs = prev.endMs - prev.startMs;
-      } else {
-        finalGaps.push({
-          startMs: curr.startMs,
-          endMs: curr.endMs,
-          durationMs: curr.durationMs,
-          avgRms: Math.pow(10, thresholdDb / 20)
-        });
-      }
+    // FIX 3.4: Sanity Guardrail: total detected silences > 75% of duration while speechLevel > -35 dB
+    const totalSilenceMs = finalSilences.reduce((acc, s) => acc + s.durationMs, 0);
+    if (speechLevelDb > -35 && totalSilenceMs > sourceDurationMs * 0.75) {
+      return {
+        silences: [],
+        noiseFloorDb,
+        speechLevelDb,
+        thresholdDb,
+        rawGapsCount,
+        mergedRegionsCount: 0,
+        totalWindows: totalFrames,
+        sensitivity,
+        warning: "Silence detection rejected: too much active audio would be removed. Try 'Gentle' sensitivity.",
+        diagnosticMessage: `False positive rejected: ${(totalSilenceMs / 1000).toFixed(1)}s (${((totalSilenceMs / sourceDurationMs) * 100).toFixed(0)}%) flagged as silence with speech level at ${speechLevelDb.toFixed(1)} dB.`
+      };
     }
 
     return {
-      silences: finalGaps,
+      silences: finalSilences,
       noiseFloorDb,
+      speechLevelDb,
       thresholdDb,
       rawGapsCount,
-      mergedRegionsCount: finalGaps.length,
-      totalWindows,
-      sensitivity
+      mergedRegionsCount: finalSilences.length,
+      totalWindows: totalFrames,
+      sensitivity,
+      diagnosticMessage: `Detected ${finalSilences.length} pauses (${(totalSilenceMs / 1000).toFixed(1)}s total). Speech: ${speechLevelDb.toFixed(1)} dB, Noise: ${noiseFloorDb.toFixed(1)} dB, Threshold: ${thresholdDb.toFixed(1)} dB.`
     };
-  } catch {
+  } catch (err) {
+    console.warn('[SilenceDetector] Audio processing failed, fallback to simulated silences:', err);
     const sim = generateSimulatedSilences(sourceDurationMs);
     return {
       silences: sim,
       noiseFloorDb: -50,
+      speechLevelDb: -20,
       thresholdDb: -40,
       rawGapsCount: sim.length,
       mergedRegionsCount: sim.length,
       totalWindows: Math.floor(sourceDurationMs / 50),
-      sensitivity
+      sensitivity,
+      warning: 'Audio analysis error; loaded fallback simulated pauses.'
     };
   }
 }

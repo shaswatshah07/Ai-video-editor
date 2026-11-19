@@ -9,6 +9,7 @@ import {
 } from '../utils/timelineMath';
 import { getOrGenerateMemeBlob, MEME_PRESETS } from '../utils/memeGenerator';
 import { detectSilenceInVideo, injectSilenceCutsIntoTimeline, SilenceSensitivity, SILENCE_PRESETS } from '../utils/silenceDetector';
+import { generateDenoisedAudio } from '../utils/audioDenoiser';
 import { generateSourceThumbnails, ThumbnailMap, ThumbnailProgress } from '../utils/thumbnailGenerator';
 import { transcribeVideoAudio, suggestNonSpeechCuts, TranscriptionStatus } from '../utils/transcriptionService';
 
@@ -568,7 +569,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   },
 
   detectSilencesOnly: async (param) => {
-    const { project, silenceSensitivity } = get();
+    const { project, silenceSensitivity, denoisedAudioBlob, setDenoisedAudio } = get();
     if (!project) return { count: 0, message: 'No video project loaded.' };
 
     const effectiveSensitivity: SilenceSensitivity = typeof param === 'string'
@@ -576,10 +577,29 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       : typeof param === 'number'
       ? (param >= 700 ? 'Gentle' : param <= 400 ? 'Tight' : 'Normal')
       : (silenceSensitivity ?? 'Normal');
-    const res = await detectSilenceInVideo(project.sourceVideoUrl, project.sourceDurationMs, effectiveSensitivity);
+
+    // FIX 1: Run detection on denoised, speech-band audio
+    let targetBlob = denoisedAudioBlob;
+    if (!targetBlob && project.sourceVideoUrl) {
+      try {
+        const denoiseRes = await generateDenoisedAudio(project.sourceVideoUrl);
+        setDenoisedAudio(denoiseRes.blob, denoiseRes.url);
+        targetBlob = denoiseRes.blob;
+      } catch (err) {
+        console.warn('[Store] Denoiser before silence detection fallback:', err);
+      }
+    }
+
+    const res = await detectSilenceInVideo(
+      project.sourceVideoUrl,
+      project.sourceDurationMs,
+      effectiveSensitivity,
+      targetBlob,
+      (blob, url) => setDenoisedAudio(blob, url)
+    );
 
     if (res.silences.length === 0) {
-      const msg = `No pauses detected (${effectiveSensitivity} mode, noise floor ${res.noiseFloorDb.toFixed(1)} dB, threshold ${res.thresholdDb.toFixed(1)} dB).`;
+      const msg = res.warning || `No pauses detected (${effectiveSensitivity} mode, speech ${res.speechLevelDb.toFixed(1)} dB, noise floor ${res.noiseFloorDb.toFixed(1)} dB, threshold ${res.thresholdDb.toFixed(1)} dB).`;
       return { count: 0, message: msg };
     }
 
@@ -598,12 +618,12 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     });
 
     const totalSec = res.silences.reduce((acc, s) => acc + s.durationMs, 0) / 1000;
-    const msg = `Found ${res.rawGapsCount} raw gaps -> ${res.silences.length} merged regions (${totalSec.toFixed(1)}s, noise floor ${res.noiseFloorDb.toFixed(1)} dB, threshold ${res.thresholdDb.toFixed(1)} dB). Amber blocks added to timeline.`;
+    const msg = `Found ${res.rawGapsCount} raw gaps -> ${res.silences.length} merged regions (${totalSec.toFixed(1)}s, speech ${res.speechLevelDb.toFixed(1)} dB, noise ${res.noiseFloorDb.toFixed(1)} dB, threshold ${res.thresholdDb.toFixed(1)} dB). Amber blocks added to timeline.`;
     return { count: res.silences.length, message: msg };
   },
 
   removeOrDetectSilences: async (param) => {
-    const { project, silenceSensitivity } = get();
+    const { project, silenceSensitivity, denoisedAudioBlob, setDenoisedAudio } = get();
     if (!project) return { changed: false, message: 'No video project loaded.' };
 
     const effectiveSensitivity: SilenceSensitivity = typeof param === 'string'
@@ -615,19 +635,38 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     let existingSuggested = items.filter(it => it.status === 'SUGGESTED_SILENCE_CUT');
     let rawGapsCount = existingSuggested.length;
     let noiseFloorDb = -50;
+    let speechLevelDb = -20;
     let thresholdDb = -40;
 
     // If detector hasn't run yet, run it on demand
     if (existingSuggested.length === 0) {
-      const res = await detectSilenceInVideo(project.sourceVideoUrl, project.sourceDurationMs, effectiveSensitivity);
+      let targetBlob = denoisedAudioBlob;
+      if (!targetBlob && project.sourceVideoUrl) {
+        try {
+          const denoiseRes = await generateDenoisedAudio(project.sourceVideoUrl);
+          setDenoisedAudio(denoiseRes.blob, denoiseRes.url);
+          targetBlob = denoiseRes.blob;
+        } catch (err) {
+          console.warn('[Store] Denoiser before silence removal fallback:', err);
+        }
+      }
+
+      const res = await detectSilenceInVideo(
+        project.sourceVideoUrl,
+        project.sourceDurationMs,
+        effectiveSensitivity,
+        targetBlob,
+        (blob, url) => setDenoisedAudio(blob, url)
+      );
       rawGapsCount = res.rawGapsCount;
       noiseFloorDb = res.noiseFloorDb;
+      speechLevelDb = res.speechLevelDb;
       thresholdDb = res.thresholdDb;
 
       if (res.silences.length === 0) {
         return {
           changed: false,
-          message: `No pauses detected (${effectiveSensitivity} mode, noise floor ${res.noiseFloorDb.toFixed(1)} dB, threshold ${res.thresholdDb.toFixed(1)} dB).`
+          message: res.warning || `No pauses detected (${effectiveSensitivity} mode, speech ${res.speechLevelDb.toFixed(1)} dB, noise floor ${res.noiseFloorDb.toFixed(1)} dB, threshold ${res.thresholdDb.toFixed(1)} dB).`
         };
       }
       items = injectSilenceCutsIntoTimeline(items, res.silences);
@@ -654,7 +693,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       }
     });
 
-    const msg = `Found ${rawGapsCount} raw gaps -> ${count} merged regions (${(totalSilenceMs / 1000).toFixed(1)}s removed, noise floor ${noiseFloorDb.toFixed(1)} dB, threshold ${thresholdDb.toFixed(1)} dB). New length ${(newDurationMs / 1000).toFixed(1)} s.`;
+    const msg = `Found ${rawGapsCount} raw gaps -> ${count} merged regions (${(totalSilenceMs / 1000).toFixed(1)}s removed, speech ${speechLevelDb.toFixed(1)} dB, noise ${noiseFloorDb.toFixed(1)} dB, threshold ${thresholdDb.toFixed(1)} dB). New length ${(newDurationMs / 1000).toFixed(1)} s.`;
     return {
       changed: true,
       message: msg,

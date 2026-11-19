@@ -3,10 +3,11 @@ import { Upload, Sparkles, Wand2, CheckCircle2, ArrowRight, Play, AlertCircle, F
 import { useEditorStore } from '../store/useEditorStore';
 import { generateSampleDemoVideo } from '../utils/sampleDemoGenerator';
 import { detectSilenceInVideo, injectSilenceCutsIntoTimeline } from '../utils/silenceDetector';
+import { generateDenoisedAudio } from '../utils/audioDenoiser';
 import { TimelineItem } from '../types/edl';
 
 export const Screen1Upload: React.FC = () => {
-  const { loadProject, setScreen, toggleVoiceEnhance, toggleNoiseReduction, generateTranscript } = useEditorStore();
+  const { loadProject, setScreen, toggleVoiceEnhance, toggleNoiseReduction, generateTranscript, setDenoisedAudio } = useEditorStore();
 
   const [isDragging, setIsDragging] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -134,8 +135,16 @@ export const Screen1Upload: React.FC = () => {
       ];
 
       if (isAutoMode && autoOptions.detectSilence) {
-        setProcessingStatus('Scanning audio RMS energy for awkward pauses (Normal preset)...');
-        const { silences } = await detectSilenceInVideo(selectedFile, durationMs, 'Normal');
+        setProcessingStatus('Denoising audio & scanning speech frequencies for awkward pauses...');
+        let targetBlob: Blob | null = null;
+        try {
+          const denoiseRes = await generateDenoisedAudio(videoUrl);
+          targetBlob = denoiseRes.blob;
+          setDenoisedAudio(denoiseRes.blob, denoiseRes.url);
+        } catch (e) {
+          console.warn('[Screen1Upload] Denoiser fallback for silence detection:', e);
+        }
+        const { silences } = await detectSilenceInVideo(selectedFile, durationMs, 'Normal', targetBlob);
         items = injectSilenceCutsIntoTimeline(items, silences);
       }
 
