@@ -1,4 +1,4 @@
-import React, { useRef, useEffect, useState, useCallback } from 'react';
+import React, { useRef, useEffect, useState, useCallback, useMemo } from 'react';
 import {
   Play, Pause, RotateCcw, RotateCw, Scissors, Trash2,
   Sparkles, Send, Upload, ChevronRight, ChevronLeft, ChevronDown, ArrowRight,
@@ -23,6 +23,7 @@ export const Screen2Workspace: React.FC = () => {
     timelineZoom,
     silenceSensitivity,
     thumbnails,
+    clipFilmstrips,
     thumbnailProgress,
     selectedItemId,
     commandLogs,
@@ -40,6 +41,7 @@ export const Screen2Workspace: React.FC = () => {
     transcriptionFallbackNotice,
     transcriptQuality,
     transcriptMode,
+    addedClipTranscribing,
     setScreen,
     setCurrentProjectMs,
     setIsPlaying,
@@ -51,7 +53,6 @@ export const Screen2Workspace: React.FC = () => {
     setTranscriptMode,
     updateTranscriptWord,
     generateTranscript,
-    suggestNonSpeechSilences,
     setSelectedItemId,
     splitAtPlayhead,
     deleteSelected,
@@ -140,6 +141,31 @@ export const Screen2Workspace: React.FC = () => {
 
   const timelineContainerRef = useRef<HTMLDivElement | null>(null);
   const trackContainerRef = useRef<HTMLDivElement | null>(null);
+
+  // Map and sort transcript words to Project Time (including added video clips and reordered clips)
+  const getWordProjectMs = useCallback((w: { sourceStartMs: number; sourceEndMs: number; clipId?: string }, items: NonNullable<typeof project>['items']): number | null => {
+    if (w.clipId && w.clipId !== 'primary') {
+      const item = items.find((it) => it.id === w.clipId);
+      if (!item || item.status === 'DELETED') return null;
+      return item.projectStartMs + Math.max(0, w.sourceStartMs - item.sourceStartMs);
+    }
+    const sourceItems = items.filter((it) => it.kind === 'SOURCE_CLIP');
+    return mapSourceToProjectMs(w.sourceStartMs, sourceItems.length > 0 ? sourceItems : items);
+  }, []);
+
+  const mappedTranscriptWords = useMemo(() => {
+    if (!project?.transcript) return [];
+    const mapped = project.transcript.map((w) => ({
+      word: w,
+      projMs: getWordProjectMs(w, project.items)
+    }));
+    return mapped.sort((a, b) => {
+      if (a.projMs === null && b.projMs === null) return 0;
+      if (a.projMs === null) return 1;
+      if (b.projMs === null) return -1;
+      return a.projMs - b.projMs;
+    });
+  }, [project?.transcript, project?.items, getWordProjectMs]);
 
   // Connect denoised <audio> element to Web Audio gain node
   const connectDenoisedSource = useCallback(() => {
@@ -1014,24 +1040,6 @@ export const Screen2Workspace: React.FC = () => {
                         </button>
                       )}
                     </div>
-
-                    {project.transcript.length > 0 && !project.isDemoSample && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const res = suggestNonSpeechSilences();
-                          alert(res.message);
-                        }}
-                        className="w-full bg-[#D97706]/15 hover:bg-[#D97706]/25 border border-[#F59E0B]/50 text-[#FCD34D] py-1 px-2 rounded-lg text-[11px] flex items-center justify-center space-x-1.5 transition-all"
-                        title="Experimental: works best on quiet/low-noise recordings. For noisy audio, use Split (S) or Cut commands."
-                      >
-                        <ShieldAlert className="w-3 h-3 text-[#F59E0B]" />
-                        <span>Suggest Non-Speech Cuts</span>
-                        <span className="bg-[#D97706]/15 border border-[#F59E0B]/40 text-[#FCD34D] text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded font-medium">
-                          Experimental
-                        </span>
-                      </button>
-                    )}
                   </div>
 
                   {/* Fallback Notice if Small model fell back to Base */}
@@ -1120,7 +1128,12 @@ export const Screen2Workspace: React.FC = () => {
 
                       <div className="flex items-center justify-between text-[11px] text-[#A19E97] pb-1 border-b border-[#2C2B28]">
                         <span>Click to seek • Double-click to edit:</span>
-                        {project.isDemoSample ? (
+                        {addedClipTranscribing ? (
+                          <span className="text-[10px] bg-[#1F1E1C] text-[#E8872A] border border-[#E8872A]/40 px-1.5 py-0.5 rounded font-mono flex items-center space-x-1">
+                            <Loader2 className="w-2.5 h-2.5 animate-spin" />
+                            <span>Transcribing added clip...</span>
+                          </span>
+                        ) : project.isDemoSample ? (
                           <span className="text-[10px] bg-[#1F1E1C] text-[#FCD34D] border border-[#2C2B28] px-1.5 py-0.2 rounded font-mono">
                             Sample transcript
                           </span>
@@ -1132,8 +1145,7 @@ export const Screen2Workspace: React.FC = () => {
                       </div>
 
                       <div className="leading-relaxed space-x-1 font-sans text-xs">
-                        {project.transcript.map((w) => {
-                          const projMs = mapSourceToProjectMs(w.sourceStartMs, project.items);
+                        {mappedTranscriptWords.map(({ word: w, projMs }) => {
                           const isDeleted = projMs === null;
                           const isCurrent =
                             projMs !== null &&
@@ -2003,18 +2015,6 @@ export const Screen2Workspace: React.FC = () => {
                 onChange={handleAddClipFileInput}
                 className="hidden"
               />
-              <button
-                onClick={() => {
-                  setIsRightOpen(true);
-                  setIsMemeSectionOpen(true);
-                  setMemeTab('library');
-                }}
-                className="px-2 py-0.5 bg-[#E11D48]/15 hover:bg-[#E11D48]/30 border border-[#FB7185]/50 text-[#FDA4AF] rounded text-[11px] font-medium transition-colors flex items-center space-x-1"
-                title="Browse Meme Library or Upload Your Own Meme"
-              >
-                <Plus className="w-3 h-3" />
-                <span>+ Meme</span>
-              </button>
             </div>
 
             {/* Thumbnail Generation Progress (Item 1) */}
@@ -2137,9 +2137,14 @@ export const Screen2Workspace: React.FC = () => {
                   : 10;
 
                 const isSilence = item.status === 'SUGGESTED_SILENCE_CUT';
-                const isMeme = item.kind === 'MEME_CLIP';
+                const isAddedVideoClip = !isSilence && (
+                  (item.kind === 'MEME_CLIP' && (!!item.meta?.isAddedClip || (item.id.startsWith('clip_') && !item.meta?.memeCategory?.startsWith('meme_')))) ||
+                  (item.kind === 'SOURCE_CLIP' && item.blobUrl !== project.sourceVideoUrl)
+                );
+                const isMeme = item.kind === 'MEME_CLIP' && !isAddedVideoClip;
                 const isDraggable = item.status === 'ACTIVE';
-                const hasThumbnails = Object.keys(thumbnails).length > 0;
+                const clipThumbs = clipFilmstrips[item.blobUrl] || (item.kind === 'SOURCE_CLIP' ? thumbnails : null);
+                const hasClipThumbnails = !!clipThumbs && Object.keys(clipThumbs).length > 0;
                 const isNarrow = item.durationMs < 2000;
                 const isHighZoom = timelineZoom >= 3;
                 const frameIntervalMs = isHighZoom ? 500 : 1000;
@@ -2212,12 +2217,12 @@ export const Screen2Workspace: React.FC = () => {
                     )}
 
                     {/* Filmstrip Frame Thumbnails (Item 1) */}
-                    {hasThumbnails && item.kind === 'SOURCE_CLIP' && !isSilence && (
+                    {hasClipThumbnails && !isSilence && !isMeme && (
                       <div className="absolute inset-0 flex flex-row overflow-hidden pointer-events-none opacity-85 rounded-lg">
                         {Array.from({ length: tileCount }).map((_, tileIdx) => {
                           const tileSourceMs = item.sourceStartMs + (tileIdx * item.durationMs) / tileCount;
                           const nearestMs = Math.round(tileSourceMs / 500) * 500;
-                          const frameUrl = thumbnails[nearestMs] || thumbnails[Math.floor(tileSourceMs / 1000)] || thumbnails[0];
+                          const frameUrl = (clipThumbs && (clipThumbs[nearestMs] || clipThumbs[Math.floor(tileSourceMs / 1000) * 1000] || clipThumbs[0])) || '';
                           return (
                             <div
                               key={tileIdx}

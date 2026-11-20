@@ -25,6 +25,7 @@ export interface TimelineItem {
     silenceRms?: number;
     memeCategory?: string;
     isCustomUpload?: boolean;
+    isAddedClip?: boolean;
   };
 }
 
@@ -36,6 +37,7 @@ export interface TranscriptWord {
   confidence: number;
   approximate?: boolean;
   edited?: boolean;
+  clipId?: string;
 }
 
 export type TranscriptModelQuality = 'accurate' | 'fast';

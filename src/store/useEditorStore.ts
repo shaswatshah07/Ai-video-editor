@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { ProjectEDL, TimelineItem, TransitionType, TranscriptModelQuality, TranscriptMode } from '../types/edl';
+import { ProjectEDL, TimelineItem, TransitionType, TranscriptModelQuality, TranscriptMode, TranscriptWord } from '../types/edl';
 import { AICommand, CommandLogEntry } from '../types/commands';
 import {
   recalculateTimeline,
@@ -35,6 +35,7 @@ interface EditorState {
   minSilenceDurationMs: number;
   silenceSensitivity: SilenceSensitivity;
   thumbnails: ThumbnailMap;
+  clipFilmstrips: Record<string, ThumbnailMap>;
   thumbnailProgress: ThumbnailProgress | null;
   selectedItemId: string | null;
   commandLogs: CommandLogEntry[];
@@ -60,6 +61,7 @@ interface EditorState {
   selectedLanguage: 'english' | 'hindi';
   transcriptQuality: TranscriptModelQuality;
   transcriptMode: TranscriptMode;
+  addedClipTranscribing: boolean;
 
   // Actions
   setScreen: (screen: ScreenState) => void;
@@ -84,6 +86,7 @@ interface EditorState {
   setTranscriptMode: (mode: TranscriptMode) => void;
   updateTranscriptWord: (wordId: string, newText: string) => void;
   generateTranscript: (quality?: TranscriptModelQuality, mode?: TranscriptMode) => Promise<void>;
+  transcribeAddedClip: (clipId: string, blobUrl: string, durationMs: number) => Promise<void>;
   suggestNonSpeechSilences: () => { count: number; totalDurationMs: number; message: string };
   setSelectedItemId: (id: string | null) => void;
   addCommandLog: (log: CommandLogEntry) => void;
@@ -131,6 +134,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   minSilenceDurationMs: 500,
   silenceSensitivity: 'Normal',
   thumbnails: {},
+  clipFilmstrips: {},
   thumbnailProgress: null,
   selectedItemId: null,
   commandLogs: [],
@@ -154,6 +158,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   selectedLanguage: 'english',
   transcriptQuality: 'accurate',
   transcriptMode: 'translate_en',
+  addedClipTranscribing: false,
 
   setScreen: (screen) => set({ screen }),
 
@@ -239,6 +244,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       redoStack: [],
       selectedItemId: null,
       thumbnails: {},
+      clipFilmstrips: {},
       thumbnailProgress: { current: 0, total: Math.min(300, Math.max(1, Math.floor(durationMs / 1000))), done: false },
       transcriptionStatus: 'idle',
       transcriptionDownloadPercent: 0,
@@ -257,14 +263,18 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       });
     }).then((thumbnails) => {
       const count = Object.keys(thumbnails).length;
-      set({
+      set((s) => ({
         thumbnails,
+        clipFilmstrips: {
+          ...s.clipFilmstrips,
+          [videoUrl]: thumbnails
+        },
         thumbnailProgress: {
           current: count,
           total: count,
           done: true
         }
-      });
+      }));
     }).catch((err) => {
       console.warn('Background thumbnail generation failed:', err);
     });
@@ -349,6 +359,43 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         true // bypassCache on explicit generate/regenerate request
       );
 
+      const taggedPrimaryWords: TranscriptWord[] = words.map((w) => ({
+        ...w,
+        clipId: 'primary'
+      }));
+
+      let allWords: TranscriptWord[] = [...taggedPrimaryWords];
+
+      // Transcribe any added video clips currently on the timeline
+      const addedClips = project.items.filter(
+        (it) => it.kind === 'MEME_CLIP' && (it.meta?.isAddedClip || it.id.startsWith('clip_')) && it.status !== 'DELETED'
+      );
+
+      for (let i = 0; i < addedClips.length; i++) {
+        const clipItem = addedClips[i];
+        set({
+          transcriptionStatus: 'transcribing',
+          transcriptionCurrentFile: `Transcribing added clip (${i + 1}/${addedClips.length})...`
+        });
+        try {
+          const clipRes = await transcribeVideoAudio(
+            clipItem.blobUrl,
+            chosenQuality,
+            chosenMode,
+            undefined,
+            false
+          );
+          const taggedClipWords: TranscriptWord[] = clipRes.words.map((w) => ({
+            ...w,
+            id: `${clipItem.id}_${w.id}`,
+            clipId: clipItem.id
+          }));
+          allWords = [...allWords, ...taggedClipWords];
+        } catch (clipErr) {
+          console.warn(`Transcription for added clip ${clipItem.title} skipped or failed:`, clipErr);
+        }
+      }
+
       set((s) => ({
         transcriptionStatus: 'done',
         transcriptionDownloadPercent: 100,
@@ -358,7 +405,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         transcriptMode: meta.mode,
         project: s.project ? {
           ...s.project,
-          transcript: words,
+          transcript: allWords,
           chapters,
           transcriptMode: meta.mode,
           transcriptionMeta: meta,
@@ -803,7 +850,8 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       transitionOut: { type: 'none', durationMs: 0 },
       meta: {
         memeCategory: clip.id,
-        isCustomUpload: !!clip.isCustom
+        isCustomUpload: !!clip.isCustom,
+        isAddedClip: true
       }
     };
 
@@ -820,6 +868,23 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       }
     });
 
+    // Generate thumbnails for the added clip in background
+    generateSourceThumbnails(clip.url, clip.durationMs)
+      .then((clipThumbs) => {
+        set((s) => ({
+          clipFilmstrips: {
+            ...s.clipFilmstrips,
+            [clip.url]: clipThumbs
+          }
+        }));
+      })
+      .catch((err) => console.warn('Thumbnail generation for added clip failed:', err));
+
+    // If project already has transcript, auto-transcribe this added clip in background
+    if (project.transcript && project.transcript.length > 0 && !project.isDemoSample) {
+      get().transcribeAddedClip(newItem.id, clip.url, clip.durationMs);
+    }
+
     const msg = `Appended "${clip.name}" (${(clip.durationMs / 1000).toFixed(1)}s) to end of timeline.`;
     get().addCommandLog({
       id: `cmd_${Date.now()}`,
@@ -833,6 +898,53 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       status: 'SUCCESS',
       appliedMessage: msg
     });
+  },
+
+  transcribeAddedClip: async (clipId: string, blobUrl: string, _durationMs?: number) => {
+    const { transcriptQuality, transcriptMode, project } = get();
+    if (!project) return;
+    set({ addedClipTranscribing: true });
+    try {
+      const res = await transcribeVideoAudio(
+        blobUrl,
+        transcriptQuality || 'accurate',
+        transcriptMode || 'translate_en',
+        undefined,
+        false
+      );
+      const taggedWords: TranscriptWord[] = res.words.map((w) => ({
+        ...w,
+        id: `${clipId}_${w.id}`,
+        clipId
+      }));
+      set((s) => {
+        if (!s.project) return { addedClipTranscribing: false };
+        const existingWithoutClip = s.project.transcript.filter((w) => w.clipId !== clipId);
+        return {
+          addedClipTranscribing: false,
+          project: {
+            ...s.project,
+            transcript: [...existingWithoutClip, ...taggedWords],
+            updatedAt: Date.now()
+          }
+        };
+      });
+      get().addCommandLog({
+        id: `cmd_${Date.now()}`,
+        rawInput: `Transcribe added clip`,
+        timestamp: Date.now(),
+        parsedCommand: {
+          action: 'GENERATE_TRANSCRIPT',
+          payload: {},
+          explanation: `Generated ${taggedWords.length} words for added clip.`
+        },
+        status: 'SUCCESS',
+        appliedMessage: `Generated ${taggedWords.length} words for added clip.`
+      });
+    } catch (err: any) {
+      console.warn('Background transcription of added clip failed:', err);
+      set({ addedClipTranscribing: false });
+    }
   },
 
   insertMemeAtProjectMs: async (clip, targetProjMs) => {
