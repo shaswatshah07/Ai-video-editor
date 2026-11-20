@@ -60,7 +60,7 @@ function ifft(re: Float64Array, im: Float64Array): void {
 function hannWindow(n: number): Float64Array {
   const w = new Float64Array(n);
   for (let i = 0; i < n; i++) {
-    w[i] = 0.5 * (1 - Math.cos((2 * Math.PI * i) / (n - 1)));
+    w[i] = 0.5 * (1 - Math.cos((2 * Math.PI * i) / n));
   }
   return w;
 }
@@ -129,7 +129,7 @@ export async function generateDenoisedAudio(
   }
   await ctx.close();
 
-  // 2. Pre-filter: 130Hz HPF + 7500Hz LPF via OfflineAudioContext
+  // 2. Pre-filter: 110Hz HPF + 8000Hz LPF via OfflineAudioContext
   onProgress?.('Pre-filtering...', 0.1);
   const offCtx = new OfflineAudioContext(1, mono.length, sampleRate);
   const srcBuf = offCtx.createBuffer(1, mono.length, sampleRate);
@@ -139,12 +139,12 @@ export async function generateDenoisedAudio(
 
   const hpf = offCtx.createBiquadFilter();
   hpf.type = 'highpass';
-  hpf.frequency.value = 130;
+  hpf.frequency.value = 110;
   hpf.Q.value = 0.7071;
 
   const lpf = offCtx.createBiquadFilter();
   lpf.type = 'lowpass';
-  lpf.frequency.value = 7500;
+  lpf.frequency.value = 8000;
   lpf.Q.value = 0.7071;
 
   src.connect(hpf);
@@ -155,11 +155,12 @@ export async function generateDenoisedAudio(
   const filtered = await offCtx.startRendering();
   const samples = filtered.getChannelData(0);
 
-  // 3. STFT parameters
-  const fftSize = 2048;
-  const hopSize = 512; // 75% overlap
+  // 3. STFT parameters: 1024 window (~21-23ms), 75% overlap (cuts time-domain smearing in half)
+  const fftSize = 1024;
+  const hopSize = 256; // 75% overlap
   const hann = hannWindow(fftSize);
-  const halfBins = fftSize / 2 + 1;
+  const halfBins = fftSize / 2 + 1; // 513
+  const half = fftSize / 2;         // 512
 
   // Count frames
   const totalFrames = Math.max(0, Math.floor((samples.length - fftSize) / hopSize) + 1);
@@ -183,10 +184,10 @@ export async function generateDenoisedAudio(
     frameEnergies.push(energy);
   }
 
-  // Sort indices by energy to find quietest 12% (noise frames)
+  // Sort indices by energy to find quietest 15% (noise frames, minimum 12 frames)
   const sortedIndices = frameEnergies.map((_, i) => i)
     .sort((a, b) => frameEnergies[a] - frameEnergies[b]);
-  const noiseFrameCount = Math.max(15, Math.floor(totalFrames * 0.12));
+  const noiseFrameCount = Math.max(12, Math.floor(totalFrames * 0.15));
 
   // 5. Average noise power spectrum from quietest frames (noisePSD)
   const noisePSD = new Float64Array(halfBins);
@@ -206,13 +207,15 @@ export async function generateDenoisedAudio(
     }
   }
 
-  // 6. Decision-Directed Wiener Filter (Ephraim–Malah estimator)
+  // 6. Decision-Directed Wiener Filter (alpha = 0.88 to avoid 200ms reverb tails)
   onProgress?.('Applying Decision-Directed Wiener denoiser...', 0.35);
 
   const output = new Float64Array(samples.length);
   const windowSum = new Float64Array(samples.length);
   const prevPriorSNR = new Float64Array(halfBins);
   const rawGain = new Float64Array(halfBins);
+  const smoothGain = new Float64Array(halfBins);
+  const alpha = 0.88;
   let isFirstFrame = true;
 
   for (let f = 0; f < totalFrames; f++) {
@@ -236,22 +239,20 @@ export async function generateDenoisedAudio(
         prevPriorSNR[k] = Math.max(gamma - 1, 0);
       }
 
-      // a priori SNR using Decision-Directed smoothing
-      const xi = 0.95 * prevPriorSNR[k] + 0.05 * Math.max(gamma - 1, 0);
+      // a priori SNR using Decision-Directed smoothing (alpha = 0.88)
+      const xi = alpha * prevPriorSNR[k] + (1 - alpha) * Math.max(gamma - 1, 0);
 
       // Frequency-aware floor & speech boost bias
       const freq = (k * sampleRate) / fftSize;
       let gain: number;
 
-      if (freq >= 320 && freq <= 3800) {
-        // Core speech band: mild speech boost bias and gentle floor so voice stays full and natural
-        const biasedXi = xi * 1.35;
-        gain = Math.max(0.10, biasedXi / (1 + biasedXi));
-      } else if (freq < 320 || freq > 4500) {
-        // Fan motor rumble (<320Hz) & fan air rush (>4500Hz): allow strong attenuation
-        gain = Math.max(0.05, xi / (1 + xi));
+      if (freq >= 250 && freq <= 4500) {
+        // Core speech band: 0.16 minimum floor and gentle bias so voice remains warm and natural
+        const biasedXi = xi * 1.25;
+        gain = Math.max(0.16, biasedXi / (1 + biasedXi));
       } else {
-        gain = Math.max(0.07, xi / (1 + xi));
+        // Below 250Hz / above 4500Hz: floor at 0.10
+        gain = Math.max(0.10, xi / (1 + xi));
       }
 
       rawGain[k] = gain;
@@ -259,54 +260,48 @@ export async function generateDenoisedAudio(
     }
     isFirstFrame = false;
 
-    // Smooth gain lightly across 3 adjacent bins (0.2 * g[k-1] + 0.6 * g[k] + 0.2 * g[k+1]) to eliminate metallic noise
+    // Gentle 5-bin frequency smoothing [0.1, 0.2, 0.4, 0.2, 0.1] to prevent sharp metallic notches
     for (let k = 0; k < halfBins; k++) {
-      let g: number;
-      if (k === 0) {
-        g = 0.8 * rawGain[0] + 0.2 * rawGain[1];
-      } else if (k === halfBins - 1) {
-        g = 0.2 * rawGain[k - 1] + 0.8 * rawGain[k];
-      } else {
-        g = 0.2 * rawGain[k - 1] + 0.6 * rawGain[k] + 0.2 * rawGain[k + 1];
-      }
-      re[k] *= g;
-      im[k] *= g;
+      const g0 = rawGain[Math.max(0, k - 2)];
+      const g1 = rawGain[Math.max(0, k - 1)];
+      const g2 = rawGain[k];
+      const g3 = rawGain[Math.min(halfBins - 1, k + 1)];
+      const g4 = rawGain[Math.min(halfBins - 1, k + 2)];
+      smoothGain[k] = 0.1 * g0 + 0.2 * g1 + 0.4 * g2 + 0.2 * g3 + 0.1 * g4;
     }
 
-    // Mirror for negative frequencies
-    for (let k = halfBins; k < fftSize; k++) {
+    // Strict Hermitian Mirror Symmetry (eliminates time-reversed ghost echoes)
+    re[0] *= smoothGain[0];
+    im[0] = 0;
+    re[half] *= smoothGain[half];
+    im[half] = 0;
+
+    for (let k = 1; k < half; k++) {
+      const g = smoothGain[k];
       const mirrorK = fftSize - k;
-      let g: number;
-      if (mirrorK === 0) {
-        g = 0.8 * rawGain[0] + 0.2 * rawGain[1];
-      } else if (mirrorK === halfBins - 1) {
-        g = 0.2 * rawGain[mirrorK - 1] + 0.8 * rawGain[mirrorK];
-      } else {
-        g = 0.2 * rawGain[mirrorK - 1] + 0.6 * rawGain[mirrorK] + 0.2 * rawGain[mirrorK + 1];
-      }
       re[k] *= g;
       im[k] *= g;
+      re[mirrorK] *= g;
+      im[mirrorK] *= g;
     }
 
     // IFFT
     ifft(re, im);
 
-    // Overlap-add
+    // Synthesis windowing & Overlap-add
     for (let i = 0; i < fftSize && start + i < output.length; i++) {
       output[start + i] += re[i] * hann[i];
       windowSum[start + i] += hann[i] * hann[i];
     }
   }
 
-  // Normalize by window sum
+  // Exact COLA Normalization
   onProgress?.('Normalizing output...', 0.88);
   for (let i = 0; i < output.length; i++) {
-    if (windowSum[i] > 1e-8) {
-      output[i] /= windowSum[i];
-    }
+    output[i] /= Math.max(windowSum[i], 1e-6);
   }
 
-  // Active-Speech RMS Loudness Restoration (Fixes Quiet Voice)
+  // Active-Speech RMS Loudness Restoration (Conservative, does not amplify room reflections)
   onProgress?.('Restoring active-speech loudness...', 0.92);
   const frameLen = hopSize;
   const numRmsFrames = Math.floor(output.length / frameLen);
@@ -340,16 +335,16 @@ export async function generateDenoisedAudio(
   const origSpeechRMS = sumTopOrig / topSpeechCount;
   const denoisedSpeechRMS = sumTopDen / topSpeechCount;
 
-  // Makeup gain (+0.7dB vocal presence so the cleaned voice is slightly clearer, never quieter)
-  const makeupGain = Math.min(3.5, (origSpeechRMS / Math.max(denoisedSpeechRMS, 1e-6)) * 1.08);
+  // Capped makeup gain (max 1.6) so room reverberation is never boosted
+  const makeupGain = Math.min(1.6, origSpeechRMS / Math.max(denoisedSpeechRMS, 1e-6));
 
-  // Apply makeup gain and transparent soft clipping
+  // Transparent soft clipping only above 0.92
   const finalSamples = new Float32Array(output.length);
   for (let i = 0; i < output.length; i++) {
     let s = output[i] * makeupGain;
     const abs = Math.abs(s);
-    if (abs > 0.88) {
-      s = Math.sign(s) * (0.88 + 0.10 * Math.tanh((abs - 0.88) / 0.10));
+    if (abs > 0.92) {
+      s = Math.sign(s) * (0.92 + 0.07 * Math.tanh((abs - 0.92) / 0.07));
     }
     finalSamples[i] = Math.max(-0.99, Math.min(0.99, s));
   }

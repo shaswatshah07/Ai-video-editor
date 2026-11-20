@@ -322,48 +322,48 @@ export const Screen2Workspace: React.FC = () => {
 
       // 1. Build Voice Enhancement Chain once if not yet initialized
       if (!veHighPassRef.current) {
-        // High-pass filter at 90 Hz (removes rumble, transparent at 10 Hz when OFF)
+        // High-pass filter at 100 Hz (removes rumble, transparent at 10 Hz when OFF)
         const veHighPass = ctx.createBiquadFilter();
         veHighPass.type = 'highpass';
-        veHighPass.frequency.value = voiceEnhanceEnabled ? 90 : 10;
+        veHighPass.frequency.value = voiceEnhanceEnabled ? 100 : 10;
         veHighPass.Q.value = 0.7071;
         veHighPassRef.current = veHighPass;
 
-        // Room-echo / boxiness cut: peaking filter at 280 Hz, Q = 1.2, -2.5 dB (0 dB when OFF)
+        // Boxiness/room-echo cut: peaking filter at 320 Hz, Q = 1.1, -3.0 dB (0 dB when OFF)
         const veWarmthCut = ctx.createBiquadFilter();
         veWarmthCut.type = 'peaking';
-        veWarmthCut.frequency.value = 280;
-        veWarmthCut.Q.value = 1.2;
-        veWarmthCut.gain.value = voiceEnhanceEnabled ? -2.5 : 0;
+        veWarmthCut.frequency.value = 320;
+        veWarmthCut.Q.value = 1.1;
+        veWarmthCut.gain.value = voiceEnhanceEnabled ? -3.0 : 0;
         veWarmthCutRef.current = veWarmthCut;
 
-        // Natural vocal clarity: peaking filter at 2500 Hz, Q = 0.9, +2.8 dB (0 dB when OFF)
+        // Clean vocal clarity: peaking filter at 3200 Hz, Q = 1.0, +2.2 dB (0 dB when OFF)
         const vePresenceBoost = ctx.createBiquadFilter();
         vePresenceBoost.type = 'peaking';
-        vePresenceBoost.frequency.value = 2500;
-        vePresenceBoost.Q.value = 0.9;
-        vePresenceBoost.gain.value = voiceEnhanceEnabled ? 2.8 : 0;
+        vePresenceBoost.frequency.value = 3200;
+        vePresenceBoost.Q.value = 1.0;
+        vePresenceBoost.gain.value = voiceEnhanceEnabled ? 2.2 : 0;
         vePresenceBoostRef.current = vePresenceBoost;
 
-        // Anti-hiss gentle roll-off: high-shelf at 6500 Hz, -1.5 dB (0 dB when OFF)
+        // Gentle de-harsh shelf: highshelf at 7500 Hz, -1.5 dB (0 dB when OFF)
         const veHighShelf = ctx.createBiquadFilter();
         veHighShelf.type = 'highshelf';
-        veHighShelf.frequency.value = 6500;
+        veHighShelf.frequency.value = 7500;
         veHighShelf.gain.value = voiceEnhanceEnabled ? -1.5 : 0;
         veHighShelfRef.current = veHighShelf;
 
-        // Gentle Dynamics Compressor (ratio 2.5:1, threshold -14, knee 20, attack 0.01, release 0.2)
+        // Very light compressor (prevents pumping room echo): threshold -10, knee 18, ratio 1.8, attack 0.015, release 0.12
         const veCompressor = ctx.createDynamicsCompressor();
-        veCompressor.threshold.value = voiceEnhanceEnabled ? -14 : 0;
-        veCompressor.knee.value = 20;
-        veCompressor.ratio.value = voiceEnhanceEnabled ? 2.5 : 1;
-        veCompressor.attack.value = 0.01;
-        veCompressor.release.value = 0.2;
+        veCompressor.threshold.value = voiceEnhanceEnabled ? -10 : 0;
+        veCompressor.knee.value = 18;
+        veCompressor.ratio.value = voiceEnhanceEnabled ? 1.8 : 1;
+        veCompressor.attack.value = 0.015;
+        veCompressor.release.value = 0.12;
         veCompressorRef.current = veCompressor;
 
-        // Makeup Gain: 1.15 when ON, 1.0 when OFF
+        // Makeup Gain: 1.08 when ON, 1.0 when OFF
         const veMakeupGain = ctx.createGain();
-        veMakeupGain.gain.value = voiceEnhanceEnabled ? 1.15 : 1.0;
+        veMakeupGain.gain.value = voiceEnhanceEnabled ? 1.08 : 1.0;
         veMakeupGainRef.current = veMakeupGain;
 
         // Chain connections:
@@ -376,21 +376,28 @@ export const Screen2Workspace: React.FC = () => {
         veMakeupGain.connect(ctx.destination);
       }
 
-      // 2. Build Raw & Denoised crossfade gain nodes
+      // 2. Build Raw & Denoised crossfade gain nodes with strict mutual exclusion
+      const shouldUseDenoised = noiseRemovalEnabled && !!denoisedAudioUrl;
+
       if (!rawGainRef.current && veHighPassRef.current) {
         const rawGain = ctx.createGain();
-        const shouldUseDenoised = noiseRemovalEnabled && !!denoisedAudioUrl;
-        rawGain.gain.value = shouldUseDenoised ? 0.0 : 1.0;
+        rawGain.gain.setValueAtTime(shouldUseDenoised ? 0.0 : 1.0, ctx.currentTime);
         rawGain.connect(veHighPassRef.current);
         rawGainRef.current = rawGain;
       }
 
       if (!denoisedGainRef.current && veHighPassRef.current) {
         const denoisedGain = ctx.createGain();
-        const shouldUseDenoised = noiseRemovalEnabled && !!denoisedAudioUrl;
-        denoisedGain.gain.value = shouldUseDenoised ? 1.0 : 0.0;
+        denoisedGain.gain.setValueAtTime(shouldUseDenoised ? 1.0 : 0.0, ctx.currentTime);
         denoisedGain.connect(veHighPassRef.current);
         denoisedGainRef.current = denoisedGain;
+      }
+
+      if (mainVideoRef.current) {
+        mainVideoRef.current.muted = shouldUseDenoised;
+      }
+      if (denoisedAudioRef.current) {
+        denoisedAudioRef.current.muted = !shouldUseDenoised;
       }
 
       // 3. Attach main video source
@@ -413,44 +420,50 @@ export const Screen2Workspace: React.FC = () => {
     if (!ctx) return;
     const now = ctx.currentTime;
 
-    // Crossfade between Raw and Denoised audio
+    // Strict mutual exclusion between Raw and Denoised audio (zero bleed, zero echo)
     const shouldUseDenoised = noiseRemovalEnabled && !!denoisedAudioUrl;
     if (rawGainRef.current) {
-      rawGainRef.current.gain.setTargetAtTime(shouldUseDenoised ? 0.0 : 1.0, now, 0.01);
+      rawGainRef.current.gain.setValueAtTime(shouldUseDenoised ? 0.0 : 1.0, now);
     }
     if (denoisedGainRef.current) {
-      denoisedGainRef.current.gain.setTargetAtTime(shouldUseDenoised ? 1.0 : 0.0, now, 0.01);
-    }
-    // When noiseRemovalEnabled is false, immediately pause denoised audio
-    if (!shouldUseDenoised && denoisedAudioRef.current && !denoisedAudioRef.current.paused) {
-      denoisedAudioRef.current.pause();
+      denoisedGainRef.current.gain.setValueAtTime(shouldUseDenoised ? 1.0 : 0.0, now);
     }
 
-    // Speaker Voice Enhancement Stage (Clean, Natural Broadcast Vocal Shaping)
+    if (mainVideoRef.current) {
+      mainVideoRef.current.muted = shouldUseDenoised;
+    }
+    if (denoisedAudioRef.current) {
+      denoisedAudioRef.current.muted = !shouldUseDenoised;
+      if (!shouldUseDenoised && !denoisedAudioRef.current.paused) {
+        denoisedAudioRef.current.pause();
+      }
+    }
+
+    // Speaker Voice Enhancement Stage (Clean, Dry Vocal Clarity, Zero Reverb Pumping)
     if (veHighPassRef.current) {
-      veHighPassRef.current.frequency.setTargetAtTime(voiceEnhanceEnabled ? 90 : 10, now, 0.015);
+      veHighPassRef.current.frequency.setValueAtTime(voiceEnhanceEnabled ? 100 : 10, now);
     }
     if (veWarmthCutRef.current) {
-      veWarmthCutRef.current.frequency.setTargetAtTime(280, now, 0.015);
-      veWarmthCutRef.current.gain.setTargetAtTime(voiceEnhanceEnabled ? -2.5 : 0, now, 0.015);
+      veWarmthCutRef.current.frequency.setValueAtTime(320, now);
+      veWarmthCutRef.current.gain.setValueAtTime(voiceEnhanceEnabled ? -3.0 : 0, now);
     }
     if (vePresenceBoostRef.current) {
-      vePresenceBoostRef.current.frequency.setTargetAtTime(2500, now, 0.015);
-      vePresenceBoostRef.current.gain.setTargetAtTime(voiceEnhanceEnabled ? 2.8 : 0, now, 0.015);
+      vePresenceBoostRef.current.frequency.setValueAtTime(3200, now);
+      vePresenceBoostRef.current.gain.setValueAtTime(voiceEnhanceEnabled ? 2.2 : 0, now);
     }
     if (veHighShelfRef.current) {
-      veHighShelfRef.current.frequency.setTargetAtTime(6500, now, 0.015);
-      veHighShelfRef.current.gain.setTargetAtTime(voiceEnhanceEnabled ? -1.5 : 0, now, 0.015);
+      veHighShelfRef.current.frequency.setValueAtTime(7500, now);
+      veHighShelfRef.current.gain.setValueAtTime(voiceEnhanceEnabled ? -1.5 : 0, now);
     }
     if (veCompressorRef.current) {
-      veCompressorRef.current.ratio.setTargetAtTime(voiceEnhanceEnabled ? 2.5 : 1, now, 0.015);
-      veCompressorRef.current.threshold.setTargetAtTime(voiceEnhanceEnabled ? -14 : 0, now, 0.015);
-      veCompressorRef.current.knee.setTargetAtTime(20, now, 0.015);
-      veCompressorRef.current.attack.setTargetAtTime(0.01, now, 0.015);
-      veCompressorRef.current.release.setTargetAtTime(0.2, now, 0.015);
+      veCompressorRef.current.ratio.setValueAtTime(voiceEnhanceEnabled ? 1.8 : 1, now);
+      veCompressorRef.current.threshold.setValueAtTime(voiceEnhanceEnabled ? -10 : 0, now);
+      veCompressorRef.current.knee.setValueAtTime(18, now);
+      veCompressorRef.current.attack.setValueAtTime(0.015, now);
+      veCompressorRef.current.release.setValueAtTime(0.12, now);
     }
     if (veMakeupGainRef.current) {
-      veMakeupGainRef.current.gain.setTargetAtTime(voiceEnhanceEnabled ? 1.15 : 1.0, now, 0.015);
+      veMakeupGainRef.current.gain.setValueAtTime(voiceEnhanceEnabled ? 1.08 : 1.0, now);
     }
   }, [voiceEnhanceEnabled, noiseRemovalEnabled, denoisedAudioUrl]);
 
@@ -666,7 +679,15 @@ export const Screen2Workspace: React.FC = () => {
 
             // Sync denoised audio element in lockstep with main video only when noise removal is active
             if (denoisedAudioRef.current) {
-              if (noiseRemovalEnabled && denoisedAudioUrl) {
+              const shouldUseDenoised = noiseRemovalEnabled && !!denoisedAudioUrl;
+              if (mainVideoRef.current && mainVideoRef.current.muted !== shouldUseDenoised) {
+                mainVideoRef.current.muted = shouldUseDenoised;
+              }
+              if (denoisedAudioRef.current.muted === shouldUseDenoised) {
+                denoisedAudioRef.current.muted = !shouldUseDenoised;
+              }
+
+              if (shouldUseDenoised) {
                 const dDriftSec = Math.abs(denoisedAudioRef.current.currentTime - targetSec);
                 if (dDriftSec > 0.03) {
                   denoisedAudioRef.current.currentTime = targetSec;
@@ -792,11 +813,14 @@ export const Screen2Workspace: React.FC = () => {
           memeVideoRef.current.pause();
         }
         const sec = sourceMs / 1000;
+        const shouldUseDenoised = noiseRemovalEnabled && !!denoisedAudioUrl;
         if (mainVideoRef.current) {
+          mainVideoRef.current.muted = shouldUseDenoised;
           mainVideoRef.current.currentTime = sec;
           lastSeekTargetRef.current = sourceMs;
         }
         if (denoisedAudioRef.current) {
+          denoisedAudioRef.current.muted = !shouldUseDenoised;
           denoisedAudioRef.current.currentTime = sec;
         }
       } else if (item && item.kind === 'MEME_CLIP') {
@@ -1119,7 +1143,7 @@ export const Screen2Workspace: React.FC = () => {
               }
               toggleVoiceEnhance();
             }}
-            title="Speaker Voice Enhancement: 90Hz HPF + 280Hz room-echo cut + 2.5kHz vocal clarity boost + anti-hiss roll-off + gentle leveling"
+            title="Speaker Voice Enhancement: 100Hz HPF + 320Hz room-echo cut + 3.2kHz vocal clarity boost + anti-hiss shelf + light leveling"
             className={`px-2.5 py-1 rounded-lg text-xs font-medium flex items-center space-x-1.5 border transition-all ${
               voiceEnhanceEnabled
                 ? 'bg-[#14B8A6]/15 border-[#2DD4BF]/50 text-[#5EEAD4]'

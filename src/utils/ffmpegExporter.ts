@@ -365,8 +365,8 @@ export async function exportProjectVideo(
     // Normalization video filter
     const normVideo = `scale=${targetW}:${targetH}:force_original_aspect_ratio=decrease,pad=${targetW}:${targetH}:(ow-iw)/2:(oh-ih)/2:black,setsar=1,fps=30,format=yuv420p`;
 
-    // Audio filter chain for source clips
-    const voiceEnhanceFilter = 'highpass=f=90,equalizer=f=280:t=q:w=1.2:g=-2.5,equalizer=f=2500:t=q:w=0.9:g=2.8,treble=g=-1.5:f=6500,acompressor=threshold=-14dB:ratio=2.5:attack=10:release=200:makeup=1.5,loudnorm=I=-16:TP=-1.5:LRA=11';
+    // Clean, dry vocal filter chain for source clips (zero reverb pumping, no loudnorm)
+    const voiceEnhanceFilter = 'highpass=f=100,equalizer=f=320:t=q:w=1.1:g=-3,equalizer=f=3200:t=q:w=1.0:g=2.2,treble=g=-1.5:f=7500,acompressor=threshold=-10dB:ratio=1.8:attack=15:release=120:makeup=1.15,alimiter=limit=0.95';
 
     let sourceAudioFilters = 'aresample=44100,aformat=sample_fmts=fltp:channel_layouts=stereo';
     if (hasDenoisedWavFile) {
