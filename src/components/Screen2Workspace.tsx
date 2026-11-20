@@ -1,7 +1,7 @@
 import React, { useRef, useEffect, useState, useCallback } from 'react';
 import {
   Play, Pause, RotateCcw, RotateCw, Scissors, Trash2,
-  Sparkles, Send, Upload, ChevronRight, ChevronLeft, ArrowRight,
+  Sparkles, Send, Upload, ChevronRight, ChevronLeft, ChevronDown, ArrowRight,
   Bookmark, Check, X, Wand2, ShieldAlert, Download,
   Loader2, AlertCircle, RefreshCw, Search, Plus, Film
 } from 'lucide-react';
@@ -118,6 +118,7 @@ export const Screen2Workspace: React.FC = () => {
   const [memeSearch, setMemeSearch] = useState<string>('');
   const [replacingMemeId, setReplacingMemeId] = useState<string | null>(null);
   const [memeUploadError, setMemeUploadError] = useState<string | null>(null);
+  const [isMemeSectionOpen, setIsMemeSectionOpen] = useState<boolean>(true);
 
   // Timeline scrubbing & hover state (Item 2)
   const [isScrubbing, setIsScrubbing] = useState<boolean>(false);
@@ -1378,11 +1379,11 @@ export const Screen2Workspace: React.FC = () => {
 
         {/* Right Collapsible Panel: AI Command Hub */}
         <div
-          className={`border-l border-[#2C2B28] bg-[#161614] flex flex-col transition-all duration-200 z-10 ${
+          className={`border-l border-[#2C2B28] bg-[#161614] flex flex-col h-full min-h-0 overflow-hidden transition-all duration-200 z-10 ${
             isRightOpen ? 'w-80' : 'w-10'
           }`}
         >
-          <div className="h-10 border-b border-[#2C2B28] flex items-center justify-between px-3">
+          <div className="h-10 shrink-0 border-b border-[#2C2B28] flex items-center justify-between px-3">
             <button
               onClick={() => setIsRightOpen(!isRightOpen)}
               className="text-[#A19E97] hover:text-[#F4F2EE] p-1"
@@ -1398,406 +1399,426 @@ export const Screen2Workspace: React.FC = () => {
           </div>
 
           {isRightOpen && (
-            <div className="flex-1 flex flex-col overflow-hidden p-3 space-y-3">
-              {/* Quick Prompt Chips */}
-              <div className="space-y-1.5">
-                <span className="text-[10px] uppercase font-bold text-[#A19E97] tracking-wider">Quick Prompts</span>
-                <div className="flex flex-wrap gap-1.5">
-                  {[
-                    'Remove silence',
-                    'Insert fail meme at 0:05',
-                    'Enhance voice',
-                    'Add fade transition',
-                    'Cut 0:10 to 0:15'
-                  ].map((chip) => (
-                    <button
-                      key={chip}
-                      onClick={() => setPromptInput(chip)}
-                      className="text-[11px] bg-[#1F1E1C] hover:bg-[#292825] hover:text-[#F4F2EE] text-[#A19E97] px-2 py-1 rounded-md border border-[#2C2B28] transition-colors"
-                    >
-                      {chip}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Meme Reactions Section (Two-Option: Library vs Custom Upload) */}
-              <div className="space-y-2 pt-1 border-t border-[#2C2B28]">
-                {/* Section Header with Replace Banner */}
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center space-x-1.5">
-                    <Film className="w-3.5 h-3.5 text-[#FDA4AF]" />
-                    <span className="text-[10px] uppercase font-bold text-[#A19E97] tracking-wider">
-                      Meme Reactions
-                    </span>
+            <>
+              {/* Scrollable Middle Body */}
+              <div className="flex-1 min-h-0 overflow-y-auto space-y-3 px-3 py-2">
+                {/* Quick Prompt Chips */}
+                <div className="space-y-1.5">
+                  <span className="text-[10px] uppercase font-bold text-[#A19E97] tracking-wider">Quick Prompts</span>
+                  <div className="flex flex-wrap gap-1.5">
+                    {[
+                      'Remove silence',
+                      'Insert fail meme at 0:05',
+                      'Enhance voice',
+                      'Add fade transition',
+                      'Cut 0:10 to 0:15'
+                    ].map((chip) => (
+                      <button
+                        key={chip}
+                        onClick={() => setPromptInput(chip)}
+                        className="text-[11px] bg-[#1F1E1C] hover:bg-[#292825] hover:text-[#F4F2EE] text-[#A19E97] px-2 py-1 rounded-md border border-[#2C2B28] transition-colors"
+                      >
+                        {chip}
+                      </button>
+                    ))}
                   </div>
-                  {replacingMemeId && (
+                </div>
+
+                {/* Meme Reactions Section (Two-Option: Library vs Custom Upload) */}
+                <div className="space-y-2 pt-1 border-t border-[#2C2B28]">
+                  {/* Section Header with Chevron Toggle & Replace Banner */}
+                  <div className="flex items-center justify-between">
                     <button
-                      onClick={() => setReplacingMemeId(null)}
-                      className="text-[10px] text-[#FCD34D] hover:text-white font-medium flex items-center space-x-0.5 bg-[#D97706]/30 px-1.5 py-0.5 rounded border border-[#F59E0B]/50"
+                      type="button"
+                      onClick={() => setIsMemeSectionOpen(!isMemeSectionOpen)}
+                      className="flex items-center space-x-1.5 hover:text-[#F4F2EE] transition-colors group cursor-pointer"
                     >
-                      <span>Cancel Replace</span>
-                      <X className="w-2.5 h-2.5 ml-0.5" />
-                    </button>
-                  )}
-                </div>
-
-                {replacingMemeId && (
-                  <div className="p-1.5 rounded bg-[#D97706]/15 border border-[#F59E0B]/50 text-[#FCD34D] text-[10px]">
-                    Select any meme below to replace the chosen clip
-                  </div>
-                )}
-
-                {/* Segmented Two-Option Toggle */}
-                <div className="flex rounded-lg bg-[#1F1E1C] p-0.5 border border-[#2C2B28] text-[11px]">
-                  <button
-                    onClick={() => setMemeTab('library')}
-                    className={`flex-1 py-1 rounded-md font-medium transition-colors text-center ${
-                      memeTab === 'library'
-                        ? 'bg-[#14B8A6]/15 border border-[#2DD4BF]/50 text-[#5EEAD4]'
-                        : 'text-[#8A8780] hover:text-[#E6E3DC]'
-                    }`}
-                  >
-                    Choose a Meme ({MEME_LIBRARY.length})
-                  </button>
-                  <button
-                    onClick={() => setMemeTab('custom')}
-                    className={`flex-1 py-1 rounded-md font-medium transition-colors text-center ${
-                      memeTab === 'custom'
-                        ? 'bg-[#14B8A6]/15 border border-[#2DD4BF]/50 text-[#5EEAD4]'
-                        : 'text-[#8A8780] hover:text-[#E6E3DC]'
-                    }`}
-                  >
-                    Insert Your Own ({userUploadedClips.length})
-                  </button>
-                </div>
-
-                {/* Tab 1: Meme Library */}
-                {memeTab === 'library' && (
-                  <div className="space-y-2">
-                    {/* Search Input */}
-                    <div className="relative">
-                      <Search className="w-3 h-3 absolute left-2 top-2 text-[#6E6B64]" />
-                      <input
-                        type="text"
-                        value={memeSearch}
-                        onChange={(e) => setMemeSearch(e.target.value)}
-                        placeholder="Search memes (e.g. damn, rock, snoop)..."
-                        className="w-full bg-[#1F1E1C] border border-[#2C2B28] rounded-lg pl-7 pr-7 py-1 text-[11px] text-[#F4F2EE] placeholder-[#6E6B64] focus:outline-none focus:border-[#E8872A]"
+                      <Film className="w-3.5 h-3.5 text-[#FDA4AF]" />
+                      <span className="text-[10px] uppercase font-bold text-[#A19E97] group-hover:text-[#F4F2EE] tracking-wider">
+                        Meme Reactions
+                      </span>
+                      <ChevronDown
+                        className={`w-3 h-3 text-[#A19E97] group-hover:text-[#F4F2EE] transition-transform duration-150 ${
+                          isMemeSectionOpen ? 'rotate-0' : '-rotate-90'
+                        }`}
                       />
-                      {memeSearch && (
-                        <button
-                          onClick={() => setMemeSearch('')}
-                          className="absolute right-2 top-1.5 text-[#6E6B64] hover:text-[#F4F2EE]"
-                        >
-                          <X className="w-3 h-3" />
-                        </button>
-                      )}
-                    </div>
+                    </button>
+                    {replacingMemeId && (
+                      <button
+                        onClick={() => setReplacingMemeId(null)}
+                        className="text-[10px] text-[#FCD34D] hover:text-white font-medium flex items-center space-x-0.5 bg-[#D97706]/30 px-1.5 py-0.5 rounded border border-[#F59E0B]/50"
+                      >
+                        <span>Cancel Replace</span>
+                        <X className="w-2.5 h-2.5 ml-0.5" />
+                      </button>
+                    )}
+                  </div>
 
-                    {/* Meme List */}
-                    <div className="max-h-56 overflow-y-auto space-y-1.5 pr-0.5">
-                      {filteredMemes.length === 0 ? (
-                        <div className="text-[11px] text-[#6E6B64] text-center py-4 italic">
-                          No memes match "{memeSearch}"
+                  {isMemeSectionOpen && (
+                    <>
+                      {replacingMemeId && (
+                        <div className="p-1.5 rounded bg-[#D97706]/15 border border-[#F59E0B]/50 text-[#FCD34D] text-[10px]">
+                          Select any meme below to replace the chosen clip
                         </div>
-                      ) : (
-                        filteredMemes.map((m) => (
-                          <div
-                            key={m.id}
-                            className="flex items-center justify-between p-1.5 rounded-lg bg-[#1F1E1C] hover:bg-[#292825] border border-[#2C2B28] group transition-all"
-                          >
-                            <div className="flex items-center space-x-2 min-w-0 flex-1">
-                              {/* Hover Video Preview */}
-                              <div className="w-12 h-9 rounded bg-black overflow-hidden relative flex-shrink-0 border border-[#2C2B28] group-hover:border-[#45423C]">
-                                <video
-                                  src={m.url}
-                                  muted
-                                  loop
-                                  preload="metadata"
-                                  onMouseEnter={(e) => {
-                                    e.currentTarget.play().catch(() => {});
-                                  }}
-                                  onMouseLeave={(e) => {
-                                    e.currentTarget.pause();
-                                    e.currentTarget.currentTime = 0;
-                                  }}
-                                  className="w-full h-full object-cover"
-                                />
-                                <span className="absolute bottom-0.5 right-0.5 bg-black/80 px-0.5 py-0.2 text-[7.5px] font-mono tabular-nums text-[#A19E97] rounded leading-none">
-                                  {(m.durationMs / 1000).toFixed(1)}s
-                                </span>
-                              </div>
+                      )}
 
-                              <div className="min-w-0 flex-1 pr-1">
-                                <div className="text-[11px] font-medium text-[#F4F2EE] truncate">
-                                  {m.title}
-                                </div>
-                                <div className="text-[9px] text-[#6E6B64] truncate">
-                                  {m.keywords.slice(0, 3).join(', ')}
-                                </div>
-                              </div>
-                            </div>
+                      {/* Segmented Two-Option Toggle */}
+                      <div className="flex rounded-lg bg-[#1F1E1C] p-0.5 border border-[#2C2B28] text-[11px]">
+                        <button
+                          onClick={() => setMemeTab('library')}
+                          className={`flex-1 py-1 rounded-md font-medium transition-colors text-center ${
+                            memeTab === 'library'
+                              ? 'bg-[#14B8A6]/15 border border-[#2DD4BF]/50 text-[#5EEAD4]'
+                              : 'text-[#8A8780] hover:text-[#E6E3DC]'
+                          }`}
+                        >
+                          Choose a Meme ({MEME_LIBRARY.length})
+                        </button>
+                        <button
+                          onClick={() => setMemeTab('custom')}
+                          className={`flex-1 py-1 rounded-md font-medium transition-colors text-center ${
+                            memeTab === 'custom'
+                              ? 'bg-[#14B8A6]/15 border border-[#2DD4BF]/50 text-[#5EEAD4]'
+                              : 'text-[#8A8780] hover:text-[#E6E3DC]'
+                          }`}
+                        >
+                          Insert Your Own ({userUploadedClips.length})
+                        </button>
+                      </div>
 
-                            {/* Action Button */}
-                            {replacingMemeId ? (
+                      {/* Tab 1: Meme Library */}
+                      {memeTab === 'library' && (
+                        <div className="space-y-2">
+                          {/* Search Input */}
+                          <div className="relative">
+                            <Search className="w-3 h-3 absolute left-2 top-2 text-[#6E6B64]" />
+                            <input
+                              type="text"
+                              value={memeSearch}
+                              onChange={(e) => setMemeSearch(e.target.value)}
+                              placeholder="Search memes (e.g. damn, rock, snoop)..."
+                              className="w-full bg-[#1F1E1C] border border-[#2C2B28] rounded-lg pl-7 pr-7 py-1 text-[11px] text-[#F4F2EE] placeholder-[#6E6B64] focus:outline-none focus:border-[#E8872A]"
+                            />
+                            {memeSearch && (
                               <button
-                                onClick={async () => {
-                                  await replaceMemeClip(replacingMemeId, {
-                                    id: m.id,
-                                    name: m.title,
-                                    url: m.url,
-                                    durationMs: m.durationMs,
-                                    isCustom: false
-                                  });
-                                  setReplacingMemeId(null);
-                                  addCommandLog({
-                                    id: `cmd_${Date.now()}`,
-                                    rawInput: `Replace meme with ${m.title}`,
-                                    timestamp: Date.now(),
-                                    parsedCommand: {
-                                      action: 'INSERT_LIBRARY_MEME',
-                                      payload: { memeId: m.id as any, atProjectMs: currentProjectMs },
-                                      explanation: `Replaced with ${m.title}`
-                                    },
-                                    status: 'SUCCESS',
-                                    appliedMessage: `Replaced with "${m.title}".`
-                                  });
-                                }}
-                                className="px-2 py-1 bg-[#D97706] hover:bg-[#B45309] text-white rounded text-[10px] font-semibold transition-colors flex-shrink-0"
+                                onClick={() => setMemeSearch('')}
+                                className="absolute right-2 top-1.5 text-[#6E6B64] hover:text-[#F4F2EE]"
                               >
-                                Replace
-                              </button>
-                            ) : (
-                              <button
-                                onClick={async () => {
-                                  await insertMemeAtProjectMs({
-                                    id: m.id,
-                                    name: m.title,
-                                    url: m.url,
-                                    durationMs: m.durationMs,
-                                    isCustom: false
-                                  }, currentProjectMs);
-                                  addCommandLog({
-                                    id: `cmd_${Date.now()}`,
-                                    rawInput: `Insert meme ${m.title}`,
-                                    timestamp: Date.now(),
-                                    parsedCommand: {
-                                      action: 'INSERT_LIBRARY_MEME',
-                                      payload: { memeId: m.id as any, atProjectMs: currentProjectMs },
-                                      explanation: `Inserted ${m.title}`
-                                    },
-                                    status: 'SUCCESS',
-                                    appliedMessage: `Inserted "${m.title}" at ${(currentProjectMs / 1000).toFixed(1)}s.`
-                                  });
-                                }}
-                                className="px-2 py-1 bg-[#E8872A] hover:bg-[#F59A3D] text-[#11100E] font-semibold rounded text-[10px] flex items-center space-x-0.5 transition-colors flex-shrink-0"
-                                title={`Insert at ${(currentProjectMs / 1000).toFixed(1)}s`}
-                              >
-                                <Plus className="w-2.5 h-2.5" />
-                                <span>Insert</span>
+                                <X className="w-3 h-3" />
                               </button>
                             )}
                           </div>
-                        ))
-                      )}
-                    </div>
-                  </div>
-                )}
 
-                {/* Tab 2: Custom User Clips */}
-                {memeTab === 'custom' && (
-                  <div className="space-y-2">
-                    {/* Upload Box */}
-                    <label className="border border-dashed border-[#2C2B28] hover:border-[#45423C] bg-[#1F1E1C] hover:bg-[#292825] rounded-lg p-3 flex flex-col items-center justify-center text-center cursor-pointer transition-colors group">
-                      <Upload className="w-4 h-4 text-[#E8872A] group-hover:scale-110 transition-transform mb-1" />
-                      <span className="text-[11px] font-medium text-[#F4F2EE]">
-                        Upload custom .mp4 / .webm clip
-                      </span>
-                      <span className="text-[9px] text-[#6E6B64] mt-0.5">
-                        Max 50 MB • Up to 30 seconds
-                      </span>
-                      <input
-                        type="file"
-                        accept="video/mp4,video/webm,video/quicktime"
-                        onChange={handleCustomMemeUpload}
-                        className="hidden"
-                      />
-                    </label>
-
-                    {memeUploadError && (
-                      <div className="p-1.5 rounded bg-[#DC2626]/12 border border-[#EF4444]/40 text-[#F87171] text-[10px] flex items-center space-x-1">
-                        <AlertCircle className="w-3 h-3 flex-shrink-0" />
-                        <span>{memeUploadError}</span>
-                      </div>
-                    )}
-
-                    {/* Uploaded clips list */}
-                    <div className="max-h-56 overflow-y-auto space-y-1.5 pr-0.5">
-                      {userUploadedClips.length === 0 ? (
-                        <div className="text-[10px] text-[#6E6B64] italic text-center py-4 bg-[#1F1E1C] rounded-lg border border-[#2C2B28] p-2">
-                          No custom clips yet. Upload an .mp4 clip to insert it into your video!
-                        </div>
-                      ) : (
-                        userUploadedClips.map((clip) => (
-                          <div
-                            key={clip.id}
-                            className="flex items-center justify-between p-1.5 rounded-lg bg-[#1F1E1C] hover:bg-[#292825] border border-[#2C2B28] group transition-all"
-                          >
-                            <div className="flex items-center space-x-2 min-w-0 flex-1">
-                              {/* Hover Video Preview */}
-                              <div className="w-12 h-9 rounded bg-black overflow-hidden relative flex-shrink-0 border border-[#2C2B28] group-hover:border-[#45423C]">
-                                <video
-                                  src={clip.blobUrl}
-                                  muted
-                                  loop
-                                  preload="metadata"
-                                  onMouseEnter={(e) => {
-                                    e.currentTarget.play().catch(() => {});
-                                  }}
-                                  onMouseLeave={(e) => {
-                                    e.currentTarget.pause();
-                                    e.currentTarget.currentTime = 0;
-                                  }}
-                                  className="w-full h-full object-cover"
-                                />
-                                <span className="absolute bottom-0.5 right-0.5 bg-black/80 px-0.5 py-0.2 text-[7.5px] font-mono tabular-nums text-[#A19E97] rounded leading-none">
-                                  {(clip.durationMs / 1000).toFixed(1)}s
-                                </span>
+                          {/* Meme List */}
+                          <div className="max-h-[190px] overflow-y-auto space-y-1.5 pr-1">
+                            {filteredMemes.length === 0 ? (
+                              <div className="text-[11px] text-[#6E6B64] text-center py-4 italic">
+                                No memes match "{memeSearch}"
                               </div>
-
-                              <div className="min-w-0 flex-1 pr-1">
-                                <div className="text-[11px] font-medium text-[#F4F2EE] truncate">
-                                  {clip.name}
-                                </div>
-                                <div className="text-[9px] text-[#A19E97] font-mono tabular-nums">
-                                  {(clip.durationMs / 1000).toFixed(1)}s
-                                </div>
-                              </div>
-                            </div>
-
-                            <div className="flex items-center space-x-1 flex-shrink-0">
-                              {/* Action Button */}
-                              {replacingMemeId ? (
-                                <button
-                                  onClick={async () => {
-                                    await replaceMemeClip(replacingMemeId, {
-                                      id: clip.id,
-                                      name: clip.name,
-                                      url: clip.blobUrl,
-                                      durationMs: clip.durationMs,
-                                      isCustom: true
-                                    });
-                                    setReplacingMemeId(null);
-                                    addCommandLog({
-                                      id: `cmd_${Date.now()}`,
-                                      rawInput: `Replace meme with ${clip.name}`,
-                                      timestamp: Date.now(),
-                                      parsedCommand: {
-                                        action: 'INSERT_USER_CLIP',
-                                        payload: { clipId: clip.id, atProjectMs: currentProjectMs },
-                                        explanation: `Replaced with custom clip ${clip.name}`
-                                      },
-                                      status: 'SUCCESS',
-                                      appliedMessage: `Replaced with custom clip "${clip.name}".`
-                                    });
-                                  }}
-                                  className="px-2 py-1 bg-[#D97706] hover:bg-[#B45309] text-white rounded text-[10px] font-semibold transition-colors"
+                            ) : (
+                              filteredMemes.map((m) => (
+                                <div
+                                  key={m.id}
+                                  className="flex items-center justify-between p-1.5 rounded-lg bg-[#1F1E1C] hover:bg-[#292825] border border-[#2C2B28] group transition-all"
                                 >
-                                  Replace
-                                </button>
-                              ) : (
-                                <button
-                                  onClick={async () => {
-                                    await insertMemeAtProjectMs({
-                                      id: clip.id,
-                                      name: clip.name,
-                                      url: clip.blobUrl,
-                                      durationMs: clip.durationMs,
-                                      isCustom: true
-                                    }, currentProjectMs);
-                                    addCommandLog({
-                                      id: `cmd_${Date.now()}`,
-                                      rawInput: `Insert custom clip ${clip.name}`,
-                                      timestamp: Date.now(),
-                                      parsedCommand: {
-                                        action: 'INSERT_USER_CLIP',
-                                        payload: { clipId: clip.id, atProjectMs: currentProjectMs },
-                                        explanation: `Inserted ${clip.name}`
-                                      },
-                                      status: 'SUCCESS',
-                                      appliedMessage: `Inserted custom clip "${clip.name}" at ${(currentProjectMs / 1000).toFixed(1)}s.`
-                                    });
-                                  }}
-                                  className="px-2 py-1 bg-[#E8872A] hover:bg-[#F59A3D] text-[#11100E] font-semibold rounded text-[10px] flex items-center space-x-0.5 transition-colors"
-                                  title={`Insert at ${(currentProjectMs / 1000).toFixed(1)}s`}
-                                >
-                                  <Plus className="w-2.5 h-2.5" />
-                                  <span>Insert</span>
-                                </button>
-                              )}
+                                  <div className="flex items-center space-x-2 min-w-0 flex-1">
+                                    {/* Hover Video Preview */}
+                                    <div className="w-12 h-9 rounded bg-black overflow-hidden relative flex-shrink-0 border border-[#2C2B28] group-hover:border-[#45423C]">
+                                      <video
+                                        src={m.url}
+                                        muted
+                                        loop
+                                        preload="metadata"
+                                        onMouseEnter={(e) => {
+                                          e.currentTarget.play().catch(() => {});
+                                        }}
+                                        onMouseLeave={(e) => {
+                                          e.currentTarget.pause();
+                                          e.currentTarget.currentTime = 0;
+                                        }}
+                                        className="w-full h-full object-cover"
+                                      />
+                                      <span className="absolute bottom-0.5 right-0.5 bg-black/80 px-0.5 py-0.2 text-[7.5px] font-mono tabular-nums text-[#A19E97] rounded leading-none">
+                                        {(m.durationMs / 1000).toFixed(1)}s
+                                      </span>
+                                    </div>
 
-                              {/* Delete clip button */}
-                              <button
-                                onClick={() => removeUploadedMeme(clip.id)}
-                                className="p-1 text-[#6E6B64] hover:text-[#F87171] transition-colors rounded hover:bg-[#2C2B28]"
-                                title="Delete custom clip"
-                              >
-                                <Trash2 className="w-3 h-3" />
-                              </button>
-                            </div>
+                                    <div className="min-w-0 flex-1 pr-1">
+                                      <div className="text-[11px] font-medium text-[#F4F2EE] truncate">
+                                        {m.title}
+                                      </div>
+                                      <div className="text-[9px] text-[#6E6B64] truncate">
+                                        {m.keywords.slice(0, 3).join(', ')}
+                                      </div>
+                                    </div>
+                                  </div>
+
+                                  {/* Action Button */}
+                                  {replacingMemeId ? (
+                                    <button
+                                      onClick={async () => {
+                                        await replaceMemeClip(replacingMemeId, {
+                                          id: m.id,
+                                          name: m.title,
+                                          url: m.url,
+                                          durationMs: m.durationMs,
+                                          isCustom: false
+                                        });
+                                        setReplacingMemeId(null);
+                                        addCommandLog({
+                                          id: `cmd_${Date.now()}`,
+                                          rawInput: `Replace meme with ${m.title}`,
+                                          timestamp: Date.now(),
+                                          parsedCommand: {
+                                            action: 'INSERT_LIBRARY_MEME',
+                                            payload: { memeId: m.id as any, atProjectMs: currentProjectMs },
+                                            explanation: `Replaced with ${m.title}`
+                                          },
+                                          status: 'SUCCESS',
+                                          appliedMessage: `Replaced with "${m.title}".`
+                                        });
+                                      }}
+                                      className="px-2 py-1 bg-[#D97706] hover:bg-[#B45309] text-white rounded text-[10px] font-semibold transition-colors flex-shrink-0"
+                                    >
+                                      Replace
+                                    </button>
+                                  ) : (
+                                    <button
+                                      onClick={async () => {
+                                        await insertMemeAtProjectMs({
+                                          id: m.id,
+                                          name: m.title,
+                                          url: m.url,
+                                          durationMs: m.durationMs,
+                                          isCustom: false
+                                        }, currentProjectMs);
+                                        addCommandLog({
+                                          id: `cmd_${Date.now()}`,
+                                          rawInput: `Insert meme ${m.title}`,
+                                          timestamp: Date.now(),
+                                          parsedCommand: {
+                                            action: 'INSERT_LIBRARY_MEME',
+                                            payload: { memeId: m.id as any, atProjectMs: currentProjectMs },
+                                            explanation: `Inserted ${m.title}`
+                                          },
+                                          status: 'SUCCESS',
+                                          appliedMessage: `Inserted "${m.title}" at ${(currentProjectMs / 1000).toFixed(1)}s.`
+                                        });
+                                      }}
+                                      className="px-2 py-1 bg-[#E8872A] hover:bg-[#F59A3D] text-[#11100E] font-semibold rounded text-[10px] flex items-center space-x-0.5 transition-colors flex-shrink-0"
+                                      title={`Insert at ${(currentProjectMs / 1000).toFixed(1)}s`}
+                                    >
+                                      <Plus className="w-2.5 h-2.5" />
+                                      <span>Insert</span>
+                                    </button>
+                                  )}
+                                </div>
+                              ))
+                            )}
                           </div>
-                        ))
+                        </div>
                       )}
-                    </div>
+
+                      {/* Tab 2: Custom User Clips */}
+                      {memeTab === 'custom' && (
+                        <div className="space-y-2">
+                          {/* Upload Box */}
+                          <label className="border border-dashed border-[#2C2B28] hover:border-[#45423C] bg-[#1F1E1C] hover:bg-[#292825] rounded-lg p-3 flex flex-col items-center justify-center text-center cursor-pointer transition-colors group">
+                            <Upload className="w-4 h-4 text-[#E8872A] group-hover:scale-110 transition-transform mb-1" />
+                            <span className="text-[11px] font-medium text-[#F4F2EE]">
+                              Upload custom .mp4 / .webm clip
+                            </span>
+                            <span className="text-[9px] text-[#6E6B64] mt-0.5">
+                              Max 50 MB • Up to 30 seconds
+                            </span>
+                            <input
+                              type="file"
+                              accept="video/mp4,video/webm,video/quicktime"
+                              onChange={handleCustomMemeUpload}
+                              className="hidden"
+                            />
+                          </label>
+
+                          {memeUploadError && (
+                            <div className="p-1.5 rounded bg-[#DC2626]/12 border border-[#EF4444]/40 text-[#F87171] text-[10px] flex items-center space-x-1">
+                              <AlertCircle className="w-3 h-3 flex-shrink-0" />
+                              <span>{memeUploadError}</span>
+                            </div>
+                          )}
+
+                          {/* Uploaded clips list */}
+                          <div className="max-h-[190px] overflow-y-auto space-y-1.5 pr-1">
+                            {userUploadedClips.length === 0 ? (
+                              <div className="text-[10px] text-[#6E6B64] italic text-center py-4 bg-[#1F1E1C] rounded-lg border border-[#2C2B28] p-2">
+                                No custom clips yet. Upload an .mp4 clip to insert it into your video!
+                              </div>
+                            ) : (
+                              userUploadedClips.map((clip) => (
+                                <div
+                                  key={clip.id}
+                                  className="flex items-center justify-between p-1.5 rounded-lg bg-[#1F1E1C] hover:bg-[#292825] border border-[#2C2B28] group transition-all"
+                                >
+                                  <div className="flex items-center space-x-2 min-w-0 flex-1">
+                                    {/* Hover Video Preview */}
+                                    <div className="w-12 h-9 rounded bg-black overflow-hidden relative flex-shrink-0 border border-[#2C2B28] group-hover:border-[#45423C]">
+                                      <video
+                                        src={clip.blobUrl}
+                                        muted
+                                        loop
+                                        preload="metadata"
+                                        onMouseEnter={(e) => {
+                                          e.currentTarget.play().catch(() => {});
+                                        }}
+                                        onMouseLeave={(e) => {
+                                          e.currentTarget.pause();
+                                          e.currentTarget.currentTime = 0;
+                                        }}
+                                        className="w-full h-full object-cover"
+                                      />
+                                      <span className="absolute bottom-0.5 right-0.5 bg-black/80 px-0.5 py-0.2 text-[7.5px] font-mono tabular-nums text-[#A19E97] rounded leading-none">
+                                        {(clip.durationMs / 1000).toFixed(1)}s
+                                      </span>
+                                    </div>
+
+                                    <div className="min-w-0 flex-1 pr-1">
+                                      <div className="text-[11px] font-medium text-[#F4F2EE] truncate">
+                                        {clip.name}
+                                      </div>
+                                      <div className="text-[9px] text-[#A19E97] font-mono tabular-nums">
+                                        {(clip.durationMs / 1000).toFixed(1)}s
+                                      </div>
+                                    </div>
+                                  </div>
+
+                                  <div className="flex items-center space-x-1 flex-shrink-0">
+                                    {/* Action Button */}
+                                    {replacingMemeId ? (
+                                      <button
+                                        onClick={async () => {
+                                          await replaceMemeClip(replacingMemeId, {
+                                            id: clip.id,
+                                            name: clip.name,
+                                            url: clip.blobUrl,
+                                            durationMs: clip.durationMs,
+                                            isCustom: true
+                                          });
+                                          setReplacingMemeId(null);
+                                          addCommandLog({
+                                            id: `cmd_${Date.now()}`,
+                                            rawInput: `Replace meme with ${clip.name}`,
+                                            timestamp: Date.now(),
+                                            parsedCommand: {
+                                              action: 'INSERT_USER_CLIP',
+                                              payload: { clipId: clip.id, atProjectMs: currentProjectMs },
+                                              explanation: `Replaced with custom clip ${clip.name}`
+                                            },
+                                            status: 'SUCCESS',
+                                            appliedMessage: `Replaced with custom clip "${clip.name}".`
+                                          });
+                                        }}
+                                        className="px-2 py-1 bg-[#D97706] hover:bg-[#B45309] text-white rounded text-[10px] font-semibold transition-colors"
+                                      >
+                                        Replace
+                                      </button>
+                                    ) : (
+                                      <button
+                                        onClick={async () => {
+                                          await insertMemeAtProjectMs({
+                                            id: clip.id,
+                                            name: clip.name,
+                                            url: clip.blobUrl,
+                                            durationMs: clip.durationMs,
+                                            isCustom: true
+                                          }, currentProjectMs);
+                                          addCommandLog({
+                                            id: `cmd_${Date.now()}`,
+                                            rawInput: `Insert custom clip ${clip.name}`,
+                                            timestamp: Date.now(),
+                                            parsedCommand: {
+                                              action: 'INSERT_USER_CLIP',
+                                              payload: { clipId: clip.id, atProjectMs: currentProjectMs },
+                                              explanation: `Inserted ${clip.name}`
+                                            },
+                                            status: 'SUCCESS',
+                                            appliedMessage: `Inserted custom clip "${clip.name}" at ${(currentProjectMs / 1000).toFixed(1)}s.`
+                                          });
+                                        }}
+                                        className="px-2 py-1 bg-[#E8872A] hover:bg-[#F59A3D] text-[#11100E] font-semibold rounded text-[10px] flex items-center space-x-0.5 transition-colors"
+                                        title={`Insert at ${(currentProjectMs / 1000).toFixed(1)}s`}
+                                      >
+                                        <Plus className="w-2.5 h-2.5" />
+                                        <span>Insert</span>
+                                      </button>
+                                    )}
+
+                                    {/* Delete clip button */}
+                                    <button
+                                      onClick={() => removeUploadedMeme(clip.id)}
+                                      className="p-1 text-[#6E6B64] hover:text-[#F87171] transition-colors rounded hover:bg-[#2C2B28]"
+                                      title="Delete custom clip"
+                                    >
+                                      <Trash2 className="w-3 h-3" />
+                                    </button>
+                                  </div>
+                                </div>
+                              ))
+                            )}
+                          </div>
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
+
+                {/* Command Execution Log */}
+                <div className="space-y-1.5 pt-1 border-t border-[#2C2B28]">
+                  <span className="text-[10px] uppercase font-bold text-[#A19E97] tracking-wider">Execution Log</span>
+                  <div className="max-h-[110px] overflow-y-auto space-y-1.5 pr-1">
+                    {commandLogs.length === 0 ? (
+                      <p className="text-[11px] text-[#6E6B64] italic">No AI commands executed yet.</p>
+                    ) : (
+                      commandLogs.map((log) => (
+                        <div
+                          key={log.id}
+                          className={`p-2 rounded-lg border text-[11px] space-y-1 ${
+                            log.status === 'SUCCESS'
+                              ? 'bg-[#14B8A6]/10 border-[#2DD4BF]/30 text-[#5EEAD4]'
+                              : log.status === 'CLARIFICATION'
+                              ? 'bg-[#D97706]/10 border-[#F59E0B]/30 text-[#FCD34D]'
+                              : 'bg-[#DC2626]/10 border-[#EF4444]/30 text-[#F87171]'
+                          }`}
+                        >
+                          <div className="font-semibold">{log.rawInput}</div>
+                          <div className="text-[#A19E97] text-[10px]">{log.appliedMessage}</div>
+                        </div>
+                      ))
+                    )}
                   </div>
-                )}
+                </div>
               </div>
 
-              {/* Command Input Bar */}
-              <div className="relative pt-1">
-                <input
-                  type="text"
-                  value={promptInput}
-                  onChange={(e) => setPromptInput(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && handleSendCommand()}
-                  placeholder='e.g. "Cut from 0:10 to 0:25"'
-                  disabled={isAiProcessing}
-                  className="w-full bg-[#1F1E1C] border border-[#2C2B28] rounded-lg pl-3 pr-9 py-2 text-xs text-[#F4F2EE] placeholder-[#6E6B64] focus:outline-none focus:border-[#E8872A]"
-                />
-                <button
-                  onClick={handleSendCommand}
-                  disabled={isAiProcessing || !promptInput.trim()}
-                  className="absolute right-1.5 bottom-1.5 p-1.5 rounded-lg bg-[#E8872A] hover:bg-[#F59A3D] text-[#11100E] disabled:opacity-40 transition-colors"
-                >
-                  <Send className="w-3 h-3" />
-                </button>
+              {/* Permanently Pinned AI Command Input Bar (Footer) */}
+              <div className="shrink-0 border-t border-[#2C2B28] bg-[#161614] p-3">
+                <div className="relative">
+                  <input
+                    type="text"
+                    value={promptInput}
+                    onChange={(e) => setPromptInput(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && handleSendCommand()}
+                    placeholder='e.g. "Cut from 0:10 to 0:25"'
+                    disabled={isAiProcessing}
+                    className="w-full bg-[#1F1E1C] border border-[#2C2B28] rounded-lg pl-3 pr-9 py-2 text-xs text-[#F4F2EE] placeholder-[#6E6B64] focus:outline-none focus:border-[#E8872A]"
+                  />
+                  <button
+                    onClick={handleSendCommand}
+                    disabled={isAiProcessing || !promptInput.trim()}
+                    className="absolute right-1.5 bottom-1.5 p-1.5 rounded-lg bg-[#E8872A] hover:bg-[#F59A3D] text-[#11100E] disabled:opacity-40 transition-colors"
+                  >
+                    <Send className="w-3 h-3" />
+                  </button>
+                </div>
               </div>
-
-              {/* Command Execution Log */}
-              <div className="flex-1 overflow-y-auto space-y-2 pt-1">
-                <span className="text-[10px] uppercase font-bold text-[#A19E97] tracking-wider">Execution Log</span>
-                {commandLogs.length === 0 ? (
-                  <p className="text-[11px] text-[#6E6B64] italic">No AI commands executed yet.</p>
-                ) : (
-                  commandLogs.map((log) => (
-                    <div
-                      key={log.id}
-                      className={`p-2 rounded-lg border text-[11px] space-y-1 ${
-                        log.status === 'SUCCESS'
-                          ? 'bg-[#14B8A6]/10 border-[#2DD4BF]/30 text-[#5EEAD4]'
-                          : log.status === 'CLARIFICATION'
-                          ? 'bg-[#D97706]/10 border-[#F59E0B]/30 text-[#FCD34D]'
-                          : 'bg-[#DC2626]/10 border-[#EF4444]/30 text-[#F87171]'
-                      }`}
-                    >
-                      <div className="font-semibold">{log.rawInput}</div>
-                      <div className="text-[#A19E97] text-[10px]">{log.appliedMessage}</div>
-                    </div>
-                  ))
-                )}
-              </div>
-            </div>
+            </>
           )}
         </div>
       </div>
@@ -1895,6 +1916,7 @@ export const Screen2Workspace: React.FC = () => {
               <button
                 onClick={() => {
                   setIsRightOpen(true);
+                  setIsMemeSectionOpen(true);
                   setMemeTab('library');
                 }}
                 className="px-2 py-0.5 bg-[#E11D48]/15 hover:bg-[#E11D48]/30 border border-[#FB7185]/50 text-[#FDA4AF] rounded text-[11px] font-medium transition-colors flex items-center space-x-1"
@@ -2110,6 +2132,7 @@ export const Screen2Workspace: React.FC = () => {
                             onClick={() => {
                               setReplacingMemeId(replacingMemeId === item.id ? null : item.id);
                               setIsRightOpen(true);
+                              setIsMemeSectionOpen(true);
                             }}
                             className={`px-1.5 py-0.5 rounded text-[9px] font-medium transition-colors ${
                               replacingMemeId === item.id
