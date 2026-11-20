@@ -86,6 +86,7 @@ export const Screen3Export: React.FC = () => {
   };
 
   const activeClipsCount = project.items.filter(it => it.status === 'ACTIVE' && it.kind === 'SOURCE_CLIP').length;
+  const activeMemesCount = project.items.filter(it => (it.status === 'ACTIVE' || it.status === 'SUGGESTED_MEME') && it.kind === 'MEME_CLIP').length;
   const cutsCount = project.items.filter(it => it.status === 'DELETED').length;
 
   return (
@@ -214,7 +215,7 @@ export const Screen3Export: React.FC = () => {
             )}
 
             {/* Edit Summary Card */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-2">
+            <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 pt-2">
               <div className="bg-gray-800/40 border border-gray-750 p-3 rounded-xl text-center">
                 <span className="text-[10px] uppercase font-bold text-gray-400 tracking-wider">Cuts Applied</span>
                 <p className="text-base font-bold text-indigo-400">{cutsCount} Cuts</p>
@@ -223,6 +224,11 @@ export const Screen3Export: React.FC = () => {
               <div className="bg-gray-800/40 border border-gray-750 p-3 rounded-xl text-center">
                 <span className="text-[10px] uppercase font-bold text-gray-400 tracking-wider">Source Clips</span>
                 <p className="text-base font-bold text-emerald-400">{activeClipsCount} Segments</p>
+              </div>
+
+              <div className="bg-gray-800/40 border border-gray-750 p-3 rounded-xl text-center">
+                <span className="text-[10px] uppercase font-bold text-gray-400 tracking-wider">Memes Spliced</span>
+                <p className="text-base font-bold text-purple-400">{exportResult?.memesSplicedCount ?? activeMemesCount} Memes</p>
               </div>
 
               <div className="bg-gray-800/40 border border-gray-750 p-3 rounded-xl text-center">

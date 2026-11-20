@@ -1,4 +1,7 @@
 import { AICommand, AICommandSchema } from '../types/commands';
+import { findMemeByKeyword, MEME_LIBRARY } from './memeLibrary';
+import { mapSourceToProjectMs } from './timelineMath';
+import { ProjectEDL } from '../types/edl';
 
 /**
  * Parses time strings like "0:15", "1:20", "15s", "2.5s", "10" into integer milliseconds.
@@ -30,13 +33,52 @@ function parseTimeStringToMs(raw: string): number | null {
 }
 
 /**
+ * Extracts target timestamp from either an explicit time ("at 0:15", "at 10s")
+ * or a spoken transcript phrase ("when I say hello", "after I say congratulations").
+ */
+function extractTargetTimestamp(lower: string, currentProjectMs: number, project?: ProjectEDL | null): number {
+  // 1. Spoken transcript phrase matching ("when I say [phrase]", "after I say [phrase]")
+  const phraseMatch = lower.match(/(?:when\s+(?:i\s+)?say(?:ing)?|after\s+(?:i\s+)?say(?:ing)?|on\s+saying)\s+["']?([^"']+)["']?/i);
+  if (phraseMatch && project?.transcript && project.transcript.length > 0) {
+    const rawPhrase = phraseMatch[1].trim().toLowerCase();
+    const cleanTokens = rawPhrase.replace(/[^a-z0-9\s]/g, '').split(/\s+/).filter(Boolean);
+    if (cleanTokens.length > 0) {
+      for (let i = 0; i <= project.transcript.length - cleanTokens.length; i++) {
+        const slice = project.transcript.slice(i, i + cleanTokens.length);
+        const match = slice.every((w, idx) => {
+          const wText = (w.word || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+          return wText === cleanTokens[idx] || wText.includes(cleanTokens[idx]);
+        });
+        if (match) {
+          const matchEndSrcMs = slice[slice.length - 1].sourceEndMs;
+          const mappedProj = mapSourceToProjectMs(matchEndSrcMs, project.items);
+          if (mappedProj !== null) {
+            return mappedProj;
+          }
+        }
+      }
+    }
+  }
+
+  // 2. Explicit timestamp ("at 0:15", "at 15s", "around 10s")
+  const atMatch = lower.match(/(?:at|around)\s+([0-9:.]+s?)/i);
+  if (atMatch) {
+    const parsed = parseTimeStringToMs(atMatch[1]);
+    if (parsed !== null) return parsed;
+  }
+
+  return currentProjectMs;
+}
+
+/**
  * Deterministic local regex parser matching the 9 approved operations.
  * Guaranteed 100% offline reliability with zero network dependencies.
  */
 export function parseLocalCommand(
   rawInput: string,
   currentProjectMs = 0,
-  _totalDurationMs = 30000
+  _totalDurationMs = 30000,
+  project?: ProjectEDL | null
 ): AICommand {
   const text = rawInput.trim();
   const lower = text.toLowerCase();
@@ -103,44 +145,48 @@ export function parseLocalCommand(
     };
   }
 
-  // 4. MEME INSERTION (LIBRARY)
-  if (lower.includes('meme') || lower.includes('funny clip') || lower.includes('reaction')) {
-    // Check for user clip
-    if (lower.includes('my uploaded') || lower.includes('my custom') || lower.includes('user clip')) {
-      const atMatch = lower.match(/(?:at|around)\s+([0-9:.]+s?)/i);
-      const atMs = atMatch ? parseTimeStringToMs(atMatch[1]) : currentProjectMs;
+  // 4. MEME INSERTION (LIBRARY OR USER CLIP)
+  const isMemeTrigger =
+    lower.includes('meme') ||
+    lower.includes('funny clip') ||
+    lower.includes('reaction') ||
+    lower.includes('my clip') ||
+    lower.includes('my video') ||
+    MEME_LIBRARY.some(m => lower.includes(m.id) || lower.includes(m.title.toLowerCase()) || m.keywords.some(k => lower.includes(k)));
+
+  if (isMemeTrigger) {
+    const isUserClip =
+      lower.includes('my uploaded') ||
+      lower.includes('my custom') ||
+      lower.includes('user clip') ||
+      lower.includes('my meme') ||
+      lower.includes('uploaded clip') ||
+      lower.includes('my clip') ||
+      lower.includes('own meme');
+
+    const targetMs = extractTargetTimestamp(lower, currentProjectMs, project);
+
+    if (isUserClip) {
       return {
         action: 'INSERT_USER_CLIP',
         payload: {
           clipId: 'custom_latest',
-          atProjectMs: atMs ?? currentProjectMs
+          atProjectMs: targetMs
         },
-        explanation: `Inserting user clip at ${((atMs ?? currentProjectMs) / 1000).toFixed(1)}s.`
+        explanation: `Inserting your uploaded clip at ${(targetMs / 1000).toFixed(1)}s.`
       };
     }
 
-    // Determine meme ID
-    let memeId: 'fail_trombone' | 'wait_what' | 'victory_cheer' | 'shocked_blink' = 'wait_what';
-    if (lower.includes('fail') || lower.includes('sad') || lower.includes('trombone')) {
-      memeId = 'fail_trombone';
-    } else if (lower.includes('win') || lower.includes('victory') || lower.includes('cheer') || lower.includes('celebrat')) {
-      memeId = 'victory_cheer';
-    } else if (lower.includes('shock') || lower.includes('blink') || lower.includes('surpris') || lower.includes('gasp')) {
-      memeId = 'shocked_blink';
-    } else if (lower.includes('what') || lower.includes('confus') || lower.includes('wait')) {
-      memeId = 'wait_what';
-    }
-
-    const atMatch = lower.match(/(?:at|around)\s+([0-9:.]+s?)/i);
-    const atMs = atMatch ? parseTimeStringToMs(atMatch[1]) : currentProjectMs;
+    // Determine library meme
+    const matchedMeme = findMemeByKeyword(lower) || MEME_LIBRARY[0];
 
     return {
       action: 'INSERT_LIBRARY_MEME',
       payload: {
-        memeId,
-        atProjectMs: atMs ?? currentProjectMs
+        memeId: matchedMeme.id,
+        atProjectMs: targetMs
       },
-      explanation: `Inserting "${memeId}" meme reaction at ${((atMs ?? currentProjectMs) / 1000).toFixed(1)}s.`
+      explanation: `Inserting "${matchedMeme.title}" meme reaction at ${(targetMs / 1000).toFixed(1)}s.`
     };
   }
 
@@ -262,7 +308,8 @@ export function parseLocalCommand(
 export async function parseCommandWithFallback(
   rawInput: string,
   currentProjectMs = 0,
-  totalDurationMs = 30000
+  totalDurationMs = 30000,
+  project?: ProjectEDL | null
 ): Promise<AICommand> {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 4000);
@@ -297,5 +344,5 @@ export async function parseCommandWithFallback(
   }
 
   // Deterministic local regex fallback
-  return parseLocalCommand(rawInput, currentProjectMs, totalDurationMs);
+  return parseLocalCommand(rawInput, currentProjectMs, totalDurationMs, project);
 }

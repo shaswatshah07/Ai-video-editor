@@ -29,6 +29,7 @@ export interface ExportResult {
   warnings: string[];
   voiceEnhanceBaked: boolean;
   noiseRemovalBaked: boolean;
+  memesSplicedCount?: number;
 }
 
 let ffmpegInstance: FFmpeg | null = null;
@@ -186,36 +187,36 @@ export async function exportProjectVideo(
 ): Promise<ExportResult> {
   const startTime = performance.now();
 
-  // Active SOURCE_CLIP items only
-  const activeSourceClips = project.items.filter(
-    (it) => (it.status === 'ACTIVE' || it.status === 'SUGGESTED_MEME') && it.kind === 'SOURCE_CLIP'
+  // Active items (both SOURCE_CLIP and MEME_CLIP in chronological order)
+  const activeItems = project.items.filter(
+    (it) => it.status === 'ACTIVE' || it.status === 'SUGGESTED_MEME'
   );
+
+  const activeSourceClips = activeItems.filter((it) => it.kind === 'SOURCE_CLIP');
+  const activeMemeClips = activeItems.filter((it) => it.kind === 'MEME_CLIP');
 
   if (activeSourceClips.length === 0) {
     throw new Error('Cannot export: No active source clips remaining on timeline.');
   }
 
-  // Check for preview-only memes and transitions
+  // Check for preview-only transitions
   const warnings: string[] = [];
-  const hasMemes = project.items.some(
-    (it) => it.kind === 'MEME_CLIP' && (it.status === 'ACTIVE' || it.status === 'SUGGESTED_MEME')
-  );
   const hasTransitions = project.items.some(
     (it) => it.transitionOut && it.transitionOut.type !== 'none' && it.status === 'ACTIVE'
   );
 
-  if (hasMemes || hasTransitions) {
-    warnings.push('Memes and transitions are preview-only and are NOT included in the exported file yet.');
+  if (hasTransitions) {
+    warnings.push('Transitions are preview-only and will be supported in export soon.');
   }
 
-  // Calculate expected source duration
-  const totalExpectedMs = activeSourceClips.reduce(
+  // Calculate expected total duration across all active items
+  const totalExpectedMs = activeItems.reduce(
     (acc, it) => acc + (it.sourceEndMs - it.sourceStartMs),
     0
   );
   const expectedDurationSec = totalExpectedMs / 1000;
 
-  const segments: SegmentInfo[] = activeSourceClips.map((it, idx) => ({
+  const segments: SegmentInfo[] = activeItems.map((it, idx) => ({
     index: idx + 1,
     startSec: it.sourceStartMs / 1000,
     endSec: it.sourceEndMs / 1000,
@@ -229,8 +230,34 @@ export async function exportProjectVideo(
   const hasAudio = await checkVideoHasAudio(project.sourceVideoUrl);
   const ffmpeg = await getFFmpeg(onProgress);
 
+  // Measure source video dimensions to compute safe even-aligned target resolution
+  const targetDims = await new Promise<{ targetW: number; targetH: number }>((resolve) => {
+    const video = document.createElement('video');
+    video.preload = 'metadata';
+    video.src = project.sourceVideoUrl;
+    video.onloadedmetadata = () => {
+      let w = video.videoWidth || 1280;
+      let h = video.videoHeight || 720;
+      const maxDim = Math.max(w, h);
+      if (maxDim > 1280) {
+        const scale = 1280 / maxDim;
+        w = Math.round((w * scale) / 2) * 2;
+        h = Math.round((h * scale) / 2) * 2;
+      } else {
+        w = Math.round(w / 2) * 2;
+        h = Math.round(h / 2) * 2;
+      }
+      resolve({ targetW: Math.max(2, w), targetH: Math.max(2, h) });
+    };
+    video.onerror = () => {
+      resolve({ targetW: 1280, targetH: 720 });
+    };
+  });
+
+  const { targetW, targetH } = targetDims;
+
   if (onProgress) {
-    onProgress({ ratio: 0.15, stage: 'Writing input video to memory...' });
+    onProgress({ ratio: 0.12, stage: 'Writing input video to memory...' });
   }
 
   const sourceData = await fetchFile(project.sourceVideoUrl);
@@ -246,12 +273,12 @@ export async function exportProjectVideo(
     let denoisedBlob: Blob | null = cachedDenoisedBlob || null;
     if (!denoisedBlob) {
       if (onProgress) {
-        onProgress({ ratio: 0.18, stage: 'Generating adaptive spectral denoised audio...' });
+        onProgress({ ratio: 0.15, stage: 'Generating adaptive spectral denoised audio...' });
       }
       try {
         const res = await generateDenoisedAudio(project.sourceVideoUrl, (stage, ratio) => {
           if (onProgress) {
-            onProgress({ ratio: 0.18 + ratio * 0.07, stage: `Denoising audio: ${stage}` });
+            onProgress({ ratio: 0.15 + ratio * 0.08, stage: `Denoising audio: ${stage}` });
           }
         });
         denoisedBlob = res.blob;
@@ -271,71 +298,102 @@ export async function exportProjectVideo(
     }
   }
 
-  const N = activeSourceClips.length;
+  // Deduplicate and write each used meme to FFmpeg FS
+  const uniqueMemeUrls = Array.from(new Set(activeMemeClips.map((m) => m.blobUrl)));
+  const memeInputMap = new Map<string, { inputIndex: number; fsName: string; hasAudio: boolean }>();
+  const writtenMemeFiles: string[] = [];
+  const baseInputsCount = hasDenoisedWavFile ? 2 : 1;
+
+  for (let mIdx = 0; mIdx < uniqueMemeUrls.length; mIdx++) {
+    const url = uniqueMemeUrls[mIdx];
+    const fsName = `meme_${mIdx}.mp4`;
+    const inputIndex = baseInputsCount + mIdx;
+    if (onProgress) {
+      onProgress({
+        ratio: 0.23 + (mIdx / Math.max(1, uniqueMemeUrls.length)) * 0.05,
+        stage: `Loading meme ${mIdx + 1}/${uniqueMemeUrls.length} into memory...`
+      });
+    }
+    try {
+      const memeData = await fetchFile(url);
+      await ffmpeg.writeFile(fsName, memeData);
+      writtenMemeFiles.push(fsName);
+      const memeHasAudio = await checkVideoHasAudio(url);
+      memeInputMap.set(url, { inputIndex, fsName, hasAudio: memeHasAudio });
+    } catch (memeLoadErr) {
+      console.warn(`Failed to write ${fsName} to FFmpeg FS:`, memeLoadErr);
+    }
+  }
+
+  const N = activeItems.length;
 
   // Helper to construct filtergraph & ffmpeg arguments
   const buildArgs = (useFallbackNoiseFilter: boolean) => {
     const filterParts: string[] = [];
-    const audioInputIndex = hasDenoisedWavFile ? 1 : 0;
+    const sourceAudioInput = hasDenoisedWavFile ? 1 : 0;
 
-    // Video & Audio Trim filters per active segment
+    // Normalization video filter
+    const normVideo = `scale=${targetW}:${targetH}:force_original_aspect_ratio=decrease,pad=${targetW}:${targetH}:(ow-iw)/2:(oh-ih)/2:black,setsar=1,fps=30,format=yuv420p`;
+
+    // Audio filter chain for source clips
+    const voiceEnhanceFilter = 'highpass=f=90,equalizer=f=280:t=q:w=1.2:g=-2.5,equalizer=f=2500:t=q:w=0.9:g=2.8,treble=g=-1.5:f=6500,acompressor=threshold=-14dB:ratio=2.5:attack=10:release=200:makeup=1.5,loudnorm=I=-16:TP=-1.5:LRA=11';
+
+    let sourceAudioFilters = 'aresample=44100,aformat=sample_fmts=fltp:channel_layouts=stereo';
+    if (hasDenoisedWavFile) {
+      if (voiceEnhanceActive) {
+        sourceAudioFilters += `,${voiceEnhanceFilter}`;
+      }
+    } else if (noiseRemovalActive) {
+      const fallbackNoise = useFallbackNoiseFilter
+        ? 'agate=threshold=-35dB:ratio=3:attack=10:release=80'
+        : 'highpass=f=130,lowpass=f=7500,afftdn=nr=28:nf=-22:tn=1:gs=6';
+      if (voiceEnhanceActive) {
+        sourceAudioFilters += `,${fallbackNoise},${voiceEnhanceFilter}`;
+      } else {
+        sourceAudioFilters += `,${fallbackNoise}`;
+      }
+    } else if (voiceEnhanceActive) {
+      sourceAudioFilters += `,${voiceEnhanceFilter}`;
+    }
+
+    // Process each segment in chronological order
     for (let i = 0; i < N; i++) {
-      const start = (activeSourceClips[i].sourceStartMs / 1000).toFixed(3);
-      const end = (activeSourceClips[i].sourceEndMs / 1000).toFixed(3);
+      const item = activeItems[i];
 
-      filterParts.push(`[0:v]trim=start=${start}:end=${end},setpts=PTS-STARTPTS[v${i}]`);
+      if (item.kind === 'SOURCE_CLIP') {
+        const startSec = (item.sourceStartMs / 1000).toFixed(3);
+        const endSec = (item.sourceEndMs / 1000).toFixed(3);
+        const durSec = Math.max(0.01, (item.sourceEndMs - item.sourceStartMs) / 1000).toFixed(3);
 
-      if (hasAudio) {
-        filterParts.push(`[${audioInputIndex}:a]atrim=start=${start}:end=${end},asetpts=PTS-STARTPTS[a${i}]`);
-      }
-    }
+        filterParts.push(`[0:v]trim=start=${startSec}:end=${endSec},setpts=PTS-STARTPTS,${normVideo}[v${i}]`);
 
-    // Build Concat stream inputs
-    if (hasAudio) {
-      let concatInputs = '';
-      for (let i = 0; i < N; i++) {
-        concatInputs += `[v${i}][a${i}]`;
-      }
-      filterParts.push(`${concatInputs}concat=n=${N}:v=1:a=1[vconcat][aconcat]`);
-    } else {
-      let concatInputs = '';
-      for (let i = 0; i < N; i++) {
-        concatInputs += `[v${i}]`;
-      }
-      filterParts.push(`${concatInputs}concat=n=${N}:v=1:a=0[vconcat]`);
-    }
-
-    // Audio enhancement filter chain
-    let finalAudioMap = '[aconcat]';
-    if (hasAudio) {
-      const voiceEnhanceFilter = 'highpass=f=90,equalizer=f=280:t=q:w=1.2:g=-2.5,equalizer=f=2500:t=q:w=0.9:g=2.8,treble=g=-1.5:f=6500,acompressor=threshold=-14dB:ratio=2.5:attack=10:release=200:makeup=1.5,loudnorm=I=-16:TP=-1.5:LRA=11';
-
-      let audioChain: string | null = null;
-      if (hasDenoisedWavFile) {
-        // Audio was already filtered with adaptive STFT Wiener spectral denoiser
-        if (voiceEnhanceActive) {
-          audioChain = voiceEnhanceFilter;
-        }
-      } else if (noiseRemovalActive) {
-        // Fallback filter if spectral denoiser WAV wasn't available
-        const fallbackNoise = useFallbackNoiseFilter
-          ? 'agate=threshold=-35dB:ratio=3:attack=10:release=80'
-          : 'highpass=f=130,lowpass=f=7500,afftdn=nr=28:nf=-22:tn=1:gs=6';
-
-        if (voiceEnhanceActive) {
-          audioChain = `${fallbackNoise},${voiceEnhanceFilter}`;
+        if (hasAudio) {
+          filterParts.push(`[${sourceAudioInput}:a]atrim=start=${startSec}:end=${endSec},asetpts=PTS-STARTPTS,${sourceAudioFilters}[a${i}]`);
         } else {
-          audioChain = fallbackNoise;
+          filterParts.push(`anullsrc=r=44100:cl=stereo:d=${durSec}[a${i}]`);
         }
-      } else if (voiceEnhanceActive) {
-        audioChain = voiceEnhanceFilter;
-      }
+      } else {
+        // MEME_CLIP
+        const durSec = Math.max(0.01, item.durationMs / 1000).toFixed(3);
+        const memeInfo = memeInputMap.get(item.blobUrl);
+        const inputIdx = memeInfo ? memeInfo.inputIndex : 0;
 
-      if (audioChain) {
-        filterParts.push(`[aconcat]${audioChain}[aout]`);
-        finalAudioMap = '[aout]';
+        filterParts.push(`[${inputIdx}:v]trim=start=0:end=${durSec},setpts=PTS-STARTPTS,${normVideo}[v${i}]`);
+
+        if (memeInfo && memeInfo.hasAudio) {
+          filterParts.push(`[${inputIdx}:a]atrim=start=0:end=${durSec},asetpts=PTS-STARTPTS,aresample=44100,aformat=sample_fmts=fltp:channel_layouts=stereo[a${i}]`);
+        } else {
+          // Silent meme fallback
+          filterParts.push(`anullsrc=r=44100:cl=stereo:d=${durSec}[a${i}]`);
+        }
       }
     }
+
+    let concatInputs = '';
+    for (let i = 0; i < N; i++) {
+      concatInputs += `[v${i}][a${i}]`;
+    }
+    filterParts.push(`${concatInputs}concat=n=${N}:v=1:a=1[vconcat][aconcat]`);
 
     const filterComplexStr = filterParts.join(';');
 
@@ -343,18 +401,16 @@ export async function exportProjectVideo(
     if (hasDenoisedWavFile) {
       args.push('-i', 'denoised_source.wav');
     }
-
-    args.push(
-      '-filter_complex', filterComplexStr,
-      '-map', '[vconcat]'
-    );
-
-    if (hasAudio) {
-      args.push('-map', finalAudioMap);
-      args.push('-c:a', 'aac', '-b:a', '192k');
+    for (const fsName of writtenMemeFiles) {
+      args.push('-i', fsName);
     }
 
     args.push(
+      '-filter_complex', filterComplexStr,
+      '-map', '[vconcat]',
+      '-map', '[aconcat]',
+      '-c:a', 'aac',
+      '-b:a', '192k',
       '-c:v', 'libx264',
       '-preset', 'ultrafast',
       '-crf', '23',
@@ -366,62 +422,63 @@ export async function exportProjectVideo(
     return args;
   };
 
-  let ffmpegArgs = buildArgs(false);
+  try {
+    let ffmpegArgs = buildArgs(false);
 
-  if (onProgress) {
-    onProgress({ ratio: 0.25, stage: 'Executing 1-pass filtergraph re-encode...' });
-  }
-
-  let exitCode = await ffmpeg.exec(ffmpegArgs);
-
-  // Safety Guard: if FFmpeg ever fails on afftdn in WASM, automatically retry with agate fallback
-  if (exitCode !== 0 && noiseRemovalActive) {
-    const logs = ffmpegLogs.join('\n').toLowerCase();
-    if (logs.includes('afftdn') || logs.includes('filter') || logs.includes('error')) {
-      console.warn('FFmpeg failed with afftdn, retrying with agate noise gate fallback...');
-      if (onProgress) {
-        onProgress({ ratio: 0.25, stage: 'Retrying with noise gate fallback...' });
-      }
-      ffmpegArgs = buildArgs(true);
-      exitCode = await ffmpeg.exec(ffmpegArgs);
+    if (onProgress) {
+      onProgress({ ratio: 0.30, stage: 'Executing 1-pass filtergraph re-encode...' });
     }
-  }
 
-  if (exitCode !== 0) {
-    const last20 = ffmpegLogs.slice(-20).join('\n');
+    let exitCode = await ffmpeg.exec(ffmpegArgs);
+
+    // Safety Guard: if FFmpeg ever fails on afftdn in WASM, automatically retry with agate fallback
+    if (exitCode !== 0 && noiseRemovalActive) {
+      const logs = ffmpegLogs.join('\n').toLowerCase();
+      if (logs.includes('afftdn') || logs.includes('filter') || logs.includes('error')) {
+        console.warn('FFmpeg failed with afftdn, retrying with agate noise gate fallback...');
+        if (onProgress) {
+          onProgress({ ratio: 0.30, stage: 'Retrying with noise gate fallback...' });
+        }
+        ffmpegArgs = buildArgs(true);
+        exitCode = await ffmpeg.exec(ffmpegArgs);
+      }
+    }
+
+    if (exitCode !== 0) {
+      const last20 = ffmpegLogs.slice(-20).join('\n');
+      throw new Error(`FFmpeg re-encode failed with exit code ${exitCode}:\n${last20}`);
+    }
+
+    const outputData = await ffmpeg.readFile('output.mp4');
+    const blob = new Blob([outputData as unknown as BlobPart], { type: 'video/mp4' });
+    const blobUrl = URL.createObjectURL(blob);
+    const elapsedTimeMs = Math.round(performance.now() - startTime);
+
+    return {
+      blob,
+      blobUrl,
+      expectedDurationSec,
+      actualDurationSec: 0, // will be populated after verification
+      segments,
+      ffmpegArgs,
+      exitCode,
+      fileSizeBytes: blob.size,
+      elapsedTimeMs,
+      hasAudio: true,
+      warnings,
+      voiceEnhanceBaked: voiceEnhanceActive && hasAudio,
+      noiseRemovalBaked: noiseRemovalActive && hasAudio,
+      memesSplicedCount: activeMemeClips.length
+    };
+  } finally {
+    // Clean up memory files
     await ffmpeg.deleteFile('input.mp4').catch(() => {});
     if (hasDenoisedWavFile) {
       await ffmpeg.deleteFile('denoised_source.wav').catch(() => {});
     }
-    throw new Error(`FFmpeg re-encode failed with exit code ${exitCode}:\n${last20}`);
+    for (const fsName of writtenMemeFiles) {
+      await ffmpeg.deleteFile(fsName).catch(() => {});
+    }
+    await ffmpeg.deleteFile('output.mp4').catch(() => {});
   }
-
-  const outputData = await ffmpeg.readFile('output.mp4');
-  const blob = new Blob([outputData as unknown as BlobPart], { type: 'video/mp4' });
-  const blobUrl = URL.createObjectURL(blob);
-
-  // Clean up memory files
-  await ffmpeg.deleteFile('input.mp4').catch(() => {});
-  if (hasDenoisedWavFile) {
-    await ffmpeg.deleteFile('denoised_source.wav').catch(() => {});
-  }
-  await ffmpeg.deleteFile('output.mp4').catch(() => {});
-
-  const elapsedTimeMs = Math.round(performance.now() - startTime);
-
-  return {
-    blob,
-    blobUrl,
-    expectedDurationSec,
-    actualDurationSec: 0, // will be populated after verification
-    segments,
-    ffmpegArgs,
-    exitCode,
-    fileSizeBytes: blob.size,
-    elapsedTimeMs,
-    hasAudio,
-    warnings,
-    voiceEnhanceBaked: voiceEnhanceActive && hasAudio,
-    noiseRemovalBaked: noiseRemovalActive && hasAudio
-  };
 }

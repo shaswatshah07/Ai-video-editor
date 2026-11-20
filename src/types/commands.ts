@@ -12,7 +12,7 @@ export const RemoveSilencePayloadSchema = z.object({
 });
 
 export const InsertLibraryMemePayloadSchema = z.object({
-  memeId: z.enum(['fail_trombone', 'wait_what', 'victory_cheer', 'shocked_blink']),
+  memeId: z.string(),
   atProjectMs: z.number().int().nonnegative()
 });
 

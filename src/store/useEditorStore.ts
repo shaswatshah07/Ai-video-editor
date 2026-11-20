@@ -7,7 +7,7 @@ import {
   splitItemAtPlayhead,
   getTotalProjectDuration
 } from '../utils/timelineMath';
-import { getOrGenerateMemeBlob, MEME_PRESETS } from '../utils/memeGenerator';
+import { MEME_LIBRARY, getMemeById, findMemeByKeyword } from '../utils/memeLibrary';
 import { detectSilenceInVideo, injectSilenceCutsIntoTimeline, SilenceSensitivity, SILENCE_PRESETS } from '../utils/silenceDetector';
 import { generateDenoisedAudio } from '../utils/audioDenoiser';
 import { generateSourceThumbnails, ThumbnailMap, ThumbnailProgress } from '../utils/thumbnailGenerator';
@@ -15,12 +15,16 @@ import { transcribeVideoAudio, suggestNonSpeechCuts, TranscriptionStatus } from 
 
 export type ScreenState = 'UPLOAD' | 'WORKSPACE' | 'EXPORT';
 
-export interface CustomMeme {
+export interface UploadedMemeClip {
   id: string;
   name: string;
   blobUrl: string;
   durationMs: number;
+  file?: File;
+  addedAt: number;
 }
+
+export type CustomMeme = UploadedMemeClip;
 
 interface EditorState {
   screen: ScreenState;
@@ -35,7 +39,8 @@ interface EditorState {
   thumbnailProgress: ThumbnailProgress | null;
   selectedItemId: string | null;
   commandLogs: CommandLogEntry[];
-  customMemeClips: CustomMeme[];
+  customMemeClips: UploadedMemeClip[];
+  userUploadedClips: UploadedMemeClip[];
   undoStack: TimelineItem[][];
   redoStack: TimelineItem[][];
   voiceEnhanceEnabled: boolean;
@@ -97,8 +102,13 @@ interface EditorState {
   removeOrDetectSilences: (param?: SilenceSensitivity | number) => Promise<{ changed: boolean; message: string; count?: number; totalSilenceMs?: number; newDurationMs?: number }>;
   setTransition: (itemId: string, type: TransitionType, durationMs?: number) => void;
   trimProjectRange: (startMs: number, endMs: number) => void;
-  insertLibraryMeme: (memeId: 'fail_trombone' | 'wait_what' | 'victory_cheer' | 'shocked_blink', atProjectMs: number) => Promise<void>;
+  insertMemeAtProjectMs: (clip: { id: string; name: string; url: string; durationMs: number; isCustom?: boolean }, targetProjMs: number) => Promise<void>;
+  replaceMemeClip: (itemId: string, newClip: { id: string; name: string; url: string; durationMs: number; isCustom?: boolean }) => Promise<void>;
+  removeMemeClip: (itemId: string) => void;
+  insertLibraryMeme: (memeId: string, atProjectMs: number) => Promise<void>;
   insertUserClip: (clipId: string, atProjectMs: number) => void;
+  addUploadedMeme: (file: File) => Promise<UploadedMemeClip>;
+  removeUploadedMeme: (clipId: string) => void;
   toggleVoiceEnhance: (enabled?: boolean) => void;
   toggleNoiseRemoval: (enabled?: boolean) => void;
   toggleNoiseReduction: (enabled?: boolean) => void;
@@ -124,6 +134,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   selectedItemId: null,
   commandLogs: [],
   customMemeClips: [],
+  userUploadedClips: [],
   undoStack: [],
   redoStack: [],
   voiceEnhanceEnabled: false,
@@ -755,41 +766,39 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     });
   },
 
-  insertLibraryMeme: async (memeId, atProjectMs) => {
+  insertMemeAtProjectMs: async (clip, targetProjMs) => {
     const { project } = get();
     if (!project) return;
     get().pushHistory();
 
-    const preset = MEME_PRESETS[memeId];
-    if (!preset) return;
+    // 1. Split existing active source clip at targetProjMs
+    const splitItems = splitItemAtPlayhead(project.items, targetProjMs);
 
-    const blobUrl = await getOrGenerateMemeBlob(memeId);
-
-    // Split existing item at atProjectMs
-    const splitItems = splitItemAtPlayhead(project.items, atProjectMs);
-
-    // Locate the insertion index
+    // 2. Locate insertion index
     let insertIndex = splitItems.length;
     for (let i = 0; i < splitItems.length; i++) {
-      if (splitItems[i].projectStartMs >= atProjectMs) {
+      if (splitItems[i].projectStartMs >= targetProjMs) {
         insertIndex = i;
         break;
       }
     }
 
     const memeItem: TimelineItem = {
-      id: `meme_${memeId}_${Date.now()}`,
+      id: `meme_${clip.id}_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
       kind: 'MEME_CLIP',
-      title: preset.name,
-      blobUrl,
+      title: clip.name,
+      blobUrl: clip.url,
       sourceStartMs: 0,
-      sourceEndMs: preset.durationMs,
-      durationMs: preset.durationMs,
-      projectStartMs: atProjectMs,
-      projectEndMs: atProjectMs + preset.durationMs,
+      sourceEndMs: clip.durationMs,
+      durationMs: clip.durationMs,
+      projectStartMs: targetProjMs,
+      projectEndMs: targetProjMs + clip.durationMs,
       status: 'ACTIVE',
       transitionOut: { type: 'none', durationMs: 0 },
-      meta: { memeCategory: memeId }
+      meta: {
+        memeCategory: clip.id,
+        isCustomUpload: !!clip.isCustom
+      }
     };
 
     const newItems = [...splitItems];
@@ -808,42 +817,31 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     });
   },
 
-  insertUserClip: (clipId, atProjectMs) => {
-    const { project, customMemeClips } = get();
+  replaceMemeClip: async (itemId, newClip) => {
+    const { project } = get();
     if (!project) return;
-    const clip = customMemeClips.find((c) => c.id === clipId);
-    if (!clip) return;
     get().pushHistory();
 
-    const splitItems = splitItemAtPlayhead(project.items, atProjectMs);
-
-    let insertIndex = splitItems.length;
-    for (let i = 0; i < splitItems.length; i++) {
-      if (splitItems[i].projectStartMs >= atProjectMs) {
-        insertIndex = i;
-        break;
+    const items = project.items.map((it) => {
+      if (it.id === itemId && it.kind === 'MEME_CLIP') {
+        return {
+          ...it,
+          title: newClip.name,
+          blobUrl: newClip.url,
+          sourceStartMs: 0,
+          sourceEndMs: newClip.durationMs,
+          durationMs: newClip.durationMs,
+          meta: {
+            ...it.meta,
+            memeCategory: newClip.id,
+            isCustomUpload: !!newClip.isCustom
+          }
+        };
       }
-    }
+      return it;
+    });
 
-    const userMemeItem: TimelineItem = {
-      id: `usermeme_${clip.id}_${Date.now()}`,
-      kind: 'MEME_CLIP',
-      title: clip.name,
-      blobUrl: clip.blobUrl,
-      sourceStartMs: 0,
-      sourceEndMs: clip.durationMs,
-      durationMs: clip.durationMs,
-      projectStartMs: atProjectMs,
-      projectEndMs: atProjectMs + clip.durationMs,
-      status: 'ACTIVE',
-      transitionOut: { type: 'none', durationMs: 0 },
-      meta: { isCustomUpload: true }
-    };
-
-    const newItems = [...splitItems];
-    newItems.splice(insertIndex, 0, userMemeItem);
-
-    const recalculated = recalculateTimeline(newItems);
+    const recalculated = recalculateTimeline(items);
     const totalProjMs = getTotalProjectDuration(recalculated);
 
     set({
@@ -854,6 +852,76 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         updatedAt: Date.now()
       }
     });
+  },
+
+  removeMemeClip: (itemId) => {
+    const { project } = get();
+    if (!project) return;
+    get().pushHistory();
+
+    const filtered = project.items.filter((it) => it.id !== itemId);
+
+    // Coalesce adjacent active source clips that share the same origin
+    const coalesced: TimelineItem[] = [];
+    for (const it of filtered) {
+      if (coalesced.length === 0) {
+        coalesced.push({ ...it });
+        continue;
+      }
+      const prev = coalesced[coalesced.length - 1];
+      if (
+        prev.status === 'ACTIVE' &&
+        it.status === 'ACTIVE' &&
+        prev.kind === 'SOURCE_CLIP' &&
+        it.kind === 'SOURCE_CLIP' &&
+        prev.blobUrl === it.blobUrl &&
+        prev.sourceEndMs === it.sourceStartMs
+      ) {
+        prev.sourceEndMs = it.sourceEndMs;
+        prev.durationMs = prev.sourceEndMs - prev.sourceStartMs;
+        prev.projectEndMs = prev.projectStartMs + prev.durationMs;
+      } else {
+        coalesced.push({ ...it });
+      }
+    }
+
+    const recalculated = recalculateTimeline(coalesced);
+    const totalProjMs = getTotalProjectDuration(recalculated);
+
+    set({
+      project: {
+        ...project,
+        items: recalculated,
+        totalProjectDurationMs: totalProjMs,
+        updatedAt: Date.now()
+      }
+    });
+  },
+
+  insertLibraryMeme: async (memeId, atProjectMs) => {
+    const meme = getMemeById(memeId) || findMemeByKeyword(memeId) || MEME_LIBRARY[0];
+    await get().insertMemeAtProjectMs({
+      id: meme.id,
+      name: meme.title,
+      url: meme.url,
+      durationMs: meme.durationMs,
+      isCustom: false
+    }, atProjectMs);
+  },
+
+  insertUserClip: (clipId, atProjectMs) => {
+    const { customMemeClips, userUploadedClips } = get();
+    const clips = userUploadedClips.length > 0 ? userUploadedClips : customMemeClips;
+    const clip = clips.find((c) => c.id === clipId) || clips[clips.length - 1];
+    if (!clip) return;
+
+    get().insertMemeAtProjectMs({
+      id: clip.id,
+      name: clip.name,
+      url: clip.blobUrl,
+      durationMs: clip.durationMs,
+      isCustom: true
+    }, atProjectMs);
   },
 
   toggleVoiceEnhance: (enabled) => {
@@ -914,10 +982,10 @@ export const useEditorStore = create<EditorState>((set, get) => ({
 
   setDenoiseProgress: (msg) => set({ denoiseProgress: msg }),
 
-  addCustomMeme: async (file: File) => {
+  addUploadedMeme: async (file: File) => {
     const blobUrl = URL.createObjectURL(file);
-    // Determine duration
     const tempVideo = document.createElement('video');
+    tempVideo.preload = 'metadata';
     tempVideo.src = blobUrl;
     await new Promise<void>((resolve) => {
       tempVideo.onloadedmetadata = () => resolve();
@@ -925,18 +993,37 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     });
 
     const durationMs = Math.round((tempVideo.duration || 3) * 1000);
-    const newMeme: CustomMeme = {
-      id: `custom_${Date.now()}`,
-      name: file.name.slice(0, 24),
+    const newClip: UploadedMemeClip = {
+      id: `custom_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+      name: file.name.replace(/\.[^/.]+$/, '').slice(0, 32),
       blobUrl,
-      durationMs
+      durationMs,
+      file,
+      addedAt: Date.now()
     };
 
     set((s) => ({
-      customMemeClips: [...s.customMemeClips, newMeme]
+      userUploadedClips: [...(s.userUploadedClips || []), newClip],
+      customMemeClips: [...(s.customMemeClips || []), newClip]
     }));
 
-    return newMeme;
+    return newClip;
+  },
+
+  removeUploadedMeme: (clipId: string) => {
+    const { userUploadedClips } = get();
+    const clip = userUploadedClips.find(c => c.id === clipId);
+    if (clip?.blobUrl) {
+      URL.revokeObjectURL(clip.blobUrl);
+    }
+    set((s) => ({
+      userUploadedClips: (s.userUploadedClips || []).filter(c => c.id !== clipId),
+      customMemeClips: (s.customMemeClips || []).filter(c => c.id !== clipId)
+    }));
+  },
+
+  addCustomMeme: async (file: File) => {
+    return get().addUploadedMeme(file);
   },
 
   applyAICommand: async (command: AICommand, rawInput = '') => {
@@ -968,6 +1055,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         appliedMessage: res.message
       });
     } else if (action === 'INSERT_LIBRARY_MEME') {
+      const meme = getMemeById(payload.memeId) || findMemeByKeyword(payload.memeId) || MEME_LIBRARY[0];
       await store.insertLibraryMeme(payload.memeId, payload.atProjectMs);
       store.addCommandLog({
         id: `cmd_${Date.now()}`,
@@ -975,17 +1063,33 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         timestamp: Date.now(),
         parsedCommand: command,
         status: 'SUCCESS',
-        appliedMessage: `Inserted meme "${payload.memeId}" at ${(payload.atProjectMs / 1000).toFixed(1)}s.`
+        appliedMessage: `Inserted meme "${meme.title}" at ${(payload.atProjectMs / 1000).toFixed(1)}s.`
       });
     } else if (action === 'INSERT_USER_CLIP') {
-      store.insertUserClip(payload.clipId, payload.atProjectMs);
+      const clips = store.userUploadedClips?.length > 0 ? store.userUploadedClips : store.customMemeClips;
+      if (!clips || clips.length === 0) {
+        store.addCommandLog({
+          id: `cmd_${Date.now()}`,
+          rawInput,
+          timestamp: Date.now(),
+          parsedCommand: command,
+          status: 'WARNING',
+          appliedMessage: `No custom meme uploaded yet. Please upload your .mp4 clip under "Insert Your Own Meme" first.`
+        });
+        return;
+      }
+      const clipToInsert = payload.clipId === 'custom_latest' || !payload.clipId
+        ? clips[clips.length - 1]
+        : (clips.find(c => c.id === payload.clipId) || clips[clips.length - 1]);
+
+      store.insertUserClip(clipToInsert.id, payload.atProjectMs);
       store.addCommandLog({
         id: `cmd_${Date.now()}`,
         rawInput,
         timestamp: Date.now(),
         parsedCommand: command,
         status: 'SUCCESS',
-        appliedMessage: `Inserted custom clip at ${(payload.atProjectMs / 1000).toFixed(1)}s.`
+        appliedMessage: `Inserted custom meme "${clipToInsert.name}" at ${(payload.atProjectMs / 1000).toFixed(1)}s.`
       });
     } else if (action === 'ADD_TRANSITION') {
       const activeItems = store.project?.items.filter(it => it.status === 'ACTIVE') || [];

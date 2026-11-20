@@ -58,7 +58,7 @@ export default async function handler(req: any, res: any) {
   const systemInstruction = `You are a deterministic video editing assistant. You must parse user editing requests into one of the following operations:
 1. TRIM_SECTION { startMs, endMs }
 2. REMOVE_SILENCE { minDurationMs: 1200, paddingPreMs: 150, paddingPostMs: 200 }
-3. INSERT_LIBRARY_MEME { memeId: "fail_trombone" | "wait_what" | "victory_cheer" | "shocked_blink", atProjectMs }
+3. INSERT_LIBRARY_MEME { memeId: "damnnnnnnnnnnn" | "mission_passed" | "ohhhhhhhhhhhhh_penguinz0" | "pointing_finger" | "pow_ohhhhhhhhhhhhhhhhh" | "ten_hours_later" | "the_rock_eyebrow_raise" | "wait_who_are_you" | "yeah_boy" | "you_serious_spiderman" | string, atProjectMs }
 4. INSERT_USER_CLIP { clipId: "custom_clip", atProjectMs }
 5. ADD_TRANSITION { type: "fade" | "dissolve" | "wipeleft" | "wiperight" | "slideup", durationMs: 400 }
 6. ENHANCE_AUDIO { enabled: true }
