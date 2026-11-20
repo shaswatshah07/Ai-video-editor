@@ -4,7 +4,7 @@ import { useEditorStore } from '../store/useEditorStore';
 import { exportProjectVideo, verifyRenderedVideo, RenderProgress, ExportResult } from '../utils/ffmpegExporter';
 
 export const Screen3Export: React.FC = () => {
-  const { project, setScreen, denoisedAudioBlob } = useEditorStore();
+  const { project, setScreen, denoisedAudioBlob, bgMusic } = useEditorStore();
 
   const [isExporting, setIsExporting] = useState<boolean>(true);
   const [progress, setProgress] = useState<RenderProgress>({ ratio: 0, stage: 'Preparing media files...' });
@@ -29,7 +29,8 @@ export const Screen3Export: React.FC = () => {
         (p) => {
           setProgress(p);
         },
-        denoisedAudioBlob
+        denoisedAudioBlob,
+        bgMusic
       );
 
       // Verification Gate (Step 3)
@@ -215,7 +216,7 @@ export const Screen3Export: React.FC = () => {
             )}
 
             {/* Edit Summary Card */}
-            <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 pt-2">
+            <div className="grid grid-cols-2 sm:grid-cols-6 gap-3 pt-2">
               <div className="bg-[#1F1E1C] border border-[#2C2B28] p-3 rounded-xl text-center">
                 <span className="text-[10px] uppercase font-bold text-[#A19E97] tracking-wider">Cuts Applied</span>
                 <p className="text-base font-bold text-[#E8872A] tabular-nums">{cutsCount} Cuts</p>
@@ -242,6 +243,13 @@ export const Screen3Export: React.FC = () => {
                 <span className="text-[10px] uppercase font-bold text-[#A19E97] tracking-wider">Noise Removal</span>
                 <p className={`text-base font-bold tabular-nums ${exportResult?.noiseRemovalBaked ? 'text-[#5EEAD4]' : 'text-[#6E6B64]'}`}>
                   {exportResult?.noiseRemovalBaked ? 'Baked In' : 'Off'}
+                </p>
+              </div>
+
+              <div className="bg-[#1F1E1C] border border-[#2C2B28] p-3 rounded-xl text-center">
+                <span className="text-[10px] uppercase font-bold text-[#A19E97] tracking-wider">Music Track</span>
+                <p className={`text-base font-bold tabular-nums truncate ${exportResult?.bgMusicBaked ? 'text-[#2DD4BF]' : 'text-[#6E6B64]'}`} title={exportResult?.bgMusicName}>
+                  {exportResult?.bgMusicBaked ? `${Math.round((exportResult.bgMusicVolume ?? 1) * 100)}%` : 'None'}
                 </p>
               </div>
             </div>
@@ -298,6 +306,12 @@ export const Screen3Export: React.FC = () => {
                     <span className="text-[#A19E97]">Background Noise Removal: </span>
                     <span className={exportResult.noiseRemovalBaked ? 'text-[#5EEAD4] font-bold' : 'text-[#6E6B64]'}>
                       {exportResult.noiseRemovalBaked ? 'Baked into MP4 (Adaptive STFT Wiener Spectral Denoiser)' : 'Disabled'}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-[#A19E97]">Background Music Track: </span>
+                    <span className={exportResult.bgMusicBaked ? 'text-[#2DD4BF] font-bold' : 'text-[#6E6B64]'}>
+                      {exportResult.bgMusicBaked ? `Baked into MP4: ${exportResult.bgMusicName} (Volume: ${Math.round((exportResult.bgMusicVolume ?? 1) * 100)}%, amix)` : 'Disabled / None'}
                     </span>
                   </div>
                 </div>

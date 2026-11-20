@@ -3,7 +3,8 @@ import {
   Play, Pause, RotateCcw, RotateCw, Scissors, Trash2,
   Sparkles, Send, Upload, ChevronRight, ChevronLeft, ChevronDown, ArrowRight,
   Bookmark, Check, X, Wand2, ShieldAlert, Download,
-  Loader2, AlertCircle, RefreshCw, Search, Plus, Film, GripVertical
+  Loader2, AlertCircle, RefreshCw, Search, Plus, Film, GripVertical,
+  Music, Volume2, VolumeX
 } from 'lucide-react';
 import { useEditorStore } from '../store/useEditorStore';
 import { mapProjectToSource, mapSourceToProjectMs } from '../utils/timelineMath';
@@ -115,13 +116,20 @@ export const Screen2Workspace: React.FC = () => {
     reorderTimelineItem,
     appendClipToEnd,
     applyAICommand,
-    addCommandLog
+    addCommandLog,
+    bgMusic,
+    setBgMusic,
+    setBgMusicVolume,
+    toggleBgMusicMute,
+    removeBgMusic
   } = useEditorStore();
 
   // Dual Video Elements (Spec 3) & Frame-Accurate Transition Stage
   const mainVideoRef = useRef<HTMLVideoElement | null>(null);
   const memeVideoRef = useRef<HTMLVideoElement | null>(null);
   const transitionStageRef = useRef<HTMLDivElement | null>(null);
+  const bgMusicRef = useRef<HTMLAudioElement | null>(null);
+  const bgMusicInputRef = useRef<HTMLInputElement | null>(null);
 
   // RAF synchronization & Seek Loop Guard
   const rafIdRef = useRef<number | null>(null);
@@ -487,7 +495,19 @@ export const Screen2Workspace: React.FC = () => {
       memeVideoRef.current.removeAttribute('src');
       memeVideoRef.current.load();
     }
+    if (bgMusicRef.current) {
+      bgMusicRef.current.pause();
+    }
   }, [project?.id, project?.sourceVideoUrl]);
+
+  // Reactive background music volume & mute sync
+  useEffect(() => {
+    if (!bgMusicRef.current) return;
+    if (bgMusic) {
+      bgMusicRef.current.volume = bgMusic.isMuted ? 0 : Math.max(0, Math.min(1, bgMusic.volume));
+      bgMusicRef.current.muted = bgMusic.isMuted;
+    }
+  }, [bgMusic?.volume, bgMusic?.isMuted]);
 
   // Apply playback speed to video and audio elements
   const applyPlaybackSpeed = useCallback((speed: number) => {
@@ -502,6 +522,10 @@ export const Screen2Workspace: React.FC = () => {
     if (denoisedAudioRef.current) {
       denoisedAudioRef.current.playbackRate = speed;
       denoisedAudioRef.current.preservesPitch = true;
+    }
+    if (bgMusicRef.current) {
+      bgMusicRef.current.playbackRate = speed;
+      bgMusicRef.current.preservesPitch = true;
     }
   }, []);
 
@@ -531,6 +555,7 @@ export const Screen2Workspace: React.FC = () => {
           setIsPlaying(false);
           setCurrentProjectMs(totalDuration);
           lastTickTimeRef.current = null;
+          if (bgMusicRef.current && !bgMusicRef.current.paused) bgMusicRef.current.pause();
           return;
         }
 
@@ -574,6 +599,7 @@ export const Screen2Workspace: React.FC = () => {
           } else {
             setIsPlaying(false);
             lastTickTimeRef.current = null;
+            if (bgMusicRef.current && !bgMusicRef.current.paused) bgMusicRef.current.pause();
           }
           rafIdRef.current = requestAnimationFrame(loop);
           return;
@@ -662,13 +688,33 @@ export const Screen2Workspace: React.FC = () => {
         // Frame-accurate playhead-driven transition update
         updateTransitionFrame(nextProjectMs, project.items);
 
+        // Sync Background Music (Looping live preview)
+        if (bgMusic && !bgMusic.isMuted && bgMusic.volume > 0 && bgMusicRef.current) {
+          const musicDurSec = Math.max(0.1, bgMusic.durationMs / 1000);
+          const targetMusicSec = (nextProjectMs / 1000) % musicDurSec;
+          const musicDrift = Math.abs(bgMusicRef.current.currentTime - targetMusicSec);
+          if (musicDrift > 0.15) {
+            bgMusicRef.current.currentTime = targetMusicSec;
+          }
+          if (bgMusicRef.current.playbackRate !== previewSpeed) {
+            bgMusicRef.current.playbackRate = previewSpeed;
+            bgMusicRef.current.preservesPitch = true;
+          }
+          if (bgMusicRef.current.paused) {
+            bgMusicRef.current.play().catch(() => {});
+          }
+        } else if (bgMusicRef.current && !bgMusicRef.current.paused) {
+          bgMusicRef.current.pause();
+        }
+
         setCurrentProjectMs(nextProjectMs);
       } else {
-        // Paused: halt both video players and denoised audio player
+        // Paused: halt both video players, denoised audio player, and bg music player
         lastTickTimeRef.current = null;
         if (mainVideoRef.current && !mainVideoRef.current.paused) mainVideoRef.current.pause();
         if (memeVideoRef.current && !memeVideoRef.current.paused) memeVideoRef.current.pause();
         if (denoisedAudioRef.current && !denoisedAudioRef.current.paused) denoisedAudioRef.current.pause();
+        if (bgMusicRef.current && !bgMusicRef.current.paused) bgMusicRef.current.pause();
         if (project) {
           updateTransitionFrame(currentProjectMs, project.items);
         }
@@ -682,7 +728,7 @@ export const Screen2Workspace: React.FC = () => {
     return () => {
       if (rafIdRef.current) cancelAnimationFrame(rafIdRef.current);
     };
-  }, [isPlaying, currentProjectMs, project, previewSpeed, denoisedAudioUrl, setCurrentProjectMs, setIsPlaying, updateTransitionFrame]);
+  }, [isPlaying, currentProjectMs, project, previewSpeed, denoisedAudioUrl, bgMusic, setCurrentProjectMs, setIsPlaying, updateTransitionFrame]);
 
   // Synchronize transition frame immediately whenever playhead position changes (scrubbing, seeking, or playing)
   useEffect(() => {
@@ -767,6 +813,12 @@ export const Screen2Workspace: React.FC = () => {
           const memeSec = Math.max(0, clamped - item.projectStartMs) / 1000;
           memeVideoRef.current.currentTime = memeSec;
         }
+      }
+
+      // Sync background music loop position on seek
+      if (bgMusic && bgMusicRef.current) {
+        const musicDurSec = Math.max(0.1, bgMusic.durationMs / 1000);
+        bgMusicRef.current.currentTime = (clamped / 1000) % musicDurSec;
       }
 
       // Frame-accurate playhead-driven transition update
@@ -973,6 +1025,46 @@ export const Screen2Workspace: React.FC = () => {
     } finally {
       e.target.value = '';
     }
+  };
+
+  // Dedicated + Add Music handler for toolbar and timeline music track
+  const handleBgMusicFileInput = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (file.size > 30 * 1024 * 1024) {
+      alert('Audio file exceeds 30 MB limit. Please select a track under 30 MB.');
+      e.target.value = '';
+      return;
+    }
+
+    const blobUrl = URL.createObjectURL(file);
+    const tempAudio = document.createElement('audio');
+    tempAudio.preload = 'metadata';
+    tempAudio.src = blobUrl;
+
+    const finalize = (durationMs: number) => {
+      setBgMusic({
+        file,
+        blobUrl,
+        name: file.name,
+        durationMs,
+        volume: 0.35,
+        isMuted: false
+      });
+      if (bgMusicInputRef.current) bgMusicInputRef.current.value = '';
+    };
+
+    tempAudio.onloadedmetadata = () => {
+      const durationMs = isNaN(tempAudio.duration) || tempAudio.duration <= 0
+        ? 60000
+        : Math.round(tempAudio.duration * 1000);
+      finalize(durationMs);
+    };
+
+    tempAudio.onerror = () => {
+      finalize(60000);
+    };
   };
 
   if (!project) return null;
@@ -1523,6 +1615,15 @@ export const Screen2Workspace: React.FC = () => {
                 src={denoisedAudioUrl || undefined}
                 preload="auto"
                 playsInline
+                className="hidden"
+              />
+
+              {/* Background Music Audio Element (Looping, Live Synced) */}
+              <audio
+                ref={bgMusicRef}
+                src={bgMusic?.blobUrl || undefined}
+                loop
+                preload="auto"
                 className="hidden"
               />
             </div>
@@ -2082,7 +2183,7 @@ export const Screen2Workspace: React.FC = () => {
       </div>
 
       {/* Bottom Timeline Section (Spec 1 & Spec 2) */}
-      <footer className="h-48 border-t border-[#2C2B28] bg-[#161614] flex flex-col p-3 z-20">
+      <footer className="h-56 border-t border-[#2C2B28] bg-[#161614] flex flex-col p-3 z-20">
         {/* Timeline Toolbar */}
         <div className="flex flex-wrap items-center justify-between pb-2 text-xs gap-2">
           <div className="flex items-center space-x-3">
@@ -2186,6 +2287,21 @@ export const Screen2Workspace: React.FC = () => {
                 onChange={handleAddClipFileInput}
                 className="hidden"
               />
+              <button
+                onClick={() => bgMusicInputRef.current?.click()}
+                className="px-2 py-0.5 bg-[#23221F] hover:bg-[#2E2C28] text-[#E6E3DC] hover:text-[#F4F2EE] border border-[#35332F] rounded text-[11px] font-medium transition-colors flex items-center space-x-1"
+                title="Add background music track (.mp3, .wav, .m4a, .aac, .ogg up to 30 MB)"
+              >
+                <Music className="w-3 h-3 text-[#2DD4BF]" />
+                <span>+ Add Music</span>
+              </button>
+              <input
+                ref={bgMusicInputRef}
+                type="file"
+                accept="audio/mp3,audio/mpeg,audio/wav,audio/x-wav,audio/m4a,audio/x-m4a,audio/aac,audio/ogg"
+                onChange={handleBgMusicFileInput}
+                className="hidden"
+              />
             </div>
 
             {/* Thumbnail Generation Progress (Item 1) */}
@@ -2210,6 +2326,10 @@ export const Screen2Workspace: React.FC = () => {
             <div className="flex items-center space-x-1.5">
               <span className="w-2.5 h-2.5 rounded-sm bg-[#FB7185] inline-block" />
               <span>Meme Insert</span>
+            </div>
+            <div className="flex items-center space-x-1.5">
+              <span className="w-2.5 h-2.5 rounded-sm bg-[#2DD4BF] inline-block" />
+              <span>Music</span>
             </div>
           </div>
         </div>
@@ -2522,6 +2642,80 @@ export const Screen2Workspace: React.FC = () => {
                   </div>
                 );
               })}
+            </div>
+
+            {/* Background Music Track (Slim Track Bar) */}
+            <div className="w-full h-8 mt-2 flex items-center">
+              {bgMusic ? (
+                <div className="w-full h-full bg-[#14B8A6]/10 border border-[#2DD4BF]/35 rounded-lg px-2.5 flex items-center justify-between text-xs transition-all">
+                  <div className="flex items-center space-x-2 min-w-0 mr-3">
+                    <Music className="w-3.5 h-3.5 text-[#2DD4BF] shrink-0" />
+                    <span className="font-medium text-[#2DD4BF] truncate text-[11px]" title={bgMusic.name}>
+                      {bgMusic.name}
+                    </span>
+                    <span className="text-[10px] text-[#A19E97] font-mono shrink-0">
+                      ({(bgMusic.durationMs / 1000).toFixed(1)}s loop)
+                    </span>
+                  </div>
+
+                  <div className="flex items-center space-x-3 shrink-0">
+                    {/* Volume Slider */}
+                    <div className="flex items-center space-x-1.5">
+                      <button
+                        onClick={() => toggleBgMusicMute()}
+                        className="text-[#A19E97] hover:text-[#F4F2EE] transition-colors p-0.5"
+                        title={bgMusic.isMuted || bgMusic.volume === 0 ? "Unmute music" : "Mute music"}
+                      >
+                        {bgMusic.isMuted || bgMusic.volume === 0 ? (
+                          <VolumeX className="w-3.5 h-3.5 text-[#EF4444]" />
+                        ) : (
+                          <Volume2 className="w-3.5 h-3.5 text-[#2DD4BF]" />
+                        )}
+                      </button>
+                      <input
+                        type="range"
+                        min="0"
+                        max="1"
+                        step="0.05"
+                        value={bgMusic.isMuted ? 0 : bgMusic.volume}
+                        onChange={(e) => setBgMusicVolume(parseFloat(e.target.value))}
+                        className="w-16 h-1 bg-[#2C2B28] accent-[#2DD4BF] rounded-lg cursor-pointer"
+                        title={`Music Volume: ${Math.round(bgMusic.volume * 100)}%`}
+                      />
+                      <span className="text-[10px] font-mono tabular-nums text-[#A19E97] w-7">
+                        {bgMusic.isMuted ? '0%' : `${Math.round(bgMusic.volume * 100)}%`}
+                      </span>
+                    </div>
+
+                    {/* Replace Button */}
+                    <button
+                      onClick={() => bgMusicInputRef.current?.click()}
+                      className="px-2 py-0.5 bg-[#1F1E1C] hover:bg-[#2A2825] border border-[#35332F] text-[#E6E3DC] rounded text-[10px] font-medium transition-colors"
+                      title="Replace music track"
+                    >
+                      Replace
+                    </button>
+
+                    {/* Remove Button */}
+                    <button
+                      onClick={() => removeBgMusic()}
+                      className="p-1 text-[#A19E97] hover:text-[#EF4444] transition-colors"
+                      title="Remove background music track"
+                    >
+                      <Trash2 className="w-3 h-3" />
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <button
+                  onClick={() => bgMusicInputRef.current?.click()}
+                  className="w-full h-full border border-dashed border-[#2C2B28] hover:border-[#2DD4BF]/50 bg-[#161614]/50 hover:bg-[#14B8A6]/5 rounded-lg px-3 flex items-center justify-center space-x-2 text-[11px] text-[#8A8780] hover:text-[#2DD4BF] transition-all group"
+                  title="Click to add a background music track (.mp3, .wav, .m4a, .aac, .ogg)"
+                >
+                  <Music className="w-3 h-3 text-[#6E6B64] group-hover:text-[#2DD4BF] transition-colors" />
+                  <span>+ Add Background Music track (.mp3, .wav, .m4a, up to 30 MB)</span>
+                </button>
+              )}
             </div>
           </div>
         </div>

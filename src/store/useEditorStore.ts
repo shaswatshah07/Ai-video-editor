@@ -25,6 +25,15 @@ export interface UploadedMemeClip {
 
 export type CustomMeme = UploadedMemeClip;
 
+export interface BgMusicTrack {
+  file: File;
+  blobUrl: string;
+  name: string;
+  durationMs: number;
+  volume: number; // 0.0 to 1.0, default 0.18 (18%)
+  isMuted: boolean; // default false
+}
+
 interface EditorState {
   screen: ScreenState;
   project: ProjectEDL | null;
@@ -62,6 +71,7 @@ interface EditorState {
   transcriptQuality: TranscriptModelQuality;
   transcriptMode: TranscriptMode;
   addedClipTranscribing: boolean;
+  bgMusic: BgMusicTrack | null;
 
   // Actions
   setScreen: (screen: ScreenState) => void;
@@ -113,6 +123,10 @@ interface EditorState {
   insertUserClip: (clipId: string, atProjectMs: number) => void;
   addUploadedMeme: (file: File) => Promise<UploadedMemeClip>;
   removeUploadedMeme: (clipId: string) => void;
+  setBgMusic: (track: BgMusicTrack | null) => void;
+  setBgMusicVolume: (volume: number) => void;
+  toggleBgMusicMute: () => void;
+  removeBgMusic: () => void;
   toggleVoiceEnhance: (enabled?: boolean) => void;
   toggleNoiseRemoval: (enabled?: boolean) => void;
   toggleNoiseReduction: (enabled?: boolean) => void;
@@ -155,6 +169,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   transcriptionCurrentFile: '',
   transcriptionError: null,
   transcriptionFallbackNotice: null,
+  bgMusic: null,
   selectedLanguage: 'english',
   transcriptQuality: 'accurate',
   transcriptMode: 'translate_en',
@@ -236,6 +251,9 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     const oldDenoisedUrl = get().denoisedAudioUrl;
     if (oldDenoisedUrl) URL.revokeObjectURL(oldDenoisedUrl);
 
+    const oldBgMusic = get().bgMusic;
+    if (oldBgMusic?.blobUrl) URL.revokeObjectURL(oldBgMusic.blobUrl);
+
     set({
       project,
       currentProjectMs: 0,
@@ -253,7 +271,8 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       denoisedAudioUrl: null,
       denoisedAudioBlob: null,
       isDenoising: false,
-      denoiseProgress: ''
+      denoiseProgress: '',
+      bgMusic: null
     });
 
     // Generate thumbnails in background (1 per second, up to 300 total)
@@ -1162,6 +1181,61 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   setIsDenoising: (val) => set({ isDenoising: val }),
 
   setDenoiseProgress: (msg) => set({ denoiseProgress: msg }),
+
+  setBgMusic: (track) => {
+    const prev = get().bgMusic;
+    if (prev?.blobUrl && (!track || prev.blobUrl !== track.blobUrl)) {
+      URL.revokeObjectURL(prev.blobUrl);
+    }
+    set({ bgMusic: track });
+    if (track) {
+      get().addCommandLog({
+        id: `cmd_${Date.now()}`,
+        rawInput: `Added background music: "${track.name}"`,
+        timestamp: Date.now(),
+        parsedCommand: {
+          action: 'INSERT_USER_CLIP',
+          payload: { clipId: track.name, atProjectMs: 0 },
+          explanation: `Added background music track "${track.name}" at ${Math.round(track.volume * 100)}% volume.`
+        },
+        status: 'SUCCESS',
+        appliedMessage: `Added background music: "${track.name}" (${Math.round(track.volume * 100)}% volume)`
+      });
+    }
+  },
+
+  setBgMusicVolume: (volume) => {
+    const { bgMusic } = get();
+    if (!bgMusic) return;
+    const clamped = Math.max(0, Math.min(1, Number(volume.toFixed(2))));
+    set({ bgMusic: { ...bgMusic, volume: clamped } });
+  },
+
+  toggleBgMusicMute: () => {
+    const { bgMusic } = get();
+    if (!bgMusic) return;
+    set({ bgMusic: { ...bgMusic, isMuted: !bgMusic.isMuted } });
+  },
+
+  removeBgMusic: () => {
+    const prev = get().bgMusic;
+    if (prev?.blobUrl) {
+      URL.revokeObjectURL(prev.blobUrl);
+    }
+    set({ bgMusic: null });
+    get().addCommandLog({
+      id: `cmd_${Date.now()}`,
+      rawInput: 'Removed background music',
+      timestamp: Date.now(),
+      parsedCommand: {
+        action: 'RESET_AUDIO',
+        payload: {},
+        explanation: 'Removed background music track.'
+      },
+      status: 'SUCCESS',
+      appliedMessage: 'Removed background music track.'
+    });
+  },
 
   addUploadedMeme: async (file: File) => {
     const blobUrl = URL.createObjectURL(file);

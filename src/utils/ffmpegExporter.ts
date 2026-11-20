@@ -2,6 +2,7 @@ import { FFmpeg } from '@ffmpeg/ffmpeg';
 import { toBlobURL, fetchFile } from '@ffmpeg/util';
 import { ProjectEDL } from '../types/edl';
 import { generateDenoisedAudio } from './audioDenoiser';
+import { BgMusicTrack } from '../store/useEditorStore';
 
 export interface RenderProgress {
   ratio: number; // 0 to 1
@@ -30,6 +31,9 @@ export interface ExportResult {
   voiceEnhanceBaked: boolean;
   noiseRemovalBaked: boolean;
   memesSplicedCount?: number;
+  bgMusicBaked?: boolean;
+  bgMusicName?: string;
+  bgMusicVolume?: number;
 }
 
 let ffmpegInstance: FFmpeg | null = null;
@@ -183,7 +187,8 @@ export async function verifyRenderedVideo(
 export async function exportProjectVideo(
   project: ProjectEDL,
   onProgress?: (p: RenderProgress) => void,
-  cachedDenoisedBlob?: Blob | null
+  cachedDenoisedBlob?: Blob | null,
+  bgMusic?: BgMusicTrack | null
 ): Promise<ExportResult> {
   const startTime = performance.now();
 
@@ -325,10 +330,35 @@ export async function exportProjectVideo(
     }
   }
 
+  // Active Background Music check
+  const hasActiveBgMusic = !!(bgMusic && !bgMusic.isMuted && bgMusic.volume > 0);
+  let bgMusicFsName: string | null = null;
+  let musicInputIdx = -1;
+
+  if (hasActiveBgMusic && bgMusic) {
+    const extMatch = bgMusic.file.name.match(/\.[a-zA-Z0-9]+$/);
+    const musicExt = extMatch ? extMatch[0].toLowerCase() : '.mp3';
+    bgMusicFsName = `bg_music${musicExt}`;
+    musicInputIdx = baseInputsCount + writtenMemeFiles.length;
+
+    if (onProgress) {
+      onProgress({ ratio: 0.28, stage: 'Loading background music track into memory...' });
+    }
+    try {
+      const musicData = await fetchFile(bgMusic.file);
+      await ffmpeg.writeFile(bgMusicFsName, musicData);
+    } catch (musicLoadErr) {
+      console.warn('Failed to write background music to FFmpeg FS:', musicLoadErr);
+      bgMusicFsName = null;
+    }
+  }
+
+  const effectiveBgMusicActive = !!(hasActiveBgMusic && bgMusicFsName && musicInputIdx >= 0 && bgMusic);
+
   const N = activeItems.length;
 
   // Helper to construct filtergraph & ffmpeg arguments
-  const buildArgs = (useFallbackNoiseFilter: boolean) => {
+  const buildArgs = (useFallbackNoiseFilter: boolean, useFallbackAmix: boolean = false) => {
     const filterParts: string[] = [];
     const sourceAudioInput = hasDenoisedWavFile ? 1 : 0;
 
@@ -393,7 +423,27 @@ export async function exportProjectVideo(
     for (let i = 0; i < N; i++) {
       concatInputs += `[v${i}][a${i}]`;
     }
-    filterParts.push(`${concatInputs}concat=n=${N}:v=1:a=1[vconcat][aconcat]`);
+
+    if (effectiveBgMusicActive) {
+      filterParts.push(`${concatInputs}concat=n=${N}:v=1:a=1[vconcat][main_a]`);
+
+      const durStr = expectedDurationSec.toFixed(3);
+      const volStr = bgMusic!.volume.toFixed(3);
+
+      // Loop and trim background music to match exact video duration
+      filterParts.push(
+        `[${musicInputIdx}:a]atrim=0:${durStr},asetpts=PTS-STARTPTS,aresample=44100,aformat=sample_fmts=fltp:channel_layouts=stereo,volume=${volStr}[bgm_a]`
+      );
+
+      // Mix dialogue/meme audio with background music
+      const amixFilter = useFallbackAmix
+        ? `amix=inputs=2:duration=first:dropout_transition=0,volume=1.8`
+        : `amix=inputs=2:duration=first:dropout_transition=0:normalize=0,alimiter=limit=0.95`;
+
+      filterParts.push(`[main_a][bgm_a]${amixFilter}[outa]`);
+    } else {
+      filterParts.push(`${concatInputs}concat=n=${N}:v=1:a=1[vconcat][aconcat]`);
+    }
 
     const filterComplexStr = filterParts.join(';');
 
@@ -404,11 +454,14 @@ export async function exportProjectVideo(
     for (const fsName of writtenMemeFiles) {
       args.push('-i', fsName);
     }
+    if (effectiveBgMusicActive && bgMusicFsName) {
+      args.push('-stream_loop', '-1', '-i', bgMusicFsName);
+    }
 
     args.push(
       '-filter_complex', filterComplexStr,
       '-map', '[vconcat]',
-      '-map', '[aconcat]',
+      '-map', effectiveBgMusicActive ? '[outa]' : '[aconcat]',
       '-c:a', 'aac',
       '-b:a', '192k',
       '-c:v', 'libx264',
@@ -423,7 +476,7 @@ export async function exportProjectVideo(
   };
 
   try {
-    let ffmpegArgs = buildArgs(false);
+    let ffmpegArgs = buildArgs(false, false);
 
     if (onProgress) {
       onProgress({ ratio: 0.30, stage: 'Executing 1-pass filtergraph re-encode...' });
@@ -431,15 +484,28 @@ export async function exportProjectVideo(
 
     let exitCode = await ffmpeg.exec(ffmpegArgs);
 
-    // Safety Guard: if FFmpeg ever fails on afftdn in WASM, automatically retry with agate fallback
-    if (exitCode !== 0 && noiseRemovalActive) {
+    // Safety Guard: if FFmpeg fails, check for afftdn or amix issues and retry
+    if (exitCode !== 0) {
       const logs = ffmpegLogs.join('\n').toLowerCase();
-      if (logs.includes('afftdn') || logs.includes('filter') || logs.includes('error')) {
-        console.warn('FFmpeg failed with afftdn, retrying with agate noise gate fallback...');
+      let retryNeeded = false;
+      let useFallbackNoise = false;
+      let useFallbackAmix = false;
+
+      if (noiseRemovalActive && (logs.includes('afftdn') || logs.includes('filter') || logs.includes('error'))) {
+        retryNeeded = true;
+        useFallbackNoise = true;
+      }
+      if (effectiveBgMusicActive && (logs.includes('amix') || logs.includes('normalize') || logs.includes('alimiter'))) {
+        retryNeeded = true;
+        useFallbackAmix = true;
+      }
+
+      if (retryNeeded) {
+        console.warn('FFmpeg filtergraph failed, retrying with fallback audio filter settings...');
         if (onProgress) {
-          onProgress({ ratio: 0.30, stage: 'Retrying with noise gate fallback...' });
+          onProgress({ ratio: 0.30, stage: 'Retrying with fallback audio filter settings...' });
         }
-        ffmpegArgs = buildArgs(true);
+        ffmpegArgs = buildArgs(useFallbackNoise, useFallbackAmix);
         exitCode = await ffmpeg.exec(ffmpegArgs);
       }
     }
@@ -468,7 +534,10 @@ export async function exportProjectVideo(
       warnings,
       voiceEnhanceBaked: voiceEnhanceActive && hasAudio,
       noiseRemovalBaked: noiseRemovalActive && hasAudio,
-      memesSplicedCount: activeMemeClips.length
+      memesSplicedCount: activeMemeClips.length,
+      bgMusicBaked: effectiveBgMusicActive,
+      bgMusicName: effectiveBgMusicActive ? bgMusic?.name : undefined,
+      bgMusicVolume: effectiveBgMusicActive ? bgMusic?.volume : undefined
     };
   } finally {
     // Clean up memory files
@@ -478,6 +547,9 @@ export async function exportProjectVideo(
     }
     for (const fsName of writtenMemeFiles) {
       await ffmpeg.deleteFile(fsName).catch(() => {});
+    }
+    if (bgMusicFsName) {
+      await ffmpeg.deleteFile(bgMusicFsName).catch(() => {});
     }
     await ffmpeg.deleteFile('output.mp4').catch(() => {});
   }
