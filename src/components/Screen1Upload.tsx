@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { Upload, Sparkles, Wand2, ArrowRight, AlertCircle, FileVideo } from 'lucide-react';
 import { useEditorStore } from '../store/useEditorStore';
-import { detectSilenceInVideo, injectSilenceCutsIntoTimeline } from '../utils/silenceDetector';
 import { TimelineItem } from '../types/edl';
 
 export const Screen1Upload: React.FC = () => {
@@ -13,14 +12,12 @@ export const Screen1Upload: React.FC = () => {
   const [isProcessing, setIsProcessing] = useState(false);
   const [processingStatus, setProcessingStatus] = useState<string>('');
 
-  // Auto Edit Checkboxes (6 options)
+  // Auto Edit Checkboxes (4 options)
   const [autoOptions, setAutoOptions] = useState({
     transcript: true,
     timestamps: true,
     voiceEnhance: true,
-    noiseReduction: true,
-    detectSilence: false,
-    suggestMemes: true
+    noiseReduction: true
   });
 
   const handleFileDrop = (e: React.DragEvent<HTMLDivElement>) => {
@@ -81,7 +78,7 @@ export const Screen1Upload: React.FC = () => {
         return;
       }
 
-      let items: TimelineItem[] = [
+      const items: TimelineItem[] = [
         {
           id: 'clip_root_upload',
           kind: 'SOURCE_CLIP',
@@ -96,12 +93,6 @@ export const Screen1Upload: React.FC = () => {
           transitionOut: { type: 'none', durationMs: 0 }
         }
       ];
-
-      if (isAutoMode && autoOptions.detectSilence) {
-        setProcessingStatus('Scanning audio for awkward pauses...');
-        const { silences } = await detectSilenceInVideo(selectedFile, durationMs, 'Normal');
-        items = injectSilenceCutsIntoTimeline(items, silences);
-      }
 
       loadProject(
         videoUrl,
@@ -241,10 +232,8 @@ export const Screen1Upload: React.FC = () => {
                 { key: 'transcript', label: 'Generate Word-Level Transcript' },
                 { key: 'timestamps', label: 'Create Chapter Timestamps' },
                 { key: 'voiceEnhance', label: 'Enhance speaker audio' },
-                { key: 'noiseReduction', label: 'Remove background noise' },
-                { key: 'detectSilence', label: 'Detect Awkward Silences (>800ms Pauses)', badge: 'Experimental' },
-                { key: 'suggestMemes', label: 'Enable Meme Reaction Library' },
-              ].map(({ key, label, badge }) => (
+                { key: 'noiseReduction', label: 'Remove background noise' }
+              ].map(({ key, label }) => (
                 <label
                   key={key}
                   className="flex items-center space-x-3 text-xs text-[#A19E97] cursor-pointer select-none hover:text-[#F4F2EE] transition-colors"
@@ -259,11 +248,6 @@ export const Screen1Upload: React.FC = () => {
                   />
                   <span className="flex items-center space-x-2">
                     <span>{label}</span>
-                    {badge && (
-                      <span className="bg-[#D97706]/15 border border-[#F59E0B]/40 text-[#FCD34D] text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded font-medium">
-                        {badge}
-                      </span>
-                    )}
                   </span>
                 </label>
               ))}
