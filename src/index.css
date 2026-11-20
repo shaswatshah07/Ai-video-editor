@@ -2,21 +2,39 @@
 @tailwind components;
 @tailwind utilities;
 
+@layer base {
+  body {
+    background-color: #0E0E0D;
+    color: #F4F2EE;
+  }
+
+  /* Universal Tabular Figures for Timecodes & Duration Readouts */
+  .tabular-nums, .font-mono {
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* Subtle Warm Amber Focus Rings */
+  *:focus-visible {
+    outline: 2px solid rgba(232, 135, 42, 0.6);
+    outline-offset: 1px;
+  }
+}
+
 @layer utilities {
-  /* Custom scrollbars */
+  /* Matte Warm Studio Custom Scrollbars */
   ::-webkit-scrollbar {
     width: 6px;
     height: 6px;
   }
   ::-webkit-scrollbar-track {
-    background: #11131a;
+    background: #161614;
   }
   ::-webkit-scrollbar-thumb {
-    background: #2a2e3d;
+    background: #2C2B28;
     border-radius: 3px;
   }
   ::-webkit-scrollbar-thumb:hover {
-    background: #3b4256;
+    background: #45423C;
   }
 }
 

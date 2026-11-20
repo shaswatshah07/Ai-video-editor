@@ -766,19 +766,19 @@ export const Screen2Workspace: React.FC = () => {
   const minorTickCount = Math.floor(totalDurationSec / rulerMinorStepSec);
 
   return (
-    <div className="h-screen w-screen bg-[#0F1117] text-gray-100 flex flex-col overflow-hidden select-none">
+    <div className="h-screen w-screen bg-[#0E0E0D] text-[#F4F2EE] flex flex-col overflow-hidden select-none">
       {/* Top Header */}
-      <header className="h-14 border-b border-gray-800 bg-[#141721] px-4 flex items-center justify-between z-20">
+      <header className="h-14 border-b border-[#2C2B28] bg-[#161614] px-4 flex items-center justify-between z-20">
         <div className="flex items-center space-x-3">
-          <div className="w-8 h-8 rounded-lg bg-indigo-600 flex items-center justify-center font-bold text-sm shadow">
+          <div className="w-8 h-8 rounded-lg bg-[#1F1E1C] border border-[#2C2B28] text-[#E8872A] flex items-center justify-center font-bold text-sm">
             AI
           </div>
           <div>
-            <h2 className="text-sm font-semibold tracking-wide text-gray-200">{project.title}</h2>
-            <div className="flex items-center space-x-2 text-[11px] text-gray-400">
+            <h2 className="text-sm font-semibold tracking-wide text-[#F4F2EE]">{project.title}</h2>
+            <div className="flex items-center space-x-2 text-[11px] text-[#A19E97] tabular-nums">
               <span>{curProjSec}s / {totalProjSec}s</span>
               <span>•</span>
-              <span className="text-indigo-400">Virtual InShot Playback</span>
+              <span className="text-[#E8872A]">Virtual InShot Playback</span>
             </div>
           </div>
         </div>
@@ -795,15 +795,15 @@ export const Screen2Workspace: React.FC = () => {
               toggleVoiceEnhance();
             }}
             title="Speaker Voice Enhancement: 90Hz HPF + 280Hz room-echo cut + 2.5kHz vocal clarity boost + anti-hiss roll-off + gentle leveling"
-            className={`px-2.5 py-1 rounded-md text-xs font-medium flex items-center space-x-1.5 border transition-all ${
+            className={`px-2.5 py-1 rounded-lg text-xs font-medium flex items-center space-x-1.5 border transition-all ${
               voiceEnhanceEnabled
-                ? 'bg-emerald-950/70 border-emerald-500/80 text-emerald-300 shadow-sm'
-                : 'bg-gray-800/60 border-gray-700 text-gray-400 hover:text-gray-200'
+                ? 'bg-[#14B8A6]/15 border-[#2DD4BF]/50 text-[#5EEAD4]'
+                : 'bg-[#23221F] border-[#35332F] text-[#8A8780] hover:text-[#E6E3DC]'
             }`}
           >
-            <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
+            <Sparkles className={`w-3.5 h-3.5 ${voiceEnhanceEnabled ? 'text-[#5EEAD4]' : 'text-[#8A8780]'}`} />
             <span>Voice Enhance</span>
-            <span className={`text-[10px] px-1 py-0.2 rounded font-mono font-bold ${voiceEnhanceEnabled ? 'bg-emerald-800/60 text-emerald-200' : 'bg-gray-700 text-gray-400'}`}>
+            <span className={`text-[10px] px-1 py-0.2 rounded font-mono tabular-nums font-bold ${voiceEnhanceEnabled ? 'bg-[#14B8A6]/25 text-[#5EEAD4]' : 'bg-[#1F1E1C] text-[#8A8780]'}`}>
               {voiceEnhanceEnabled ? 'ON' : 'OFF'}
             </span>
           </button>
@@ -818,28 +818,28 @@ export const Screen2Workspace: React.FC = () => {
               toggleNoiseRemoval();
             }}
             title={isDenoising ? `Background Noise Removal: ${denoiseProgress || 'Cleaning audio...'}` : "Background Noise Removal: Adaptive STFT Wiener Spectral Denoiser removing ceiling fan noise and room hiss"}
-            className={`px-2.5 py-1 rounded-md text-xs font-medium flex items-center space-x-1.5 border transition-all ${
+            className={`px-2.5 py-1 rounded-lg text-xs font-medium flex items-center space-x-1.5 border transition-all ${
               noiseRemovalEnabled
-                ? 'bg-indigo-950/70 border-indigo-500/80 text-indigo-300 shadow-sm'
-                : 'bg-gray-800/60 border-gray-700 text-gray-400 hover:text-gray-200'
+                ? 'bg-[#14B8A6]/15 border-[#2DD4BF]/50 text-[#5EEAD4]'
+                : 'bg-[#23221F] border-[#35332F] text-[#8A8780] hover:text-[#E6E3DC]'
             }`}
           >
             {isDenoising ? (
-              <Loader2 className="w-3.5 h-3.5 animate-spin text-indigo-400" />
+              <Loader2 className="w-3.5 h-3.5 animate-spin text-[#5EEAD4]" />
             ) : (
-              <Wand2 className="w-3.5 h-3.5 text-indigo-400" />
+              <Wand2 className={`w-3.5 h-3.5 ${noiseRemovalEnabled ? 'text-[#5EEAD4]' : 'text-[#8A8780]'}`} />
             )}
             <span>Noise Removal</span>
-            <span className={`text-[10px] px-1 py-0.2 rounded font-mono font-bold ${noiseRemovalEnabled ? 'bg-indigo-800/60 text-indigo-200' : 'bg-gray-700 text-gray-400'}`}>
+            <span className={`text-[10px] px-1 py-0.2 rounded font-mono tabular-nums font-bold ${noiseRemovalEnabled ? 'bg-[#14B8A6]/25 text-[#5EEAD4]' : 'bg-[#1F1E1C] text-[#8A8780]'}`}>
               {isDenoising ? 'CLEANING...' : noiseRemovalEnabled ? 'ON' : 'OFF'}
             </span>
           </button>
 
-          <div className="h-4 w-[1px] bg-gray-800 mx-1" />
+          <div className="h-4 w-[1px] bg-[#2C2B28] mx-1" />
 
           <button
             onClick={() => setScreen('EXPORT')}
-            className="flex items-center space-x-1.5 bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white font-medium px-4 py-1.5 rounded-lg text-xs shadow-md shadow-indigo-900/30 transition-all active:scale-95"
+            className="flex items-center space-x-1.5 bg-[#E8872A] hover:bg-[#F59A3D] text-[#11100E] font-semibold px-4 py-1.5 rounded-lg text-xs transition-colors shadow-none active:scale-95"
           >
             <span>Export Video</span>
             <ArrowRight className="w-3.5 h-3.5" />
@@ -851,17 +851,17 @@ export const Screen2Workspace: React.FC = () => {
       <div className="flex-1 flex overflow-hidden relative">
         {/* Left Collapsible Panel: Transcript & Chapters */}
         <div
-          className={`border-r border-gray-800 bg-[#12141D] flex flex-col transition-all duration-200 z-10 ${
+          className={`border-r border-[#2C2B28] bg-[#161614] flex flex-col transition-all duration-200 z-10 ${
             isLeftOpen ? 'w-80' : 'w-10'
           }`}
         >
-          <div className="h-10 border-b border-gray-800 flex items-center justify-between px-3">
+          <div className="h-10 border-b border-[#2C2B28] flex items-center justify-between px-3">
             {isLeftOpen ? (
               <div className="flex items-center space-x-2 text-xs">
                 <button
                   onClick={() => setLeftTab('transcript')}
                   className={`font-medium pb-0.5 border-b-2 transition-all ${
-                    leftTab === 'transcript' ? 'border-indigo-500 text-indigo-300' : 'border-transparent text-gray-400'
+                    leftTab === 'transcript' ? 'border-[#E8872A] text-[#F4F2EE]' : 'border-transparent text-[#A19E97] hover:text-[#F4F2EE]'
                   }`}
                 >
                   Transcript
@@ -869,7 +869,7 @@ export const Screen2Workspace: React.FC = () => {
                 <button
                   onClick={() => setLeftTab('chapters')}
                   className={`font-medium pb-0.5 border-b-2 transition-all ${
-                    leftTab === 'chapters' ? 'border-indigo-500 text-indigo-300' : 'border-transparent text-gray-400'
+                    leftTab === 'chapters' ? 'border-[#E8872A] text-[#F4F2EE]' : 'border-transparent text-[#A19E97] hover:text-[#F4F2EE]'
                   }`}
                 >
                   Chapters
@@ -878,7 +878,7 @@ export const Screen2Workspace: React.FC = () => {
             ) : null}
             <button
               onClick={() => setIsLeftOpen(!isLeftOpen)}
-              className="text-gray-400 hover:text-gray-200 p-1"
+              className="text-[#A19E97] hover:text-[#F4F2EE] p-1"
             >
               {isLeftOpen ? <ChevronLeft className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
             </button>
@@ -889,15 +889,15 @@ export const Screen2Workspace: React.FC = () => {
               {leftTab === 'transcript' ? (
                 <div className="space-y-3">
                   {/* Quality & Mode Controls Bar */}
-                  <div className="p-2.5 rounded-lg bg-gray-900/80 border border-gray-800 space-y-2">
+                  <div className="p-2.5 rounded-lg bg-[#1F1E1C] border border-[#2C2B28] space-y-2">
                     {/* Quality Selector */}
                     <div className="flex items-center justify-between text-[11px]">
-                      <span className="text-gray-400 font-medium">Quality:</span>
+                      <span className="text-[#A19E97] font-medium">Quality:</span>
                       <select
                         value={transcriptQuality}
                         onChange={(e) => setTranscriptQuality(e.target.value as any)}
                         disabled={transcriptionStatus === 'downloading_model' || transcriptionStatus === 'transcribing' || transcriptMode === 'transcribe_hinglish'}
-                        className="bg-gray-950 border border-gray-800 text-gray-200 text-[11px] rounded px-2 py-1 focus:outline-none focus:border-indigo-500 cursor-pointer disabled:opacity-50"
+                        className="bg-[#161614] border border-[#2C2B28] text-[#F4F2EE] text-[11px] rounded px-2 py-1 focus:outline-none focus:border-[#E8872A] cursor-pointer disabled:opacity-50"
                       >
                         <option value="accurate">Accurate (Small, ~285 MB)</option>
                         <option value="fast">Fast (Base, ~75 MB)</option>
@@ -906,12 +906,12 @@ export const Screen2Workspace: React.FC = () => {
 
                     {/* Mode Selector */}
                     <div className="flex items-center justify-between text-[11px]">
-                      <span className="text-gray-400 font-medium">Mode:</span>
+                      <span className="text-[#A19E97] font-medium">Mode:</span>
                       <select
                         value={transcriptMode}
                         onChange={(e) => setTranscriptMode(e.target.value as any)}
                         disabled={transcriptionStatus === 'downloading_model' || transcriptionStatus === 'transcribing'}
-                        className="bg-gray-950 border border-gray-800 text-gray-200 text-[11px] rounded px-2 py-1 max-w-[175px] truncate focus:outline-none focus:border-indigo-500 cursor-pointer"
+                        className="bg-[#161614] border border-[#2C2B28] text-[#F4F2EE] text-[11px] rounded px-2 py-1 max-w-[175px] truncate focus:outline-none focus:border-[#E8872A] cursor-pointer"
                       >
                         <option value="transcribe_hinglish">Hinglish (Hindi + English)</option>
                         <option value="translate_en">English (translated)</option>
@@ -919,7 +919,7 @@ export const Screen2Workspace: React.FC = () => {
                       </select>
                     </div>
 
-                    <p className="text-[10px] text-gray-500">
+                    <p className="text-[10px] text-[#6E6B64]">
                       First use downloads the model ({transcriptMode === 'transcribe_hinglish' ? 'about 72 MB' : transcriptQuality === 'accurate' ? 'about 285 MB' : 'about 75 MB'}), only once.
                     </p>
 
@@ -928,16 +928,16 @@ export const Screen2Workspace: React.FC = () => {
                         type="button"
                         onClick={() => generateTranscript(transcriptQuality, transcriptMode)}
                         disabled={transcriptionStatus === 'downloading_model' || transcriptionStatus === 'transcribing'}
-                        className="flex-1 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white font-medium py-1.5 px-3 rounded-md text-xs flex items-center justify-center space-x-1.5 shadow transition-all"
+                        className="flex-1 bg-[#E8872A] hover:bg-[#F59A3D] disabled:opacity-50 text-[#11100E] font-semibold py-1.5 px-3 rounded-lg text-xs flex items-center justify-center space-x-1.5 shadow-none transition-all"
                       >
                         {transcriptionStatus === 'downloading_model' ? (
                           <>
-                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                            <Loader2 className="w-3.5 h-3.5 animate-spin text-[#11100E]" />
                             <span>Loading model... {transcriptionDownloadPercent}%</span>
                           </>
                         ) : transcriptionStatus === 'transcribing' ? (
                           <>
-                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                            <Loader2 className="w-3.5 h-3.5 animate-spin text-[#11100E]" />
                             <span>Transcribing...</span>
                           </>
                         ) : project.transcript.length > 0 && !project.isDemoSample ? (
@@ -958,7 +958,7 @@ export const Screen2Workspace: React.FC = () => {
                           type="button"
                           onClick={() => downloadTranscriptAsTxt(project.transcript, `${project.title.replace(/\.[^/.]+$/, '')}_transcript.txt`)}
                           title="Download transcript as .txt"
-                          className="bg-gray-800 hover:bg-gray-700 text-gray-300 p-1.5 rounded-md border border-gray-700 transition-colors"
+                          className="bg-[#23221F] hover:bg-[#2E2C28] text-[#E6E3DC] p-1.5 rounded-lg border border-[#35332F] transition-colors"
                         >
                           <Download className="w-3.5 h-3.5" />
                         </button>
@@ -972,9 +972,9 @@ export const Screen2Workspace: React.FC = () => {
                           const res = suggestNonSpeechSilences();
                           alert(res.message);
                         }}
-                        className="w-full bg-amber-950/40 hover:bg-amber-950/70 border border-amber-800/60 text-amber-300 py-1 px-2 rounded text-[11px] flex items-center justify-center space-x-1 transition-all"
+                        className="w-full bg-[#D97706]/15 hover:bg-[#D97706]/25 border border-[#F59E0B]/50 text-[#FCD34D] py-1 px-2 rounded-lg text-[11px] flex items-center justify-center space-x-1 transition-all"
                       >
-                        <ShieldAlert className="w-3 h-3 text-amber-400" />
+                        <ShieldAlert className="w-3 h-3 text-[#F59E0B]" />
                         <span>Suggest Non-Speech Cuts</span>
                       </button>
                     )}
@@ -982,37 +982,37 @@ export const Screen2Workspace: React.FC = () => {
 
                   {/* Fallback Notice if Small model fell back to Base */}
                   {transcriptionFallbackNotice && (
-                    <div className="p-2.5 rounded-lg bg-amber-950/50 border border-amber-700/60 text-amber-300 text-[11px] flex items-start space-x-2">
-                      <ShieldAlert className="w-4 h-4 flex-shrink-0 text-amber-400 mt-0.5" />
+                    <div className="p-2.5 rounded-lg bg-[#D97706]/15 border border-[#F59E0B]/50 text-[#FCD34D] text-[11px] flex items-start space-x-2">
+                      <ShieldAlert className="w-4 h-4 flex-shrink-0 text-[#F59E0B] mt-0.5" />
                       <span>{transcriptionFallbackNotice}</span>
                     </div>
                   )}
 
                   {/* Urdu Script Warning Banner (Requirement 5) */}
                   {project.transcriptionMeta?.hasUrduWarning && (
-                    <div className="p-2.5 rounded-lg bg-amber-950/60 border border-amber-600/70 text-amber-200 text-[11px] flex items-start space-x-2">
-                      <AlertCircle className="w-4 h-4 flex-shrink-0 text-amber-400 mt-0.5" />
+                    <div className="p-2.5 rounded-lg bg-[#D97706]/15 border border-[#F59E0B]/50 text-[#FCD34D] text-[11px] flex items-start space-x-2">
+                      <AlertCircle className="w-4 h-4 flex-shrink-0 text-[#F59E0B] mt-0.5" />
                       <span>Output contains Urdu-script text. For a cleaner result use &apos;English (translated)&apos; mode.</span>
                     </div>
                   )}
 
                   {/* Status Banner: Downloading Model */}
                   {transcriptionStatus === 'downloading_model' && (
-                    <div className="p-3 rounded-lg bg-indigo-950/50 border border-indigo-700/60 space-y-2">
-                      <div className="flex items-center justify-between text-xs text-indigo-300 font-medium">
+                    <div className="p-3 rounded-lg bg-[#1F1E1C] border border-[#2C2B28] space-y-2">
+                      <div className="flex items-center justify-between text-xs text-[#F4F2EE] font-medium">
                         <span className="flex items-center space-x-1.5">
-                          <Loader2 className="w-3.5 h-3.5 animate-spin text-indigo-400" />
+                          <Loader2 className="w-3.5 h-3.5 animate-spin text-[#E8872A]" />
                           <span>Downloading Whisper Model</span>
                         </span>
-                        <span>{transcriptionDownloadPercent}%</span>
+                        <span className="tabular-nums font-mono">{transcriptionDownloadPercent}%</span>
                       </div>
-                      <div className="w-full bg-indigo-950 rounded-full h-1.5 overflow-hidden">
+                      <div className="w-full bg-[#161614] rounded-full h-1.5 overflow-hidden">
                         <div
-                          className="bg-indigo-500 h-1.5 rounded-full transition-all duration-200"
+                          className="bg-[#E8872A] h-1.5 rounded-full transition-all duration-200"
                           style={{ width: `${transcriptionDownloadPercent}%` }}
                         />
                       </div>
-                      <p className="text-[10px] text-indigo-200/70">
+                      <p className="text-[10px] text-[#A19E97]">
                         First use downloads the model ({transcriptMode === 'transcribe_hinglish' ? 'about 72 MB' : transcriptQuality === 'accurate' ? 'about 285 MB' : 'about 75 MB'}), only once.
                       </p>
                     </div>
@@ -1020,27 +1020,27 @@ export const Screen2Workspace: React.FC = () => {
 
                   {/* Status Banner: Transcribing */}
                   {transcriptionStatus === 'transcribing' && (
-                    <div className="p-3 rounded-lg bg-purple-950/50 border border-purple-700/60 flex items-center space-x-2.5">
-                      <Loader2 className="w-4 h-4 animate-spin text-purple-400 flex-shrink-0" />
+                    <div className="p-3 rounded-lg bg-[#1F1E1C] border border-[#2C2B28] flex items-center space-x-2.5">
+                      <Loader2 className="w-4 h-4 animate-spin text-[#E8872A] flex-shrink-0" />
                       <div>
-                        <p className="text-xs font-medium text-purple-200">Transcribing speech...</p>
-                        <p className="text-[10px] text-purple-300/70">Running Whisper AI in background Web Worker</p>
+                        <p className="text-xs font-medium text-[#F4F2EE]">Transcribing speech...</p>
+                        <p className="text-[10px] text-[#A19E97]">Running Whisper AI in background Web Worker</p>
                       </div>
                     </div>
                   )}
 
                   {/* Status Banner: Error */}
                   {transcriptionStatus === 'error' && (
-                    <div className="p-3 rounded-lg bg-red-950/60 border border-red-700/60 space-y-1.5">
-                      <div className="flex items-center space-x-1.5 text-xs font-semibold text-red-300">
-                        <AlertCircle className="w-3.5 h-3.5 text-red-400 flex-shrink-0" />
+                    <div className="p-3 rounded-lg bg-[#DC2626]/12 border border-[#EF4444]/40 space-y-1.5">
+                      <div className="flex items-center space-x-1.5 text-xs font-semibold text-[#F87171]">
+                        <AlertCircle className="w-3.5 h-3.5 text-[#F87171] flex-shrink-0" />
                         <span>Transcription Failed</span>
                       </div>
-                      <p className="text-[11px] text-red-200 leading-snug">{transcriptionError}</p>
+                      <p className="text-[11px] text-[#FCA5A5] leading-snug">{transcriptionError}</p>
                       <button
                         type="button"
                         onClick={() => generateTranscript(transcriptQuality, transcriptMode)}
-                        className="text-[10px] text-red-300 hover:text-white underline mt-1 font-medium"
+                        className="text-[10px] text-[#F87171] hover:underline mt-1 font-medium"
                       >
                         Try Again
                       </button>
@@ -1049,29 +1049,29 @@ export const Screen2Workspace: React.FC = () => {
 
                   {/* Transcript Content List */}
                   {project.transcript.length === 0 && transcriptionStatus === 'idle' ? (
-                    <div className="p-4 rounded-xl bg-gray-900/40 border border-gray-800 text-center space-y-2">
-                      <p className="text-gray-300 text-xs">No transcript generated yet.</p>
-                      <p className="text-[11px] text-gray-500 leading-relaxed">
+                    <div className="p-4 rounded-xl bg-[#1F1E1C] border border-[#2C2B28] text-center space-y-2">
+                      <p className="text-[#F4F2EE] text-xs">No transcript generated yet.</p>
+                      <p className="text-[11px] text-[#6E6B64] leading-relaxed">
                         Click &quot;Generate Transcript&quot; above to transcribe using in-browser Whisper AI. First use downloads the model once.
                       </p>
                     </div>
                   ) : project.transcript.length > 0 ? (
                     <div className="space-y-2">
                       {project.transcriptionMeta?.lowQualityWarning && (
-                        <div className="p-2.5 rounded-lg bg-amber-950/60 border border-amber-600/70 text-amber-200 text-[11px] flex items-start space-x-2">
-                          <AlertCircle className="w-3.5 h-3.5 flex-shrink-0 text-amber-400 mt-0.5" />
+                        <div className="p-2.5 rounded-lg bg-[#D97706]/15 border border-[#F59E0B]/50 text-[#FCD34D] text-[11px] flex items-start space-x-2">
+                          <AlertCircle className="w-3.5 h-3.5 flex-shrink-0 text-[#F59E0B] mt-0.5" />
                           <span>{project.transcriptionMeta.lowQualityWarning}</span>
                         </div>
                       )}
 
-                      <div className="flex items-center justify-between text-[11px] text-gray-400 pb-1 border-b border-gray-800/80">
+                      <div className="flex items-center justify-between text-[11px] text-[#A19E97] pb-1 border-b border-[#2C2B28]">
                         <span>Click to seek • Double-click to edit:</span>
                         {project.isDemoSample ? (
-                          <span className="text-[10px] bg-amber-950/60 text-amber-300 border border-amber-800/60 px-1.5 py-0.2 rounded">
+                          <span className="text-[10px] bg-[#1F1E1C] text-[#FCD34D] border border-[#2C2B28] px-1.5 py-0.2 rounded font-mono">
                             Sample transcript
                           </span>
                         ) : (
-                          <span className="text-[10px] bg-indigo-950/60 text-indigo-300 border border-indigo-800/60 px-1.5 py-0.2 rounded">
+                          <span className="text-[10px] bg-[#1F1E1C] text-[#A19E97] border border-[#2C2B28] px-1.5 py-0.2 rounded font-mono">
                             {project.transcriptionMeta?.modelName || (transcriptQuality === 'accurate' ? 'Whisper Small' : 'Whisper Base')} ({project.transcript.length} words)
                           </span>
                         )}
@@ -1107,7 +1107,7 @@ export const Screen2Workspace: React.FC = () => {
                                   setEditingWordId(null);
                                 }}
                                 onClick={(e) => e.stopPropagation()}
-                                className="bg-gray-800 text-white font-medium border border-indigo-500 rounded px-1 py-0.5 text-xs outline-none w-20 inline-block shadow-sm"
+                                className="bg-[#0E0E0D] text-[#F4F2EE] font-medium border border-[#E8872A] rounded px-1 py-0.5 text-xs outline-none w-20 inline-block shadow-none"
                               />
                             );
                           }
@@ -1143,22 +1143,22 @@ export const Screen2Workspace: React.FC = () => {
                               }
                               className={`inline-block px-1 py-0.5 rounded cursor-pointer transition-colors ${
                                 isDeleted
-                                  ? 'line-through text-gray-500 bg-gray-900/50 hover:text-gray-300'
+                                  ? 'line-through text-[#6E6B64] bg-[#161614]/50 hover:text-[#A19E97]'
                                   : isCurrent
-                                  ? 'bg-indigo-600 text-white font-bold shadow-sm'
-                                  : 'text-gray-300 hover:bg-gray-800 hover:text-white'
-                              } ${w.edited ? 'ring-1 ring-indigo-400/50 bg-indigo-950/30' : ''}`}
+                                  ? 'bg-[#E8872A]/20 text-[#E8872A] font-bold border border-[#E8872A]/50'
+                                  : 'text-[#E6E3DC] hover:bg-[#292825] hover:text-[#F4F2EE]'
+                              } ${w.edited ? 'ring-1 ring-[#5EEAD4]/50 bg-[#14B8A6]/10' : ''}`}
                             >
                               {w.word}
-                              {w.edited && <span className="text-[9px] text-indigo-300 ml-0.5 font-bold">*</span>}
+                              {w.edited && <span className="text-[9px] text-[#5EEAD4] ml-0.5 font-bold">*</span>}
                             </span>
                           );
                         })}
                       </div>
 
                       {/* Labels under the transcript (Requirement 7) */}
-                      <div className="pt-2.5 mt-2 border-t border-gray-800 text-[11px] text-gray-400 space-y-1">
-                        <div className="flex items-center justify-between text-[10px] text-gray-400 font-mono">
+                      <div className="pt-2.5 mt-2 border-t border-[#2C2B28] text-[11px] text-[#A19E97] space-y-1">
+                        <div className="flex items-center justify-between text-[10px] text-[#A19E97] font-mono tabular-nums">
                           <span>
                             {project.transcriptionMeta?.modelName || (transcriptQuality === 'accurate' ? 'Whisper Small' : 'Whisper Base')} ({project.transcriptionMeta?.device || 'WASM'})
                           </span>
@@ -1166,7 +1166,7 @@ export const Screen2Workspace: React.FC = () => {
                             {project.transcriptionMeta?.durationMs ? `${(project.transcriptionMeta.durationMs / 1000).toFixed(1)}s` : ''}
                           </span>
                         </div>
-                        <div className="text-[10px] text-gray-400">
+                        <div className="text-[10px] text-[#A19E97]">
                           Mode:{' '}
                           {
                             (project.transcriptionMeta?.mode || transcriptMode) === 'transcribe_hinglish'
@@ -1176,7 +1176,7 @@ export const Screen2Workspace: React.FC = () => {
                               : 'English (translated)'
                           }
                         </div>
-                        <p className="text-[10px] text-gray-500 italic">
+                        <p className="text-[10px] text-[#6E6B64] italic">
                           Auto-generated, may contain errors. Double-click a word to fix it.
                         </p>
                       </div>
@@ -1185,16 +1185,16 @@ export const Screen2Workspace: React.FC = () => {
                 </div>
               ) : (
                 <div className="space-y-2">
-                  <div className="flex items-center justify-between text-[11px] text-gray-400 pb-1 border-b border-gray-800/80">
-                    <span className="font-medium text-gray-300">Chapters (Auto-generated, approximate)</span>
-                    <span className="text-[10px] text-gray-500">{project.chapters.length} markers</span>
+                  <div className="flex items-center justify-between text-[11px] text-[#A19E97] pb-1 border-b border-[#2C2B28]">
+                    <span className="font-medium text-[#F4F2EE]">Chapters (Auto-generated, approximate)</span>
+                    <span className="text-[10px] text-[#6E6B64] tabular-nums">{project.chapters.length} markers</span>
                   </div>
 
                   {project.chapters.length === 0 ? (
-                    <div className="p-4 rounded-xl bg-gray-900/40 border border-gray-800 text-center space-y-2">
-                      <Bookmark className="w-5 h-5 text-gray-600 mx-auto" />
-                      <p className="text-gray-300 text-xs">No chapters yet.</p>
-                      <p className="text-[11px] text-gray-500 leading-relaxed">
+                    <div className="p-4 rounded-xl bg-[#1F1E1C] border border-[#2C2B28] text-center space-y-2">
+                      <Bookmark className="w-5 h-5 text-[#6E6B64] mx-auto" />
+                      <p className="text-[#F4F2EE] text-xs">No chapters yet.</p>
+                      <p className="text-[11px] text-[#6E6B64] leading-relaxed">
                         Generate a transcript to automatically build chapter timestamps from natural speech pauses and 20s intervals.
                       </p>
                     </div>
@@ -1215,13 +1215,13 @@ export const Screen2Workspace: React.FC = () => {
                               if (nextActive) handleSeek(nextActive.projectStartMs);
                             }
                           }}
-                          className="p-2 rounded-lg bg-gray-800/40 hover:bg-gray-800 border border-gray-750 cursor-pointer flex items-center justify-between transition-colors"
+                          className="p-2 rounded-lg bg-[#1F1E1C] hover:bg-[#292825] border border-[#2C2B28] cursor-pointer flex items-center justify-between transition-colors"
                         >
                           <div className="flex items-center space-x-2 truncate mr-2">
-                            <Bookmark className="w-3.5 h-3.5 text-indigo-400 flex-shrink-0" />
-                            <span className="font-medium text-gray-200 truncate">{ch.title}</span>
+                            <Bookmark className="w-3.5 h-3.5 text-[#E8872A] flex-shrink-0" />
+                            <span className="font-medium text-[#F4F2EE] truncate">{ch.title}</span>
                           </div>
-                          <span className="text-[10px] text-gray-400 font-mono flex-shrink-0">
+                          <span className="text-[10px] text-[#A19E97] font-mono tabular-nums flex-shrink-0">
                             {projMs !== null ? `${(projMs / 1000).toFixed(1)}s` : 'Cut'}
                           </span>
                         </div>
@@ -1235,12 +1235,12 @@ export const Screen2Workspace: React.FC = () => {
         </div>
 
         {/* Center: Dual-Video Preview Player (Spec 3) */}
-        <div className="flex-1 flex flex-col bg-[#0A0C11] items-center justify-center p-4 relative overflow-hidden">
+        <div className="flex-1 flex flex-col bg-[#0E0E0D] items-center justify-center p-4 relative overflow-hidden">
           {/* Silence Alert Banner if pauses present */}
           {project.items.some(it => it.status === 'SUGGESTED_SILENCE_CUT') && (
-            <div className="absolute top-4 left-6 right-6 bg-amber-950/70 border border-amber-600/50 rounded-xl px-4 py-2 flex items-center justify-between text-xs z-20 backdrop-blur shadow-lg">
-              <div className="flex items-center space-x-2 text-amber-300">
-                <ShieldAlert className="w-4 h-4 flex-shrink-0" />
+            <div className="absolute top-4 left-6 right-6 bg-[#D97706]/15 border border-[#F59E0B]/50 rounded-xl px-4 py-2 flex items-center justify-between text-xs z-20 backdrop-blur">
+              <div className="flex items-center space-x-2 text-[#FCD34D]">
+                <ShieldAlert className="w-4 h-4 flex-shrink-0 text-[#F59E0B]" />
                 <span>
                   <strong>Awkward Pauses Detected:</strong> Review amber intervals on timeline or click to clean up:
                 </span>
@@ -1252,7 +1252,7 @@ export const Screen2Workspace: React.FC = () => {
                     payload: { minDurationMs: 1200, paddingPreMs: 150, paddingPostMs: 200 },
                     explanation: 'Removing all detected silence intervals.'
                   })}
-                  className="bg-amber-600 hover:bg-amber-500 text-white font-medium px-3 py-1 rounded text-xs transition-colors"
+                  className="bg-[#E8872A] hover:bg-[#F59A3D] text-[#11100E] font-semibold px-3 py-1 rounded-lg text-xs transition-colors shadow-none"
                 >
                   Accept All Cuts
                 </button>
@@ -1261,7 +1261,7 @@ export const Screen2Workspace: React.FC = () => {
           )}
 
           {/* Dual-Video Canvas Frame */}
-          <div className="relative w-full max-w-3xl aspect-video bg-black rounded-2xl overflow-hidden shadow-2xl border border-gray-800 flex items-center justify-center">
+          <div className="relative w-full max-w-3xl aspect-video bg-black rounded-xl overflow-hidden border border-[#2C2B28] flex items-center justify-center">
             {/* Main Video Element */}
             <video
               ref={mainVideoRef}
@@ -1296,8 +1296,8 @@ export const Screen2Workspace: React.FC = () => {
               className="absolute inset-0 cursor-pointer flex items-center justify-center group"
             >
               {!isPlaying && (
-                <div className="w-16 h-16 rounded-full bg-indigo-600/90 text-white flex items-center justify-center shadow-xl transform group-hover:scale-105 transition-all">
-                  <Play className="w-8 h-8 fill-white translate-x-0.5" />
+                <div className="w-16 h-16 rounded-full bg-[#E8872A] text-[#11100E] flex items-center justify-center shadow-lg transform group-hover:scale-105 transition-all">
+                  <Play className="w-8 h-8 fill-[#11100E] translate-x-0.5" />
                 </div>
               )}
             </div>
@@ -1308,23 +1308,23 @@ export const Screen2Workspace: React.FC = () => {
             <div className="flex items-center space-x-3">
               <button
                 onClick={togglePlayPause}
-                className="w-9 h-9 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white flex items-center justify-center shadow transition-all active:scale-95"
+                className="w-9 h-9 rounded-lg bg-[#E8872A] hover:bg-[#F59A3D] text-[#11100E] flex items-center justify-center shadow-none transition-all active:scale-95"
               >
-                {isPlaying ? <Pause className="w-4 h-4 fill-white" /> : <Play className="w-4 h-4 fill-white translate-x-0.5" />}
+                {isPlaying ? <Pause className="w-4 h-4 fill-[#11100E]" /> : <Play className="w-4 h-4 fill-[#11100E] translate-x-0.5" />}
               </button>
 
               <button
                 onClick={() => handleSeek(0)}
-                className="p-2 text-gray-400 hover:text-gray-200 transition-colors"
+                className="p-2 text-[#A19E97] hover:text-[#F4F2EE] transition-colors"
                 title="Restart"
               >
                 <RotateCcw className="w-4 h-4" />
               </button>
 
-              <div className="text-xs font-mono text-gray-300">
-                <span className="font-bold text-white">{curProjSec}s</span>
-                <span className="text-gray-600"> / </span>
-                <span>{totalProjSec}s</span>
+              <div className="text-xs font-mono tabular-nums text-[#F4F2EE]">
+                <span className="font-bold text-[#F4F2EE]">{curProjSec}s</span>
+                <span className="text-[#6E6B64]"> / </span>
+                <span className="text-[#A19E97]">{totalProjSec}s</span>
               </div>
             </div>
 
@@ -1332,29 +1332,29 @@ export const Screen2Workspace: React.FC = () => {
             <div className="flex items-center space-x-2">
               <button
                 onClick={splitAtPlayhead}
-                className="px-3 py-1.5 bg-gray-800 hover:bg-gray-700 text-gray-200 rounded-lg text-xs font-medium flex items-center space-x-1.5 transition-colors"
+                className="px-3 py-1.5 bg-[#23221F] hover:bg-[#2E2C28] border border-[#35332F] text-[#E6E3DC] rounded-lg text-xs font-medium flex items-center space-x-1.5 transition-colors"
                 title="Split at playhead position"
               >
-                <Scissors className="w-3.5 h-3.5 text-indigo-400" />
+                <Scissors className="w-3.5 h-3.5 text-[#E8872A]" />
                 <span>Split (S)</span>
               </button>
 
               <button
                 onClick={deleteSelected}
                 disabled={!selectedItemId}
-                className="px-3 py-1.5 bg-gray-800 hover:bg-red-950/60 hover:text-red-300 border border-transparent hover:border-red-800/60 text-gray-400 rounded-lg text-xs font-medium flex items-center space-x-1.5 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                className="px-3 py-1.5 bg-[#DC2626]/12 hover:bg-[#DC2626]/20 border border-[#EF4444]/40 text-[#F87171] rounded-lg text-xs font-medium flex items-center space-x-1.5 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
                 title="Delete selected clip"
               >
                 <Trash2 className="w-3.5 h-3.5" />
                 <span>Delete</span>
               </button>
 
-              <div className="h-4 w-[1px] bg-gray-800 mx-1" />
+              <div className="h-4 w-[1px] bg-[#2C2B28] mx-1" />
 
               <button
                 onClick={undo}
                 disabled={undoStack.length === 0}
-                className="p-1.5 text-gray-400 hover:text-gray-200 disabled:opacity-30 transition-colors"
+                className="p-1.5 text-[#A19E97] hover:text-[#F4F2EE] disabled:opacity-30 transition-colors"
                 title="Undo"
               >
                 <RotateCcw className="w-4 h-4" />
@@ -1363,7 +1363,7 @@ export const Screen2Workspace: React.FC = () => {
               <button
                 onClick={redo}
                 disabled={redoStack.length === 0}
-                className="p-1.5 text-gray-400 hover:text-gray-200 disabled:opacity-30 transition-colors"
+                className="p-1.5 text-[#A19E97] hover:text-[#F4F2EE] disabled:opacity-30 transition-colors"
                 title="Redo"
               >
                 <RotateCw className="w-4 h-4" />
@@ -1374,20 +1374,20 @@ export const Screen2Workspace: React.FC = () => {
 
         {/* Right Collapsible Panel: AI Command Hub */}
         <div
-          className={`border-l border-gray-800 bg-[#12141D] flex flex-col transition-all duration-200 z-10 ${
+          className={`border-l border-[#2C2B28] bg-[#161614] flex flex-col transition-all duration-200 z-10 ${
             isRightOpen ? 'w-80' : 'w-10'
           }`}
         >
-          <div className="h-10 border-b border-gray-800 flex items-center justify-between px-3">
+          <div className="h-10 border-b border-[#2C2B28] flex items-center justify-between px-3">
             <button
               onClick={() => setIsRightOpen(!isRightOpen)}
-              className="text-gray-400 hover:text-gray-200 p-1"
+              className="text-[#A19E97] hover:text-[#F4F2EE] p-1"
             >
               {isRightOpen ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
             </button>
             {isRightOpen && (
-              <span className="text-xs font-semibold text-gray-200 flex items-center space-x-1">
-                <Sparkles className="w-3.5 h-3.5 text-indigo-400" />
+              <span className="text-xs font-semibold text-[#F4F2EE] flex items-center space-x-1">
+                <Sparkles className="w-3.5 h-3.5 text-[#E8872A]" />
                 <span>AI Command Hub</span>
               </span>
             )}
@@ -1397,7 +1397,7 @@ export const Screen2Workspace: React.FC = () => {
             <div className="flex-1 flex flex-col overflow-hidden p-3 space-y-3">
               {/* Quick Prompt Chips */}
               <div className="space-y-1.5">
-                <span className="text-[10px] uppercase font-bold text-gray-500 tracking-wider">Quick Prompts</span>
+                <span className="text-[10px] uppercase font-bold text-[#A19E97] tracking-wider">Quick Prompts</span>
                 <div className="flex flex-wrap gap-1.5">
                   {[
                     'Remove silence',
@@ -1409,7 +1409,7 @@ export const Screen2Workspace: React.FC = () => {
                     <button
                       key={chip}
                       onClick={() => setPromptInput(chip)}
-                      className="text-[11px] bg-gray-800 hover:bg-indigo-900/40 hover:text-indigo-300 text-gray-300 px-2 py-1 rounded-md border border-gray-700/60 transition-colors"
+                      className="text-[11px] bg-[#1F1E1C] hover:bg-[#292825] hover:text-[#F4F2EE] text-[#A19E97] px-2 py-1 rounded-md border border-[#2C2B28] transition-colors"
                     >
                       {chip}
                     </button>
@@ -1418,19 +1418,19 @@ export const Screen2Workspace: React.FC = () => {
               </div>
 
               {/* Meme Reactions Section (Two-Option: Library vs Custom Upload) */}
-              <div className="space-y-2 pt-1 border-t border-gray-800/80">
+              <div className="space-y-2 pt-1 border-t border-[#2C2B28]">
                 {/* Section Header with Replace Banner */}
                 <div className="flex items-center justify-between">
                   <div className="flex items-center space-x-1.5">
-                    <Film className="w-3.5 h-3.5 text-purple-400" />
-                    <span className="text-[10px] uppercase font-bold text-gray-400 tracking-wider">
+                    <Film className="w-3.5 h-3.5 text-[#FDA4AF]" />
+                    <span className="text-[10px] uppercase font-bold text-[#A19E97] tracking-wider">
                       Meme Reactions
                     </span>
                   </div>
                   {replacingMemeId && (
                     <button
                       onClick={() => setReplacingMemeId(null)}
-                      className="text-[10px] text-amber-400 hover:text-amber-300 font-medium flex items-center space-x-0.5 bg-amber-950/60 px-1.5 py-0.5 rounded border border-amber-600/40"
+                      className="text-[10px] text-[#FCD34D] hover:text-white font-medium flex items-center space-x-0.5 bg-[#D97706]/30 px-1.5 py-0.5 rounded border border-[#F59E0B]/50"
                     >
                       <span>Cancel Replace</span>
                       <X className="w-2.5 h-2.5 ml-0.5" />
@@ -1439,19 +1439,19 @@ export const Screen2Workspace: React.FC = () => {
                 </div>
 
                 {replacingMemeId && (
-                  <div className="p-1.5 rounded bg-amber-950/40 border border-amber-600/50 text-amber-300 text-[10px]">
+                  <div className="p-1.5 rounded bg-[#D97706]/15 border border-[#F59E0B]/50 text-[#FCD34D] text-[10px]">
                     Select any meme below to replace the chosen clip
                   </div>
                 )}
 
                 {/* Segmented Two-Option Toggle */}
-                <div className="flex rounded-lg bg-gray-900 p-0.5 border border-gray-800 text-[11px]">
+                <div className="flex rounded-lg bg-[#1F1E1C] p-0.5 border border-[#2C2B28] text-[11px]">
                   <button
                     onClick={() => setMemeTab('library')}
                     className={`flex-1 py-1 rounded-md font-medium transition-colors text-center ${
                       memeTab === 'library'
-                        ? 'bg-purple-600 text-white shadow-sm'
-                        : 'text-gray-400 hover:text-gray-200'
+                        ? 'bg-[#14B8A6]/15 border border-[#2DD4BF]/50 text-[#5EEAD4]'
+                        : 'text-[#8A8780] hover:text-[#E6E3DC]'
                     }`}
                   >
                     Choose a Meme ({MEME_LIBRARY.length})
@@ -1460,8 +1460,8 @@ export const Screen2Workspace: React.FC = () => {
                     onClick={() => setMemeTab('custom')}
                     className={`flex-1 py-1 rounded-md font-medium transition-colors text-center ${
                       memeTab === 'custom'
-                        ? 'bg-purple-600 text-white shadow-sm'
-                        : 'text-gray-400 hover:text-gray-200'
+                        ? 'bg-[#14B8A6]/15 border border-[#2DD4BF]/50 text-[#5EEAD4]'
+                        : 'text-[#8A8780] hover:text-[#E6E3DC]'
                     }`}
                   >
                     Insert Your Own ({userUploadedClips.length})
@@ -1473,18 +1473,18 @@ export const Screen2Workspace: React.FC = () => {
                   <div className="space-y-2">
                     {/* Search Input */}
                     <div className="relative">
-                      <Search className="w-3 h-3 absolute left-2 top-2 text-gray-500" />
+                      <Search className="w-3 h-3 absolute left-2 top-2 text-[#6E6B64]" />
                       <input
                         type="text"
                         value={memeSearch}
                         onChange={(e) => setMemeSearch(e.target.value)}
                         placeholder="Search memes (e.g. damn, rock, snoop)..."
-                        className="w-full bg-gray-900 border border-gray-800 rounded-lg pl-7 pr-7 py-1 text-[11px] text-gray-200 placeholder-gray-500 focus:outline-none focus:border-purple-500"
+                        className="w-full bg-[#1F1E1C] border border-[#2C2B28] rounded-lg pl-7 pr-7 py-1 text-[11px] text-[#F4F2EE] placeholder-[#6E6B64] focus:outline-none focus:border-[#E8872A]"
                       />
                       {memeSearch && (
                         <button
                           onClick={() => setMemeSearch('')}
-                          className="absolute right-2 top-1.5 text-gray-500 hover:text-gray-300"
+                          className="absolute right-2 top-1.5 text-[#6E6B64] hover:text-[#F4F2EE]"
                         >
                           <X className="w-3 h-3" />
                         </button>
@@ -1494,18 +1494,18 @@ export const Screen2Workspace: React.FC = () => {
                     {/* Meme List */}
                     <div className="max-h-56 overflow-y-auto space-y-1.5 pr-0.5">
                       {filteredMemes.length === 0 ? (
-                        <div className="text-[11px] text-gray-500 text-center py-4 italic">
+                        <div className="text-[11px] text-[#6E6B64] text-center py-4 italic">
                           No memes match "{memeSearch}"
                         </div>
                       ) : (
                         filteredMemes.map((m) => (
                           <div
                             key={m.id}
-                            className="flex items-center justify-between p-1.5 rounded-lg bg-gray-900/70 hover:bg-gray-800/80 border border-gray-800/80 group transition-all"
+                            className="flex items-center justify-between p-1.5 rounded-lg bg-[#1F1E1C] hover:bg-[#292825] border border-[#2C2B28] group transition-all"
                           >
                             <div className="flex items-center space-x-2 min-w-0 flex-1">
                               {/* Hover Video Preview */}
-                              <div className="w-12 h-9 rounded bg-black overflow-hidden relative flex-shrink-0 border border-gray-800 group-hover:border-purple-500/50">
+                              <div className="w-12 h-9 rounded bg-black overflow-hidden relative flex-shrink-0 border border-[#2C2B28] group-hover:border-[#45423C]">
                                 <video
                                   src={m.url}
                                   muted
@@ -1520,16 +1520,16 @@ export const Screen2Workspace: React.FC = () => {
                                   }}
                                   className="w-full h-full object-cover"
                                 />
-                                <span className="absolute bottom-0.5 right-0.5 bg-black/80 px-0.5 py-0.2 text-[7.5px] font-mono text-gray-300 rounded leading-none">
+                                <span className="absolute bottom-0.5 right-0.5 bg-black/80 px-0.5 py-0.2 text-[7.5px] font-mono tabular-nums text-[#A19E97] rounded leading-none">
                                   {(m.durationMs / 1000).toFixed(1)}s
                                 </span>
                               </div>
 
                               <div className="min-w-0 flex-1 pr-1">
-                                <div className="text-[11px] font-medium text-gray-200 truncate">
+                                <div className="text-[11px] font-medium text-[#F4F2EE] truncate">
                                   {m.title}
                                 </div>
-                                <div className="text-[9px] text-gray-500 truncate">
+                                <div className="text-[9px] text-[#6E6B64] truncate">
                                   {m.keywords.slice(0, 3).join(', ')}
                                 </div>
                               </div>
@@ -1560,7 +1560,7 @@ export const Screen2Workspace: React.FC = () => {
                                     appliedMessage: `Replaced with "${m.title}".`
                                   });
                                 }}
-                                className="px-2 py-1 bg-amber-600 hover:bg-amber-500 text-white rounded text-[10px] font-medium transition-colors flex-shrink-0"
+                                className="px-2 py-1 bg-[#D97706] hover:bg-[#B45309] text-white rounded text-[10px] font-semibold transition-colors flex-shrink-0"
                               >
                                 Replace
                               </button>
@@ -1587,7 +1587,7 @@ export const Screen2Workspace: React.FC = () => {
                                     appliedMessage: `Inserted "${m.title}" at ${(currentProjectMs / 1000).toFixed(1)}s.`
                                   });
                                 }}
-                                className="px-2 py-1 bg-purple-700/80 hover:bg-purple-600 text-purple-100 rounded text-[10px] font-medium flex items-center space-x-0.5 transition-colors flex-shrink-0"
+                                className="px-2 py-1 bg-[#E8872A] hover:bg-[#F59A3D] text-[#11100E] font-semibold rounded text-[10px] flex items-center space-x-0.5 transition-colors flex-shrink-0"
                                 title={`Insert at ${(currentProjectMs / 1000).toFixed(1)}s`}
                               >
                                 <Plus className="w-2.5 h-2.5" />
@@ -1605,12 +1605,12 @@ export const Screen2Workspace: React.FC = () => {
                 {memeTab === 'custom' && (
                   <div className="space-y-2">
                     {/* Upload Box */}
-                    <label className="border border-dashed border-gray-700 hover:border-purple-500/80 bg-gray-900/50 hover:bg-purple-950/20 rounded-lg p-3 flex flex-col items-center justify-center text-center cursor-pointer transition-colors group">
-                      <Upload className="w-4 h-4 text-purple-400 group-hover:scale-110 transition-transform mb-1" />
-                      <span className="text-[11px] font-medium text-gray-200">
+                    <label className="border border-dashed border-[#2C2B28] hover:border-[#45423C] bg-[#1F1E1C] hover:bg-[#292825] rounded-lg p-3 flex flex-col items-center justify-center text-center cursor-pointer transition-colors group">
+                      <Upload className="w-4 h-4 text-[#E8872A] group-hover:scale-110 transition-transform mb-1" />
+                      <span className="text-[11px] font-medium text-[#F4F2EE]">
                         Upload custom .mp4 / .webm clip
                       </span>
-                      <span className="text-[9px] text-gray-500 mt-0.5">
+                      <span className="text-[9px] text-[#6E6B64] mt-0.5">
                         Max 50 MB • Up to 30 seconds
                       </span>
                       <input
@@ -1622,7 +1622,7 @@ export const Screen2Workspace: React.FC = () => {
                     </label>
 
                     {memeUploadError && (
-                      <div className="p-1.5 rounded bg-red-950/40 border border-red-800/60 text-red-300 text-[10px] flex items-center space-x-1">
+                      <div className="p-1.5 rounded bg-[#DC2626]/12 border border-[#EF4444]/40 text-[#F87171] text-[10px] flex items-center space-x-1">
                         <AlertCircle className="w-3 h-3 flex-shrink-0" />
                         <span>{memeUploadError}</span>
                       </div>
@@ -1631,18 +1631,18 @@ export const Screen2Workspace: React.FC = () => {
                     {/* Uploaded clips list */}
                     <div className="max-h-56 overflow-y-auto space-y-1.5 pr-0.5">
                       {userUploadedClips.length === 0 ? (
-                        <div className="text-[10px] text-gray-500 italic text-center py-4 bg-gray-900/40 rounded-lg border border-gray-800/40 p-2">
+                        <div className="text-[10px] text-[#6E6B64] italic text-center py-4 bg-[#1F1E1C] rounded-lg border border-[#2C2B28] p-2">
                           No custom clips yet. Upload an .mp4 clip to insert it into your video!
                         </div>
                       ) : (
                         userUploadedClips.map((clip) => (
                           <div
                             key={clip.id}
-                            className="flex items-center justify-between p-1.5 rounded-lg bg-gray-900/70 hover:bg-gray-800/80 border border-gray-800/80 group transition-all"
+                            className="flex items-center justify-between p-1.5 rounded-lg bg-[#1F1E1C] hover:bg-[#292825] border border-[#2C2B28] group transition-all"
                           >
                             <div className="flex items-center space-x-2 min-w-0 flex-1">
                               {/* Hover Video Preview */}
-                              <div className="w-12 h-9 rounded bg-black overflow-hidden relative flex-shrink-0 border border-gray-800 group-hover:border-purple-500/50">
+                              <div className="w-12 h-9 rounded bg-black overflow-hidden relative flex-shrink-0 border border-[#2C2B28] group-hover:border-[#45423C]">
                                 <video
                                   src={clip.blobUrl}
                                   muted
@@ -1657,16 +1657,16 @@ export const Screen2Workspace: React.FC = () => {
                                   }}
                                   className="w-full h-full object-cover"
                                 />
-                                <span className="absolute bottom-0.5 right-0.5 bg-black/80 px-0.5 py-0.2 text-[7.5px] font-mono text-gray-300 rounded leading-none">
+                                <span className="absolute bottom-0.5 right-0.5 bg-black/80 px-0.5 py-0.2 text-[7.5px] font-mono tabular-nums text-[#A19E97] rounded leading-none">
                                   {(clip.durationMs / 1000).toFixed(1)}s
                                 </span>
                               </div>
 
                               <div className="min-w-0 flex-1 pr-1">
-                                <div className="text-[11px] font-medium text-gray-200 truncate">
+                                <div className="text-[11px] font-medium text-[#F4F2EE] truncate">
                                   {clip.name}
                                 </div>
-                                <div className="text-[9px] text-gray-500 font-mono">
+                                <div className="text-[9px] text-[#A19E97] font-mono tabular-nums">
                                   {(clip.durationMs / 1000).toFixed(1)}s
                                 </div>
                               </div>
@@ -1698,7 +1698,7 @@ export const Screen2Workspace: React.FC = () => {
                                       appliedMessage: `Replaced with custom clip "${clip.name}".`
                                     });
                                   }}
-                                  className="px-2 py-1 bg-amber-600 hover:bg-amber-500 text-white rounded text-[10px] font-medium transition-colors"
+                                  className="px-2 py-1 bg-[#D97706] hover:bg-[#B45309] text-white rounded text-[10px] font-semibold transition-colors"
                                 >
                                   Replace
                                 </button>
@@ -1725,7 +1725,7 @@ export const Screen2Workspace: React.FC = () => {
                                       appliedMessage: `Inserted custom clip "${clip.name}" at ${(currentProjectMs / 1000).toFixed(1)}s.`
                                     });
                                   }}
-                                  className="px-2 py-1 bg-purple-700/80 hover:bg-purple-600 text-purple-100 rounded text-[10px] font-medium flex items-center space-x-0.5 transition-colors"
+                                  className="px-2 py-1 bg-[#E8872A] hover:bg-[#F59A3D] text-[#11100E] font-semibold rounded text-[10px] flex items-center space-x-0.5 transition-colors"
                                   title={`Insert at ${(currentProjectMs / 1000).toFixed(1)}s`}
                                 >
                                   <Plus className="w-2.5 h-2.5" />
@@ -1736,7 +1736,7 @@ export const Screen2Workspace: React.FC = () => {
                               {/* Delete clip button */}
                               <button
                                 onClick={() => removeUploadedMeme(clip.id)}
-                                className="p-1 text-gray-500 hover:text-red-400 transition-colors rounded hover:bg-gray-800"
+                                className="p-1 text-[#6E6B64] hover:text-[#F87171] transition-colors rounded hover:bg-[#2C2B28]"
                                 title="Delete custom clip"
                               >
                                 <Trash2 className="w-3 h-3" />
@@ -1759,12 +1759,12 @@ export const Screen2Workspace: React.FC = () => {
                   onKeyDown={(e) => e.key === 'Enter' && handleSendCommand()}
                   placeholder='e.g. "Cut from 0:10 to 0:25"'
                   disabled={isAiProcessing}
-                  className="w-full bg-gray-900 border border-gray-700 rounded-xl pl-3 pr-9 py-2 text-xs text-gray-100 placeholder-gray-500 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+                  className="w-full bg-[#1F1E1C] border border-[#2C2B28] rounded-lg pl-3 pr-9 py-2 text-xs text-[#F4F2EE] placeholder-[#6E6B64] focus:outline-none focus:border-[#E8872A]"
                 />
                 <button
                   onClick={handleSendCommand}
                   disabled={isAiProcessing || !promptInput.trim()}
-                  className="absolute right-1.5 bottom-1.5 p-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white disabled:opacity-40 transition-colors"
+                  className="absolute right-1.5 bottom-1.5 p-1.5 rounded-lg bg-[#E8872A] hover:bg-[#F59A3D] text-[#11100E] disabled:opacity-40 transition-colors"
                 >
                   <Send className="w-3 h-3" />
                 </button>
@@ -1772,23 +1772,23 @@ export const Screen2Workspace: React.FC = () => {
 
               {/* Command Execution Log */}
               <div className="flex-1 overflow-y-auto space-y-2 pt-1">
-                <span className="text-[10px] uppercase font-bold text-gray-500 tracking-wider">Execution Log</span>
+                <span className="text-[10px] uppercase font-bold text-[#A19E97] tracking-wider">Execution Log</span>
                 {commandLogs.length === 0 ? (
-                  <p className="text-[11px] text-gray-500 italic">No AI commands executed yet.</p>
+                  <p className="text-[11px] text-[#6E6B64] italic">No AI commands executed yet.</p>
                 ) : (
                   commandLogs.map((log) => (
                     <div
                       key={log.id}
                       className={`p-2 rounded-lg border text-[11px] space-y-1 ${
                         log.status === 'SUCCESS'
-                          ? 'bg-emerald-950/20 border-emerald-800/40 text-emerald-300'
+                          ? 'bg-[#14B8A6]/10 border-[#2DD4BF]/30 text-[#5EEAD4]'
                           : log.status === 'CLARIFICATION'
-                          ? 'bg-amber-950/20 border-amber-800/40 text-amber-300'
-                          : 'bg-red-950/20 border-red-800/40 text-red-300'
+                          ? 'bg-[#D97706]/10 border-[#F59E0B]/30 text-[#FCD34D]'
+                          : 'bg-[#DC2626]/10 border-[#EF4444]/30 text-[#F87171]'
                       }`}
                     >
                       <div className="font-semibold">{log.rawInput}</div>
-                      <div className="text-gray-300 text-[10px]">{log.appliedMessage}</div>
+                      <div className="text-[#A19E97] text-[10px]">{log.appliedMessage}</div>
                     </div>
                   ))
                 )}
@@ -1799,48 +1799,50 @@ export const Screen2Workspace: React.FC = () => {
       </div>
 
       {/* Bottom Timeline Section (Spec 1 & Spec 2) */}
-      <footer className="h-48 border-t border-gray-800 bg-[#10121A] flex flex-col p-3 z-20">
+      <footer className="h-48 border-t border-[#2C2B28] bg-[#161614] flex flex-col p-3 z-20">
         {/* Timeline Toolbar */}
         <div className="flex flex-wrap items-center justify-between pb-2 text-xs gap-2">
           <div className="flex items-center space-x-3">
             {/* Playback Speed Controls (Item 1) */}
             <div className="flex items-center space-x-1.5">
-              <span className="text-gray-400 text-[11px] font-medium">Speed:</span>
+              <span className="text-[#A19E97] text-[11px] font-medium">Speed:</span>
               {([1, 2, 5] as const).map((s) => (
                 <button
                   key={s}
                   onClick={() => setPreviewSpeed(s)}
-                  className={`px-2 py-0.5 rounded text-[11px] font-mono font-medium transition-colors ${
-                    previewSpeed === s ? 'bg-indigo-600 text-white shadow-sm' : 'bg-gray-800 text-gray-400 hover:text-white'
+                  className={`px-2 py-0.5 rounded text-[11px] font-mono tabular-nums font-medium transition-colors ${
+                    previewSpeed === s
+                      ? 'bg-[#14B8A6]/15 border border-[#2DD4BF]/50 text-[#5EEAD4]'
+                      : 'bg-[#23221F] border border-[#35332F] text-[#8A8780] hover:text-[#E6E3DC]'
                   }`}
                 >
                   {s}x
                 </button>
               ))}
-              <span className="text-[10px] text-gray-500 hidden sm:inline">Preview speed only. Export keeps normal speed.</span>
+              <span className="text-[10px] text-[#6E6B64] hidden sm:inline">Preview speed only. Export keeps normal speed.</span>
               {previewSpeed === 5 && (
-                <span className="text-[10px] text-amber-400/90 ml-1">
+                <span className="text-[10px] text-[#FCD34D] ml-1">
                   (Audio may be muted or distorted at 5x by browser)
                 </span>
               )}
             </div>
 
             {/* Timeline Zoom Controls (Item 1B) */}
-            <div className="flex items-center space-x-1.5 pl-3 border-l border-gray-800">
-              <span className="text-gray-400 text-[11px] font-medium">Zoom:</span>
+            <div className="flex items-center space-x-1.5 pl-3 border-l border-[#2C2B28]">
+              <span className="text-[#A19E97] text-[11px] font-medium">Zoom:</span>
               <button
                 onClick={zoomOut}
                 disabled={timelineZoom <= 1}
-                className="w-5 h-5 flex items-center justify-center rounded bg-gray-800 hover:bg-gray-700 text-gray-300 text-xs font-bold disabled:opacity-30 disabled:cursor-not-allowed"
+                className="w-5 h-5 flex items-center justify-center rounded bg-[#23221F] hover:bg-[#2E2C28] border border-[#35332F] text-[#E6E3DC] text-xs font-bold disabled:opacity-30 disabled:cursor-not-allowed"
                 title="Zoom Out Timeline (-)"
               >
                 -
               </button>
-              <span className="text-[11px] font-mono text-gray-300 w-7 text-center">{timelineZoom}x</span>
+              <span className="text-[11px] font-mono tabular-nums text-[#F4F2EE] w-7 text-center">{timelineZoom}x</span>
               <button
                 onClick={zoomIn}
                 disabled={timelineZoom >= 5}
-                className="w-5 h-5 flex items-center justify-center rounded bg-gray-800 hover:bg-gray-700 text-gray-300 text-xs font-bold disabled:opacity-30 disabled:cursor-not-allowed"
+                className="w-5 h-5 flex items-center justify-center rounded bg-[#23221F] hover:bg-[#2E2C28] border border-[#35332F] text-[#E6E3DC] text-xs font-bold disabled:opacity-30 disabled:cursor-not-allowed"
                 title="Zoom In Timeline (+)"
               >
                 +
@@ -1848,12 +1850,12 @@ export const Screen2Workspace: React.FC = () => {
             </div>
 
             {/* Silence Detection Sensitivity (Item 2) */}
-            <div className="flex items-center space-x-1.5 pl-3 border-l border-gray-800">
-              <span className="text-gray-400 text-[11px] font-medium">Sensitivity:</span>
+            <div className="flex items-center space-x-1.5 pl-3 border-l border-[#2C2B28]">
+              <span className="text-[#A19E97] text-[11px] font-medium">Sensitivity:</span>
               <select
                 value={silenceSensitivity === 'Tight' ? 'Sensitive' : silenceSensitivity === 'Gentle' ? 'Strict' : silenceSensitivity}
                 onChange={(e) => setSilenceSensitivity(e.target.value as SilenceSensitivity)}
-                className="bg-gray-800 text-gray-200 border border-gray-700 rounded px-1.5 py-0.5 text-[11px]"
+                className="bg-[#1F1E1C] text-[#F4F2EE] border border-[#2C2B28] rounded px-1.5 py-0.5 text-[11px]"
                 title="Sensitive: >=350ms (base drop 5.0dB) | Normal: >=500ms (base drop 7.0dB) | Strict: >=900ms (base drop 9.5dB)"
               >
                 <option value="Sensitive">Sensitive (350ms)</option>
@@ -1878,7 +1880,7 @@ export const Screen2Workspace: React.FC = () => {
                     appliedMessage: res.message
                   });
                 }}
-                className="px-2 py-0.5 bg-amber-900/60 hover:bg-amber-800/80 border border-amber-600/60 text-amber-200 rounded text-[11px] font-medium transition-colors"
+                className="px-2 py-0.5 bg-[#D97706]/20 hover:bg-[#D97706]/35 border border-[#F59E0B]/60 text-[#FCD34D] rounded text-[11px] font-medium transition-colors"
                 title="Scan audio and display amber silence blocks on timeline without deleting them yet"
               >
                 Detect Silences
@@ -1888,7 +1890,7 @@ export const Screen2Workspace: React.FC = () => {
                   setIsRightOpen(true);
                   setMemeTab('library');
                 }}
-                className="px-2 py-0.5 bg-purple-900/60 hover:bg-purple-800/80 border border-purple-600/60 text-purple-200 rounded text-[11px] font-medium transition-colors flex items-center space-x-1"
+                className="px-2 py-0.5 bg-[#E11D48]/15 hover:bg-[#E11D48]/30 border border-[#FB7185]/50 text-[#FDA4AF] rounded text-[11px] font-medium transition-colors flex items-center space-x-1"
                 title="Browse Meme Library or Upload Your Own Meme"
               >
                 <Plus className="w-3 h-3" />
@@ -1898,25 +1900,25 @@ export const Screen2Workspace: React.FC = () => {
 
             {/* Thumbnail Generation Progress (Item 1) */}
             {thumbnailProgress && !thumbnailProgress.done && (
-              <div className="flex items-center space-x-1.5 px-2 py-0.5 rounded-full bg-indigo-950/80 border border-indigo-700/60 text-indigo-300 text-[10px] animate-pulse">
-                <div className="w-1.5 h-1.5 rounded-full bg-indigo-400 animate-ping" />
+              <div className="flex items-center space-x-1.5 px-2 py-0.5 rounded-full bg-[#1F1E1C] border border-[#2C2B28] text-[#5EEAD4] text-[10px] animate-pulse">
+                <div className="w-1.5 h-1.5 rounded-full bg-[#5EEAD4] animate-ping" />
                 <span>Generating frames {thumbnailProgress.current}/{thumbnailProgress.total}</span>
               </div>
             )}
           </div>
 
           {/* Legend */}
-          <div className="flex items-center space-x-4 text-[11px] text-gray-400">
+          <div className="flex items-center space-x-4 text-[11px] text-[#A19E97]">
             <div className="flex items-center space-x-1.5">
-              <span className="w-2.5 h-2.5 rounded-sm bg-indigo-500 inline-block" />
+              <span className="w-2.5 h-2.5 rounded-sm bg-[#3A3833] border border-[#45423C] inline-block" />
               <span>Active Clip</span>
             </div>
             <div className="flex items-center space-x-1.5">
-              <span className="w-2.5 h-2.5 rounded-sm bg-amber-500 inline-block" />
+              <span className="w-2.5 h-2.5 rounded-sm bg-[#F59E0B] inline-block" />
               <span>Awkward Silence</span>
             </div>
             <div className="flex items-center space-x-1.5">
-              <span className="w-2.5 h-2.5 rounded-sm bg-purple-500 inline-block" />
+              <span className="w-2.5 h-2.5 rounded-sm bg-[#FB7185] inline-block" />
               <span>Meme Insert</span>
             </div>
           </div>
@@ -1925,7 +1927,7 @@ export const Screen2Workspace: React.FC = () => {
         {/* Timeline Track Area (Horizontally Scrollable) */}
         <div
           ref={timelineContainerRef}
-          className="flex-1 bg-gray-950 rounded-xl border border-gray-800 relative overflow-x-auto overflow-y-hidden p-2"
+          className="flex-1 bg-[#0E0E0D] rounded-xl border border-[#2C2B28] relative overflow-x-auto overflow-y-hidden p-2"
         >
           {/* Inner scalable track container */}
           <div
@@ -1944,15 +1946,15 @@ export const Screen2Workspace: React.FC = () => {
                 }}
                 className="absolute top-0 transform -translate-x-1/2 z-40 pointer-events-none flex flex-col items-center"
               >
-                <div className="bg-gray-900/95 border border-indigo-500/80 text-indigo-300 font-mono text-[10px] font-bold px-1.5 py-0.5 rounded shadow-lg whitespace-nowrap">
+                <div className="bg-[#1F1E1C] border border-[#E8872A] text-[#E8872A] font-mono tabular-nums text-[10px] font-bold px-1.5 py-0.5 rounded shadow-lg whitespace-nowrap">
                   {formatReadout(isScrubbing ? currentProjectMs : (hoverTimeMs ?? currentProjectMs))}
                 </div>
-                <div className="w-0 h-0 border-x-4 border-x-transparent border-t-4 border-t-indigo-500" />
+                <div className="w-0 h-0 border-x-4 border-x-transparent border-t-4 border-t-[#E8872A]" />
               </div>
             )}
 
             {/* Thin Time Ruler Row (Item 2) */}
-            <div className="w-full h-5 border-b border-gray-800/80 relative font-mono text-[9px] text-gray-400 select-none pointer-events-none">
+            <div className="w-full h-5 border-b border-[#2C2B28] relative font-mono tabular-nums text-[9px] text-[#6E6B64] select-none pointer-events-none">
               {/* Minor Ticks */}
               {Array.from({ length: minorTickCount + 1 }).map((_, i) => {
                 const tickSec = i * rulerMinorStepSec;
@@ -1963,7 +1965,7 @@ export const Screen2Workspace: React.FC = () => {
                   <div
                     key={`minor_${i}`}
                     style={{ left: `${leftPct}%` }}
-                    className="absolute bottom-0 h-1.5 w-[1px] bg-gray-700/60 transform -translate-x-1/2"
+                    className="absolute bottom-0 h-1.5 w-[1px] bg-[#2C2B28] transform -translate-x-1/2"
                   />
                 );
               })}
@@ -1982,8 +1984,8 @@ export const Screen2Workspace: React.FC = () => {
                     style={{ left: `${leftPct}%` }}
                     className="absolute top-0 bottom-0 flex flex-col items-center transform -translate-x-1/2"
                   >
-                    <span className="leading-none text-[8.5px] text-gray-400">{mm}:{ss}</span>
-                    <div className="h-2 w-[1px] bg-gray-500 mt-auto" />
+                    <span className="leading-none text-[8.5px] text-[#6E6B64] font-mono tabular-nums">{mm}:{ss}</span>
+                    <div className="h-2 w-[1px] bg-[#35332F] mt-auto" />
                   </div>
                 );
               })}
@@ -1994,10 +1996,10 @@ export const Screen2Workspace: React.FC = () => {
               style={{
                 left: `${project.totalProjectDurationMs > 0 ? (currentProjectMs / project.totalProjectDurationMs) * 100 : 0}%`
               }}
-              className="absolute top-6 bottom-0 w-[2px] bg-red-500 z-30 pointer-events-none"
+              className="absolute top-6 bottom-0 w-[2px] bg-[#EF4444] z-30 pointer-events-none"
             >
-              <div className="w-3 h-3 bg-red-500 transform -translate-x-1/2 -translate-y-1 rotate-45 rounded-sm shadow-md" />
-              <div className="absolute top-0 transform -translate-x-1/2 -translate-y-4 px-1 rounded bg-red-600 text-white font-mono text-[8px] font-bold shadow pointer-events-none whitespace-nowrap">
+              <div className="w-3 h-3 bg-[#EF4444] transform -translate-x-1/2 -translate-y-1 rotate-45 rounded-sm shadow-md" />
+              <div className="absolute top-0 transform -translate-x-1/2 -translate-y-4 px-1 rounded bg-[#EF4444] text-white font-mono tabular-nums text-[8px] font-bold shadow pointer-events-none whitespace-nowrap">
                 {formatReadout(currentProjectMs)}
               </div>
             </div>
@@ -2034,16 +2036,16 @@ export const Screen2Workspace: React.FC = () => {
                     title={`${item.title} (${(item.durationMs / 1000).toFixed(1)}s)`}
                     className={`h-11 rounded-lg px-2 py-1 flex flex-col justify-between transition-all relative overflow-hidden select-none cursor-pointer ${
                       isSelected
-                        ? 'ring-2 ring-white shadow-lg'
-                        : 'border border-black/20'
+                        ? 'ring-2 ring-[#E8872A] border-transparent shadow-md'
+                        : 'border border-[#2C2B28]'
                     } ${
                       isSilence
-                        ? 'bg-amber-600/95 text-amber-50 hover:bg-amber-500'
+                        ? 'bg-[#D97706]/25 border border-[#F59E0B]/70 text-[#FCD34D] hover:bg-[#D97706]/35'
                         : isMeme
                         ? replacingMemeId === item.id
-                          ? 'bg-purple-700 text-purple-50 ring-2 ring-amber-400 animate-pulse shadow-lg'
-                          : 'bg-purple-600/95 text-purple-50 hover:bg-purple-500'
-                        : 'bg-indigo-600/95 text-white hover:bg-indigo-500'
+                          ? 'bg-[#E11D48]/35 text-[#FDA4AF] ring-2 ring-[#E8872A] animate-pulse shadow-lg border border-[#FB7185]/80'
+                          : 'bg-[#E11D48]/20 border border-[#FB7185]/60 text-[#FDA4AF] hover:bg-[#E11D48]/30'
+                        : 'bg-[#22211E] text-[#F4F2EE] border border-[#3A3833] hover:border-[#45423C]'
                     }`}
                   >
                     {/* Filmstrip Frame Thumbnails (Item 1) */}
@@ -2059,13 +2061,13 @@ export const Screen2Workspace: React.FC = () => {
                               className="flex-1 h-full bg-cover bg-center border-r border-black/25"
                               style={{
                                 backgroundImage: frameUrl ? `url(${frameUrl})` : undefined,
-                                backgroundColor: frameUrl ? undefined : '#312e81',
+                                backgroundColor: frameUrl ? undefined : '#22211E',
                                 imageRendering: 'auto'
                               }}
                             />
                           );
                         })}
-                        <div className="absolute inset-0 bg-gradient-to-b from-black/70 via-black/15 to-black/75 pointer-events-none" />
+                        <div className="absolute inset-0 bg-gradient-to-b from-black/60 via-transparent to-black/70 pointer-events-none" />
                       </div>
                     )}
 
@@ -2081,14 +2083,14 @@ export const Screen2Workspace: React.FC = () => {
                         <div className="flex items-center space-x-1" onClick={(e) => e.stopPropagation()}>
                           <button
                             onClick={() => acceptSilenceCut(item.id)}
-                            className="p-1 bg-red-700 hover:bg-red-600 rounded text-white"
+                            className="p-1 bg-[#DC2626]/80 hover:bg-[#DC2626] rounded text-white"
                             title="Accept Silence Cut"
                           >
                             <Check className="w-3 h-3" />
                           </button>
                           <button
                             onClick={() => keepSilencePause(item.id)}
-                            className="p-1 bg-gray-700 hover:bg-gray-600 rounded text-gray-200"
+                            className="p-1 bg-[#23221F] hover:bg-[#2E2C28] text-[#E6E3DC] border border-[#35332F] rounded"
                             title="Keep Pause"
                           >
                             <X className="w-3 h-3" />
@@ -2104,8 +2106,8 @@ export const Screen2Workspace: React.FC = () => {
                             }}
                             className={`px-1.5 py-0.5 rounded text-[9px] font-medium transition-colors ${
                               replacingMemeId === item.id
-                                ? 'bg-amber-500 text-black font-bold shadow'
-                                : 'bg-purple-950/80 hover:bg-purple-800 text-purple-200 border border-purple-400/40'
+                                ? 'bg-[#E8872A] text-[#11100E] font-bold shadow'
+                                : 'bg-[#1F1E1C] hover:bg-[#292825] text-[#FDA4AF] border border-[#FB7185]/40'
                             }`}
                             title="Replace this meme with another from library or upload"
                           >
@@ -2113,7 +2115,7 @@ export const Screen2Workspace: React.FC = () => {
                           </button>
                           <button
                             onClick={() => removeMemeClip(item.id)}
-                            className="p-1 bg-purple-950/80 hover:bg-red-800 text-purple-200 hover:text-white rounded border border-purple-400/40 transition-colors"
+                            className="p-1 bg-[#1F1E1C] hover:bg-[#DC2626]/80 text-[#FDA4AF] hover:text-white rounded border border-[#FB7185]/40 transition-colors"
                             title="Remove this meme and restore continuous video"
                           >
                             <Trash2 className="w-2.5 h-2.5" />
@@ -2122,10 +2124,10 @@ export const Screen2Workspace: React.FC = () => {
                       )}
                     </div>
 
-                    <div className="relative z-10 flex items-center justify-between text-[10px] opacity-90 font-mono drop-shadow-sm">
+                    <div className="relative z-10 flex items-center justify-between text-[10px] text-[#A19E97] font-mono tabular-nums drop-shadow-sm">
                       <span>{(item.durationMs / 1000).toFixed(1)}s</span>
                       {item.transitionOut && item.transitionOut.type !== 'none' && (
-                        <span className="bg-black/50 px-1 rounded uppercase text-[9px]">
+                        <span className="bg-black/60 px-1 rounded uppercase text-[9px] text-[#A19E97]">
                           {item.transitionOut.type}
                         </span>
                       )}
@@ -2140,7 +2142,7 @@ export const Screen2Workspace: React.FC = () => {
                         const nextType = types[(curIdx + 1) % types.length];
                         setTransition(item.id, nextType);
                       }}
-                      className="absolute right-0 top-1/2 -translate-y-1/2 translate-x-1/2 w-4 h-4 rounded-full bg-gray-900 border border-gray-600 hover:border-indigo-400 flex items-center justify-center text-[8px] z-20 shadow cursor-pointer"
+                      className="absolute right-0 top-1/2 -translate-y-1/2 translate-x-1/2 w-4 h-4 rounded-full bg-[#1F1E1C] border border-[#35332F] hover:border-[#E8872A] flex items-center justify-center text-[8px] text-[#A19E97] z-20 shadow cursor-pointer"
                       title={`Click to cycle transition (Current: ${item.transitionOut?.type || 'none'})`}
                     >
                       ◇

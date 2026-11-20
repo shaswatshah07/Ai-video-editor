@@ -8,7 +8,7 @@ export const App: React.FC = () => {
   const { screen } = useEditorStore();
 
   return (
-    <div className="min-h-screen bg-[#0F1117] text-gray-100">
+    <div className="min-h-screen bg-[#0E0E0D] text-[#F4F2EE]">
       {screen === 'UPLOAD' && <Screen1Upload />}
       {screen === 'WORKSPACE' && <Screen2Workspace />}
       {screen === 'EXPORT' && <Screen3Export />}
