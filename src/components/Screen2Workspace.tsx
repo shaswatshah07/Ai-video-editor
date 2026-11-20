@@ -115,6 +115,18 @@ export const Screen2Workspace: React.FC = () => {
   const [isLeftOpen, setIsLeftOpen] = useState<boolean>(true);
   const [isRightOpen, setIsRightOpen] = useState<boolean>(true);
   const [activeMemePlaying, setActiveMemePlaying] = useState<boolean>(false);
+  const [isSecondaryReady, setIsSecondaryReady] = useState<boolean>(false);
+  const loadedSecondaryUrlRef = useRef<string | null>(null);
+
+  const handleSecondaryReady = useCallback(() => {
+    if (memeVideoRef.current && loadedSecondaryUrlRef.current) {
+      const currentSrc = memeVideoRef.current.currentSrc || memeVideoRef.current.src || '';
+      const target = loadedSecondaryUrlRef.current;
+      if (!currentSrc || currentSrc === target || currentSrc.endsWith(target) || currentSrc.includes(target) || target.includes(currentSrc)) {
+        setIsSecondaryReady(true);
+      }
+    }
+  }, []);
 
   // Meme Picker State (Step 2)
   const [memeTab, setMemeTab] = useState<'library' | 'custom'>('library');
@@ -350,6 +362,20 @@ export const Screen2Workspace: React.FC = () => {
     }
   }, [denoisedAudioUrl, connectDenoisedSource]);
 
+  // Reset secondary video state whenever project changes
+  useEffect(() => {
+    activeMemeIdRef.current = null;
+    loadedSecondaryUrlRef.current = null;
+    setIsSecondaryReady(false);
+    setActiveMemePlaying(false);
+    setActiveTransitionClass('');
+    if (memeVideoRef.current) {
+      memeVideoRef.current.pause();
+      memeVideoRef.current.removeAttribute('src');
+      memeVideoRef.current.load();
+    }
+  }, [project?.id, project?.sourceVideoUrl]);
+
   // Apply playback speed to video and audio elements
   const applyPlaybackSpeed = useCallback((speed: number) => {
     if (mainVideoRef.current) {
@@ -442,7 +468,9 @@ export const Screen2Workspace: React.FC = () => {
 
         // Check if playing a MEME clip
         if (item.kind === 'MEME_CLIP') {
-          setActiveMemePlaying(true);
+          if (!activeMemePlaying) {
+            setActiveMemePlaying(true);
+          }
           if (mainVideoRef.current && !mainVideoRef.current.paused) mainVideoRef.current.pause();
           if (denoisedAudioRef.current && !denoisedAudioRef.current.paused) denoisedAudioRef.current.pause();
 
@@ -451,21 +479,31 @@ export const Screen2Workspace: React.FC = () => {
               memeVideoRef.current.playbackRate = previewSpeed;
               memeVideoRef.current.preservesPitch = true;
             }
-            if (activeMemeIdRef.current !== item.id) {
+            if (activeMemeIdRef.current !== item.id || loadedSecondaryUrlRef.current !== item.blobUrl) {
               activeMemeIdRef.current = item.id;
+              loadedSecondaryUrlRef.current = item.blobUrl;
+              setIsSecondaryReady(false);
               memeVideoRef.current.src = item.blobUrl;
               memeVideoRef.current.playbackRate = previewSpeed;
               memeVideoRef.current.preservesPitch = true;
               memeVideoRef.current.currentTime = (sourceMs - item.sourceStartMs) / 1000;
               memeVideoRef.current.play().catch(() => {});
+            } else if (memeVideoRef.current.paused) {
+              memeVideoRef.current.play().catch(() => {});
             }
           }
         } else {
           // SOURCE_CLIP
-          setActiveMemePlaying(false);
+          if (activeMemePlaying) {
+            setActiveMemePlaying(false);
+          }
           if (memeVideoRef.current && !memeVideoRef.current.paused) {
             memeVideoRef.current.pause();
-            activeMemeIdRef.current = null;
+          }
+          activeMemeIdRef.current = null;
+          loadedSecondaryUrlRef.current = null;
+          if (isSecondaryReady) {
+            setIsSecondaryReady(false);
           }
 
           if (mainVideoRef.current) {
@@ -590,6 +628,9 @@ export const Screen2Workspace: React.FC = () => {
       const { item, sourceMs } = mapProjectToSource(clamped, project.items);
       if (item && item.kind === 'SOURCE_CLIP') {
         setActiveMemePlaying(false);
+        setIsSecondaryReady(false);
+        activeMemeIdRef.current = null;
+        loadedSecondaryUrlRef.current = null;
         if (memeVideoRef.current && !memeVideoRef.current.paused) {
           memeVideoRef.current.pause();
         }
@@ -606,13 +647,27 @@ export const Screen2Workspace: React.FC = () => {
         if (mainVideoRef.current && !mainVideoRef.current.paused) mainVideoRef.current.pause();
         if (denoisedAudioRef.current && !denoisedAudioRef.current.paused) denoisedAudioRef.current.pause();
         if (memeVideoRef.current) {
-          if (activeMemeIdRef.current !== item.id) {
+          if (activeMemeIdRef.current !== item.id || loadedSecondaryUrlRef.current !== item.blobUrl) {
             activeMemeIdRef.current = item.id;
+            loadedSecondaryUrlRef.current = item.blobUrl;
+            setIsSecondaryReady(false);
             memeVideoRef.current.src = item.blobUrl;
           }
           const memeSec = Math.max(0, clamped - item.projectStartMs) / 1000;
           memeVideoRef.current.currentTime = memeSec;
         }
+      }
+
+      // Check transition state on seek
+      if (item && item.transitionOut && item.transitionOut.type !== 'none') {
+        const distToEnd = item.projectEndMs - clamped;
+        if (distToEnd > 0 && distToEnd <= item.transitionOut.durationMs) {
+          setActiveTransitionClass(`transition-${item.transitionOut.type}`);
+        } else {
+          setActiveTransitionClass('');
+        }
+      } else {
+        setActiveTransitionClass('');
       }
     }
   };
@@ -1333,18 +1388,25 @@ export const Screen2Workspace: React.FC = () => {
               ref={mainVideoRef}
               src={project.sourceVideoUrl}
               playsInline
-              className={`w-full h-full object-contain absolute inset-0 transition-opacity duration-150 ${
-                activeMemePlaying ? 'opacity-0 pointer-events-none' : 'opacity-100'
-              } ${activeTransitionClass}`}
+              className={`w-full h-full object-contain absolute inset-0 ${
+                activeMemePlaying
+                  ? 'hidden invisible opacity-0 pointer-events-none z-0'
+                  : `z-10 opacity-100 ${activeTransitionClass}`
+              }`}
             />
 
             {/* Stacked Meme Video Element (Spec 3) */}
             <video
               ref={memeVideoRef}
               playsInline
-              className={`w-full h-full object-contain absolute inset-0 transition-opacity duration-150 ${
-                activeMemePlaying ? 'opacity-100' : 'opacity-0 pointer-events-none'
-              } ${activeTransitionClass}`}
+              onLoadedData={handleSecondaryReady}
+              onSeeked={handleSecondaryReady}
+              onCanPlay={handleSecondaryReady}
+              className={`w-full h-full object-contain absolute inset-0 ${
+                activeMemePlaying
+                  ? `z-10 ${isSecondaryReady ? `opacity-100 ${activeTransitionClass}` : 'opacity-0 pointer-events-none'}`
+                  : 'hidden invisible opacity-0 pointer-events-none z-0'
+              }`}
             />
 
             {/* Denoised Audio Element for Spectral Noise Removal */}
