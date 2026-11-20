@@ -972,10 +972,14 @@ export const Screen2Workspace: React.FC = () => {
                           const res = suggestNonSpeechSilences();
                           alert(res.message);
                         }}
-                        className="w-full bg-[#D97706]/15 hover:bg-[#D97706]/25 border border-[#F59E0B]/50 text-[#FCD34D] py-1 px-2 rounded-lg text-[11px] flex items-center justify-center space-x-1 transition-all"
+                        className="w-full bg-[#D97706]/15 hover:bg-[#D97706]/25 border border-[#F59E0B]/50 text-[#FCD34D] py-1 px-2 rounded-lg text-[11px] flex items-center justify-center space-x-1.5 transition-all"
+                        title="Experimental: works best on quiet/low-noise recordings. For noisy audio, use Split (S) or Cut commands."
                       >
                         <ShieldAlert className="w-3 h-3 text-[#F59E0B]" />
                         <span>Suggest Non-Speech Cuts</span>
+                        <span className="bg-[#D97706]/15 border border-[#F59E0B]/40 text-[#FCD34D] text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded font-medium">
+                          Experimental
+                        </span>
                       </button>
                     )}
                   </div>
@@ -1242,7 +1246,7 @@ export const Screen2Workspace: React.FC = () => {
               <div className="flex items-center space-x-2 text-[#FCD34D]">
                 <ShieldAlert className="w-4 h-4 flex-shrink-0 text-[#F59E0B]" />
                 <span>
-                  <strong>Awkward Pauses Detected:</strong> Review amber intervals on timeline or click to clean up:
+                  <strong>Awkward Pauses Detected:</strong> Review amber intervals on timeline or click to clean up <span className="text-[#A19E97] font-normal text-[11px]">(Experimental — review before accepting; best on low-noise audio)</span>:
                 </span>
               </div>
               <div className="flex items-center space-x-2">
@@ -1880,10 +1884,13 @@ export const Screen2Workspace: React.FC = () => {
                     appliedMessage: res.message
                   });
                 }}
-                className="px-2 py-0.5 bg-[#D97706]/20 hover:bg-[#D97706]/35 border border-[#F59E0B]/60 text-[#FCD34D] rounded text-[11px] font-medium transition-colors"
-                title="Scan audio and display amber silence blocks on timeline without deleting them yet"
+                className="px-2 py-0.5 bg-[#D97706]/20 hover:bg-[#D97706]/35 border border-[#F59E0B]/60 text-[#FCD34D] rounded text-[11px] font-medium transition-colors flex items-center space-x-1.5"
+                title="Experimental: works best on quiet/low-noise recordings. For noisy audio, use Split (S) or Cut commands."
               >
-                Detect Silences
+                <span>Detect Silences</span>
+                <span className="bg-[#D97706]/15 border border-[#F59E0B]/40 text-[#FCD34D] text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded font-medium">
+                  Experimental
+                </span>
               </button>
               <button
                 onClick={() => {

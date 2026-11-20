@@ -2,11 +2,10 @@ import React, { useState } from 'react';
 import { Upload, Sparkles, Wand2, ArrowRight, AlertCircle, FileVideo } from 'lucide-react';
 import { useEditorStore } from '../store/useEditorStore';
 import { detectSilenceInVideo, injectSilenceCutsIntoTimeline } from '../utils/silenceDetector';
-import { generateDenoisedAudio } from '../utils/audioDenoiser';
 import { TimelineItem } from '../types/edl';
 
 export const Screen1Upload: React.FC = () => {
-  const { loadProject, setScreen, toggleVoiceEnhance, toggleNoiseReduction, generateTranscript, setDenoisedAudio } = useEditorStore();
+  const { loadProject, setScreen, toggleVoiceEnhance, toggleNoiseReduction, generateTranscript } = useEditorStore();
 
   const [isDragging, setIsDragging] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -20,7 +19,7 @@ export const Screen1Upload: React.FC = () => {
     timestamps: true,
     voiceEnhance: true,
     noiseReduction: true,
-    detectSilence: true,
+    detectSilence: false,
     suggestMemes: true
   });
 
@@ -99,16 +98,8 @@ export const Screen1Upload: React.FC = () => {
       ];
 
       if (isAutoMode && autoOptions.detectSilence) {
-        setProcessingStatus('Denoising audio & scanning speech frequencies for awkward pauses...');
-        let targetBlob: Blob | null = null;
-        try {
-          const denoiseRes = await generateDenoisedAudio(videoUrl);
-          targetBlob = denoiseRes.blob;
-          setDenoisedAudio(denoiseRes.blob, denoiseRes.url);
-        } catch (e) {
-          console.warn('[Screen1Upload] Denoiser fallback for silence detection:', e);
-        }
-        const { silences } = await detectSilenceInVideo(selectedFile, durationMs, 'Normal', targetBlob);
+        setProcessingStatus('Scanning audio for awkward pauses...');
+        const { silences } = await detectSilenceInVideo(selectedFile, durationMs, 'Normal');
         items = injectSilenceCutsIntoTimeline(items, silences);
       }
 
@@ -251,9 +242,9 @@ export const Screen1Upload: React.FC = () => {
                 { key: 'timestamps', label: 'Create Chapter Timestamps' },
                 { key: 'voiceEnhance', label: 'Enhance speaker audio' },
                 { key: 'noiseReduction', label: 'Remove background noise' },
-                { key: 'detectSilence', label: 'Detect Awkward Silences (>800ms Pauses)' },
+                { key: 'detectSilence', label: 'Detect Awkward Silences (>800ms Pauses)', badge: 'Experimental' },
                 { key: 'suggestMemes', label: 'Enable Meme Reaction Library' },
-              ].map(({ key, label }) => (
+              ].map(({ key, label, badge }) => (
                 <label
                   key={key}
                   className="flex items-center space-x-3 text-xs text-[#A19E97] cursor-pointer select-none hover:text-[#F4F2EE] transition-colors"
@@ -266,7 +257,14 @@ export const Screen1Upload: React.FC = () => {
                     }
                     className="w-4 h-4 rounded border-[#2C2B28] text-[#E8872A] focus:ring-[#E8872A]/40 bg-[#1F1E1C]"
                   />
-                  <span>{label}</span>
+                  <span className="flex items-center space-x-2">
+                    <span>{label}</span>
+                    {badge && (
+                      <span className="bg-[#D97706]/15 border border-[#F59E0B]/40 text-[#FCD34D] text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded font-medium">
+                        {badge}
+                      </span>
+                    )}
+                  </span>
                 </label>
               ))}
             </div>

@@ -9,7 +9,6 @@ import {
 } from '../utils/timelineMath';
 import { MEME_LIBRARY, getMemeById, findMemeByKeyword } from '../utils/memeLibrary';
 import { detectSilenceInVideo, injectSilenceCutsIntoTimeline, SilenceSensitivity, SILENCE_PRESETS } from '../utils/silenceDetector';
-import { generateDenoisedAudio } from '../utils/audioDenoiser';
 import { generateSourceThumbnails, ThumbnailMap, ThumbnailProgress } from '../utils/thumbnailGenerator';
 import { transcribeVideoAudio, suggestNonSpeechCuts, TranscriptionStatus } from '../utils/transcriptionService';
 
@@ -580,7 +579,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   },
 
   detectSilencesOnly: async (param) => {
-    const { project, silenceSensitivity, denoisedAudioBlob, setDenoisedAudio } = get();
+    const { project, silenceSensitivity } = get();
     if (!project) return { count: 0, message: 'No video project loaded.' };
 
     const effectiveSensitivity: SilenceSensitivity = typeof param === 'string'
@@ -589,27 +588,10 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       ? (param >= 700 ? 'Strict' : param <= 400 ? 'Sensitive' : 'Normal')
       : (silenceSensitivity ?? 'Normal');
 
-    // Run detection on denoised, speech-band audio
-    let targetBlob = denoisedAudioBlob;
-    if (!targetBlob && project.sourceVideoUrl) {
-      try {
-        const denoiseRes = await generateDenoisedAudio(project.sourceVideoUrl);
-        setDenoisedAudio(denoiseRes.blob, denoiseRes.url);
-        targetBlob = denoiseRes.blob;
-      } catch (err) {
-        console.warn('[Store] Denoiser before silence detection fallback:', err);
-      }
-    }
-
-    const transcriptWords = project.transcript && project.transcript.length >= 3 ? project.transcript : undefined;
-
     const res = await detectSilenceInVideo(
       project.sourceVideoUrl,
       project.sourceDurationMs,
-      effectiveSensitivity,
-      targetBlob,
-      (blob, url) => setDenoisedAudio(blob, url),
-      transcriptWords
+      effectiveSensitivity
     );
 
     const msg = res.diagnosticMessage || (res.silences.length === 0
@@ -638,7 +620,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   },
 
   removeOrDetectSilences: async (param) => {
-    const { project, silenceSensitivity, denoisedAudioBlob, setDenoisedAudio } = get();
+    const { project, silenceSensitivity } = get();
     if (!project) return { changed: false, message: 'No video project loaded.' };
 
     const effectiveSensitivity: SilenceSensitivity = typeof param === 'string'
@@ -653,28 +635,12 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     let speechLevelDb = -20;
     let thresholdDb = -40;
 
-    // If detector hasn't run yet, run it on demand
+    // If detector hasn't run yet, run it directly on source video
     if (existingSuggested.length === 0) {
-      let targetBlob = denoisedAudioBlob;
-      if (!targetBlob && project.sourceVideoUrl) {
-        try {
-          const denoiseRes = await generateDenoisedAudio(project.sourceVideoUrl);
-          setDenoisedAudio(denoiseRes.blob, denoiseRes.url);
-          targetBlob = denoiseRes.blob;
-        } catch (err) {
-          console.warn('[Store] Denoiser before silence removal fallback:', err);
-        }
-      }
-
-      const transcriptWords = project.transcript && project.transcript.length >= 3 ? project.transcript : undefined;
-
       const res = await detectSilenceInVideo(
         project.sourceVideoUrl,
         project.sourceDurationMs,
-        effectiveSensitivity,
-        targetBlob,
-        (blob, url) => setDenoisedAudio(blob, url),
-        transcriptWords
+        effectiveSensitivity
       );
       rawGapsCount = res.rawGapsCount;
       noiseFloorDb = res.noiseFloorDb;
