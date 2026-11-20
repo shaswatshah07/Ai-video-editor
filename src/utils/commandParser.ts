@@ -1,14 +1,14 @@
 import { AICommand, AICommandSchema } from '../types/commands';
-import { findMemeByKeyword, MEME_LIBRARY } from './memeLibrary';
+import { MEME_LIBRARY } from './memeLibrary';
 import { mapSourceToProjectMs } from './timelineMath';
 import { ProjectEDL } from '../types/edl';
 
 /**
- * Parses time strings like "0:15", "1:20", "15s", "2.5s", "10" into integer milliseconds.
+ * Parses time strings like "0:15", "1:20", "15s", "2.5s", "3 s", "10" into integer milliseconds.
  */
 function parseTimeStringToMs(raw: string): number | null {
-  const clean = raw.trim().toLowerCase();
-  
+  const clean = raw.trim().toLowerCase().replace(/\s+/g, '');
+
   // Format MM:SS or M:SS or HH:MM:SS
   if (clean.includes(':')) {
     const parts = clean.split(':').map(Number);
@@ -21,7 +21,7 @@ function parseTimeStringToMs(raw: string): number | null {
     }
   }
 
-  // Format with "s" suffix like "15s" or "2.5s"
+  // Format with "s" suffix like "15s", "2.5s", "3s"
   if (clean.endsWith('s')) {
     const val = parseFloat(clean.slice(0, -1));
     return isNaN(val) ? null : Math.round(val * 1000);
@@ -33,7 +33,7 @@ function parseTimeStringToMs(raw: string): number | null {
 }
 
 /**
- * Extracts target timestamp from either an explicit time ("at 0:15", "at 10s")
+ * Extracts target timestamp from either an explicit time ("at 0:15", "at 10s", "at 3 s")
  * or a spoken transcript phrase ("when I say hello", "after I say congratulations").
  */
 function extractTargetTimestamp(lower: string, currentProjectMs: number, project?: ProjectEDL | null): number {
@@ -60,8 +60,8 @@ function extractTargetTimestamp(lower: string, currentProjectMs: number, project
     }
   }
 
-  // 2. Explicit timestamp ("at 0:15", "at 15s", "around 10s")
-  const atMatch = lower.match(/(?:at|around)\s+([0-9:.]+s?)/i);
+  // 2. Explicit timestamp ("at 0:15", "at 15s", "at 3 s", "around 10s")
+  const atMatch = lower.match(/(?:at|around)\s+([0-9:.]+\s*s?)/i);
   if (atMatch) {
     const parsed = parseTimeStringToMs(atMatch[1]);
     if (parsed !== null) return parsed;
@@ -71,8 +71,32 @@ function extractTargetTimestamp(lower: string, currentProjectMs: number, project
 }
 
 /**
- * Deterministic local regex parser matching the 9 approved operations.
- * Guaranteed 100% offline reliability with zero network dependencies.
+ * Explicit regex matchers for each built-in meme in MEME_LIBRARY.
+ * Disambiguates specific memes while preventing generic keywords (e.g. 'good', 'boom', 'what')
+ * from triggering accidental meme insertions on unrelated queries.
+ */
+interface MemeMatcher {
+  id: string;
+  title: string;
+  regex: RegExp;
+}
+
+const MEME_SPECIFIC_MATCHERS: MemeMatcher[] = [
+  { id: 'damnnnnnnnnnnn', title: 'Damn!', regex: /\b(damn+|friday\s+damn)\b/i },
+  { id: 'mission_passed', title: 'Mission Passed (GTA)', regex: /\b(mission\s*pass(ed)?|gta\s*passed|gta)\b/i },
+  { id: 'ohhhhhhhhhhhhh_penguinz0', title: 'Penguinz0 (Yeah Baby!)', regex: /\b(penguinz0|moistcr1tikal|yeah\s+baby|oh\s+baby|charlie)\b/i },
+  { id: 'pointing_finger', title: 'Pointing Finger (DiCaprio)', regex: /\b(pointing\s+finger|dicaprio|leonardo(\s+dicaprio)?|rick\s+dalton)\b/i },
+  { id: 'pow_ohhhhhhhhhhhhhhhhh', title: 'Supa Hot Fire (Pow!)', regex: /\b(supa\s*hot\s*fire|rap\s*battle|pow\s*oh|pow!)\b/i },
+  { id: 'ten_hours_later', title: '10 Hours Later (SpongeBob)', regex: /\b(10\s*hours\s*later|ten\s*hours\s*later|hours\s*later|spongebob)\b/i },
+  { id: 'the_rock_eyebrow_raise', title: 'The Rock Eyebrow Raise', regex: /\b(the\s*rock(\s*eyebrow)?|eyebrow\s*raise|dwayne\s*johnson)\b/i },
+  { id: 'wait_who_are_you', title: 'Wait, Who Are You?', regex: /\b(wait,?\s*who\s*are\s*you|kazoo\s*kid)\b/i },
+  { id: 'yeah_boy', title: 'Yeah Boy (Ainsley Harriott)', regex: /\b(yeah\s*bo[yi]|ainsley(\s*harriott)?)\b/i },
+  { id: 'you_serious_spiderman', title: 'Are You Serious? (J. Jonah)', regex: /\b(you\s*serious(\s*spider-?man)?|are\s*you\s*serious|j\s*jonah\s*jameson|spider-?man\s*laugh|jk\s*simmons)\b/i }
+];
+
+/**
+ * Deterministic local regex parser matching approved operations and strictly rejecting unsupported ones.
+ * Evaluates unsupported editing requests FIRST so they can never be hijacked by loose regexes.
  */
 export function parseLocalCommand(
   rawInput: string,
@@ -83,26 +107,120 @@ export function parseLocalCommand(
   const text = rawInput.trim();
   const lower = text.toLowerCase();
 
-  // 1. UNSUPPORTED FEATURES CHECK
-  const unsupportedTriggers = [
-    '3d', 'glow', 'speed', 'slow motion', 'fast forward', 'green screen',
-    'chroma key', 'reverse', 'motion tracking', 'face blur', 'color grade',
-    'lut', 'ai avatar', 'deepfake', 'subtitle translation', 'dubbing', 'zoom in and out'
-  ];
-  if (unsupportedTriggers.some(t => lower.includes(t)) || lower.includes('overlapping effect')) {
+  // ====================================================================
+  // STEP 1: STRICT UNSUPPORTED-FEATURE GUARDS (Evaluated FIRST)
+  // ====================================================================
+
+  // 1. Sound Effects / SFX
+  if (
+    /\b(sound\s*effect|sfx|whoosh|vine\s*boom|boom\s*sound|ding|audio\s*effect|sound\s*clip)s?\b/i.test(lower)
+  ) {
     return {
       action: 'UNSUPPORTED_OPERATION',
       payload: {
-        feature: text,
-        message: 'This feature is not currently supported. Our team is working on adding it in a future update!'
+        feature: 'Sound Effects (SFX)',
+        message: 'Sound effects (SFX) are currently not available in Fastcutz.ai. You can add background music using \'+ Add Music\' or insert a meme reaction clip instead.'
       },
-      explanation: 'Unsupported video editing effect requested.'
+      explanation: 'Sound effects (SFX) are currently not available in Fastcutz.ai.'
     };
   }
 
-  // 2. TRIM / CUT SECTION
-  // Matches: "cut from 0:10 to 0:25", "trim 5s to 12s", "delete from 0:15 to 0:30", "cut between 10 and 20"
-  const trimRegex = /(?:cut|trim|delete|remove)\s+(?:from|between)?\s*([0-9:.]+s?)\s*(?:to|-|and)\s*([0-9:.]+s?)/i;
+  // 2. Overlap / Overlay / Layering / PiP
+  if (
+    /\b(overlap|overlapping|overlay|picture\s*in\s*picture|pip|split\s*screen|blend|layer|layering|double\s*exposure|superimpose)\b/i.test(lower)
+  ) {
+    return {
+      action: 'UNSUPPORTED_OPERATION',
+      payload: {
+        feature: 'Overlap / Overlay Effects',
+        message: 'Overlap / overlay effects are currently not available in Fastcutz.ai. Right now you can splice clips sequentially, drag to reorder them, or add Fade/Wipe transitions between clips.'
+      },
+      explanation: 'Overlap / overlay effects are currently not available in Fastcutz.ai.'
+    };
+  }
+
+  // 3. Visual Effects & Filters
+  // Guard: if user specifies audio noise/sound removal, don't trigger visual background filter
+  const isAudioCleaning = /\b(noise|audio|sound|hiss|hum)\b/i.test(lower);
+  if (
+    /\b(blur|glitch|shake|vignette|black\s*and\s*white|grayscale|vintage|filter|filters|color\s*grade|color\s*grading|lut|brightness|contrast|saturation|green\s*screen|chroma\s*key|3d|glow)\b/i.test(lower) ||
+    (!isAudioCleaning && /\bremove\s+background\b/i.test(lower))
+  ) {
+    return {
+      action: 'UNSUPPORTED_OPERATION',
+      payload: {
+        feature: 'Visual Filters & Color Effects',
+        message: 'Visual filters and color/keying effects are currently not available in Fastcutz.ai.'
+      },
+      explanation: 'Visual filters and color/keying effects are currently not available in Fastcutz.ai.'
+    };
+  }
+
+  // 4. Text / Titles / Burned-in Captions / Stickers
+  // Guard: if user explicitly asks to generate transcript or speech-to-text, allow it
+  const isTranscriptRequest = /\b(transcript|speech\s*to\s*text)\b/i.test(lower);
+  if (
+    !isTranscriptRequest &&
+    /\b(add\s*text|text|title|heading|caption|captions|subtitle|subtitles|sticker|stickers|emoji|emojis|watermark|logo)\b/i.test(lower)
+  ) {
+    return {
+      action: 'UNSUPPORTED_OPERATION',
+      payload: {
+        feature: 'Text, Titles & Captions',
+        message: 'Adding text, stickers, or burned-in captions is currently not available in Fastcutz.ai.'
+      },
+      explanation: 'Adding text, stickers, or burned-in captions is currently not available in Fastcutz.ai.'
+    };
+  }
+
+  // 5. Transform / Framing
+  if (
+    /\b(zoom|crop|rotate|flip|mirror|pan|resize|aspect\s*ratio|9:16|16:9)\b/i.test(lower)
+  ) {
+    return {
+      action: 'UNSUPPORTED_OPERATION',
+      payload: {
+        feature: 'Transform & Framing',
+        message: 'Crop, zoom, rotate, and aspect-ratio transforms are currently not available in Fastcutz.ai.'
+      },
+      explanation: 'Crop, zoom, rotate, and aspect-ratio transforms are currently not available in Fastcutz.ai.'
+    };
+  }
+
+  // 6. Speed / Time Effects
+  if (
+    /\b(slow\s*motion|slow\s*mo|slomo|speed\s*up|fast\s*forward|timelapse|time\s*lapse|reverse|freeze\s*frame|boomerang)\b/i.test(lower)
+  ) {
+    return {
+      action: 'UNSUPPORTED_OPERATION',
+      payload: {
+        feature: 'Speed & Time Effects',
+        message: 'Exportable speed changes and reverse/freeze effects are currently not available in Fastcutz.ai (you can preview at 1x/2x/5x using the Speed toggle).'
+      },
+      explanation: 'Exportable speed changes and reverse/freeze effects are currently not available in Fastcutz.ai.'
+    };
+  }
+
+  // 7. Voiceover / AI Audio Generation
+  if (
+    /\b(voiceover|voice\s*over|record\s*voice|text\s*to\s*speech|tts|ai\s*voice|auto\s*duck|reverb|echo\s*effect|dubbing)\b/i.test(lower)
+  ) {
+    return {
+      action: 'UNSUPPORTED_OPERATION',
+      payload: {
+        feature: 'Voiceover & Advanced Audio',
+        message: 'Voiceover and advanced audio effects are currently not available in Fastcutz.ai. You can use Voice Enhance, Noise Removal, or \'+ Add Music\' instead.'
+      },
+      explanation: 'Voiceover and advanced audio effects are currently not available in Fastcutz.ai.'
+    };
+  }
+
+  // ====================================================================
+  // STEP 2: SUPPORTED EDITING ACTIONS
+  // ====================================================================
+
+  // 1. TRIM / CUT SECTION (Ranges: "cut from 0:10 to 0:15", "trim 5s to 12s", "delete from 10 to 20")
+  const trimRegex = /(?:cut|trim|delete|remove)\s+(?:from|between)?\s*([0-9:.]+\s*s?)\s*(?:to|-|and)\s*([0-9:.]+\s*s?)/i;
   const trimMatch = lower.match(trimRegex);
   if (trimMatch) {
     const startMs = parseTimeStringToMs(trimMatch[1]);
@@ -117,7 +235,7 @@ export function parseLocalCommand(
   }
 
   // Single timestamp cut ("cut at 0:15", "split at 10s")
-  const splitRegex = /(?:cut|split)\s+at\s+([0-9:.]+s?)/i;
+  const splitRegex = /(?:cut|split|delete|trim)\s+at\s+([0-9:.]+\s*s?)/i;
   const splitMatch = lower.match(splitRegex);
   if (splitMatch) {
     const atMs = parseTimeStringToMs(splitMatch[1]);
@@ -130,13 +248,9 @@ export function parseLocalCommand(
     }
   }
 
-  // 3. REMOVE SILENCE
+  // 2. REMOVE SILENCE
   if (
-    lower.includes('silence') ||
-    lower.includes('awkward pause') ||
-    lower.includes('cut pause') ||
-    lower.includes('remove pause') ||
-    lower.includes('dead air')
+    /\b(silence|awkward\s*pause|cut\s*pause|remove\s*pause|dead\s*air)\b/i.test(lower)
   ) {
     return {
       action: 'REMOVE_SILENCE',
@@ -145,52 +259,71 @@ export function parseLocalCommand(
     };
   }
 
-  // 4. MEME INSERTION (LIBRARY OR USER CLIP)
-  const isMemeTrigger =
-    lower.includes('meme') ||
-    lower.includes('funny clip') ||
-    lower.includes('reaction') ||
-    lower.includes('my clip') ||
-    lower.includes('my video') ||
-    MEME_LIBRARY.some(m => lower.includes(m.id) || lower.includes(m.title.toLowerCase()) || m.keywords.some(k => lower.includes(k)));
+  // 3. MEME INSERTION (Strict Intent Rule: only fires on explicit meme/reaction or specific meme alias)
+  const hasMemeWord = /\b(meme|reaction)\b/i.test(lower);
+  const hasUserClipWord = /\b(my\s+meme|my\s+uploaded\s+clip|uploaded\s+meme|my\s+clip|my\s+custom\s+clip|own\s+meme|custom\s+meme|user\s+clip)\b/i.test(lower);
+  const matchedSpecificMeme = MEME_SPECIFIC_MATCHERS.find(m => m.regex.test(lower));
 
-  if (isMemeTrigger) {
-    const isUserClip =
-      lower.includes('my uploaded') ||
-      lower.includes('my custom') ||
-      lower.includes('user clip') ||
-      lower.includes('my meme') ||
-      lower.includes('uploaded clip') ||
-      lower.includes('my clip') ||
-      lower.includes('own meme');
-
+  if (hasUserClipWord) {
     const targetMs = extractTargetTimestamp(lower, currentProjectMs, project);
-
-    if (isUserClip) {
-      return {
-        action: 'INSERT_USER_CLIP',
-        payload: {
-          clipId: 'custom_latest',
-          atProjectMs: targetMs
-        },
-        explanation: `Inserting your uploaded clip at ${(targetMs / 1000).toFixed(1)}s.`
-      };
-    }
-
-    // Determine library meme
-    const matchedMeme = findMemeByKeyword(lower) || MEME_LIBRARY[0];
-
     return {
-      action: 'INSERT_LIBRARY_MEME',
+      action: 'INSERT_USER_CLIP',
       payload: {
-        memeId: matchedMeme.id,
+        clipId: 'custom_latest',
         atProjectMs: targetMs
       },
-      explanation: `Inserting "${matchedMeme.title}" meme reaction at ${(targetMs / 1000).toFixed(1)}s.`
+      explanation: `Inserting your uploaded clip at ${(targetMs / 1000).toFixed(1)}s.`
     };
   }
 
-  // 5. TRANSITIONS
+  if (matchedSpecificMeme) {
+    const targetMs = extractTargetTimestamp(lower, currentProjectMs, project);
+    return {
+      action: 'INSERT_LIBRARY_MEME',
+      payload: {
+        memeId: matchedSpecificMeme.id,
+        atProjectMs: targetMs
+      },
+      explanation: `Inserting "${matchedSpecificMeme.title}" meme reaction at ${(targetMs / 1000).toFixed(1)}s.`
+    };
+  }
+
+  if (hasMemeWord) {
+    // User requested a meme or reaction, but no known library alias matched.
+    // Determine whether this is a generic meme request or a request for an unlisted meme name.
+    const cleaned = lower
+      .replace(/(?:insert|add|put|place|play|drop|include)\s+/gi, '')
+      .replace(/(?:at|around|on|near)\s+[0-9:.]+\s*s?/gi, '')
+      .replace(/\b(a|an|the|funny|hilarious|random|good|cool|quick|short|video|clip|reaction|meme|reaction clip)\b/gi, ' ')
+      .trim();
+
+    const remainingTokens = cleaned.split(/\s+/).filter(Boolean);
+    if (remainingTokens.length > 0) {
+      const requestedName = remainingTokens.join(' ');
+      return {
+        action: 'UNSUPPORTED_OPERATION',
+        payload: {
+          feature: `Meme '${requestedName}'`,
+          message: `Meme '${requestedName}' is not in the built-in library. Choose one from 'Choose a Meme' or upload your own .mp4 under 'Insert Your Own'.`
+        },
+        explanation: `Meme '${requestedName}' is not in the built-in library.`
+      };
+    }
+
+    // Generic meme request (e.g. "insert a meme at 0:08", "add funny meme at 5s")
+    const targetMs = extractTargetTimestamp(lower, currentProjectMs, project);
+    const defaultMeme = MEME_LIBRARY[0];
+    return {
+      action: 'INSERT_LIBRARY_MEME',
+      payload: {
+        memeId: defaultMeme.id,
+        atProjectMs: targetMs
+      },
+      explanation: `Inserting "${defaultMeme.title}" meme reaction at ${(targetMs / 1000).toFixed(1)}s.`
+    };
+  }
+
+  // 4. TRANSITIONS
   if (lower.includes('transition') || lower.includes('fade') || lower.includes('wipe') || lower.includes('dissolve')) {
     let type: 'fade' | 'dissolve' | 'wipeleft' | 'wiperight' | 'slideup' = 'fade';
     if (lower.includes('dissolve')) type = 'dissolve';
@@ -206,7 +339,7 @@ export function parseLocalCommand(
     };
   }
 
-  // 6. RESET AUDIO
+  // 5. RESET AUDIO
   if (
     lower.includes('reset audio') ||
     lower.includes('original audio') ||
@@ -221,7 +354,7 @@ export function parseLocalCommand(
     };
   }
 
-  // 7. ENHANCE AUDIO (Speaker Voice Enhancement)
+  // 6. ENHANCE AUDIO (Speaker Voice Enhancement)
   if (
     lower.includes('enhance') ||
     lower.includes('voice') ||
@@ -239,7 +372,7 @@ export function parseLocalCommand(
     };
   }
 
-  // 8. REMOVE NOISE (Background Noise Removal)
+  // 7. REMOVE NOISE (Background Noise Removal)
   if (
     lower.includes('noise') ||
     lower.includes('hiss') ||
@@ -259,7 +392,7 @@ export function parseLocalCommand(
   }
 
   // 8. TRANSCRIPT & TIMESTAMPS
-  if (lower.includes('transcript') || lower.includes('subtitles') || lower.includes('captions') || lower.includes('speech to text')) {
+  if (lower.includes('transcript') || lower.includes('speech to text')) {
     return {
       action: 'GENERATE_TRANSCRIPT',
       payload: {},
@@ -275,10 +408,43 @@ export function parseLocalCommand(
     };
   }
 
-  // 9. AMBIGUOUS PROMPTS NEEDING CLARIFICATION
-  // Example: "remove the boring part", "cut the bad part", "make it shorter", "fix video"
+  // 9. UNDO / REDO HELPER
+  if (/\b(undo|redo|revert)\b/i.test(lower)) {
+    return {
+      action: 'AMBIGUOUS_NEED_CLARIFICATION',
+      payload: {
+        message: 'To undo or redo changes, use the Undo (Ctrl+Z) and Redo (Ctrl+Y) buttons in the workspace header.',
+        suggestedAction: 'Use Ctrl+Z / Ctrl+Y'
+      },
+      explanation: 'Undo/Redo is available via workspace header buttons and keyboard shortcuts (Ctrl+Z / Ctrl+Y).'
+    };
+  }
+
+  // ====================================================================
+  // STEP 3: GENERIC EDITING-INTENT CATCH-ALL
+  // ====================================================================
+  // If the query contains editing words but no supported action matched,
+  // return a clear unsupported notice instead of a generic "didn't catch that".
+  const hasEditIntent =
+    /\b(effect|effects|edit|editing|animation|animate|animated|keyframe|keyframes|mask|masking|track|tracking|stabilize|stabilization|upscale|sharpen|highlight)\b/i.test(lower) ||
+    /(?:put|add|apply|insert)\s+.+\s+(?:at|around)\s+[0-9:.]+/i.test(lower);
+
+  if (hasEditIntent) {
+    return {
+      action: 'UNSUPPORTED_OPERATION',
+      payload: {
+        feature: text,
+        message: 'That editing feature is currently not available in Fastcutz.ai. Supported commands: cutting/trimming timestamps, inserting memes, adding Fade/Wipe transitions, and Voice Enhance / Noise Removal.'
+      },
+      explanation: 'That editing feature is currently not available in Fastcutz.ai.'
+    };
+  }
+
+  // ====================================================================
+  // STEP 4: AMBIGUOUS EDIT PROMPTS (without timestamps)
+  // ====================================================================
   const ambiguousTriggers = [
-    'boring', 'bad', 'shorter', 'improve', 'fix', 'better', 'cool', 'good', 'edit this', 'clean up'
+    'boring', 'bad', 'shorter', 'improve', 'fix', 'better', 'cool', 'good', 'clean up'
   ];
   if (ambiguousTriggers.some(t => lower.includes(t))) {
     return {
@@ -291,7 +457,9 @@ export function parseLocalCommand(
     };
   }
 
-  // Default clarification if unmapped
+  // ====================================================================
+  // STEP 5: FALLBACK (Strictly for non-editing chat or unrecognized gibberish)
+  // ====================================================================
   return {
     action: 'AMBIGUOUS_NEED_CLARIFICATION',
     payload: {

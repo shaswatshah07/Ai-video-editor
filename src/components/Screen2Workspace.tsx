@@ -2338,7 +2338,7 @@ export const Screen2Workspace: React.FC = () => {
                           className={`p-2 rounded-lg border text-[11px] space-y-1 ${
                             log.status === 'SUCCESS'
                               ? 'bg-[#14B8A6]/10 border-[#2DD4BF]/30 text-[#5EEAD4]'
-                              : log.status === 'CLARIFICATION'
+                              : log.status === 'CLARIFICATION' || log.status === 'WARNING' || log.parsedCommand.action === 'UNSUPPORTED_OPERATION'
                               ? 'bg-[#D97706]/10 border-[#F59E0B]/30 text-[#FCD34D]'
                               : 'bg-[#DC2626]/10 border-[#EF4444]/30 text-[#F87171]'
                           }`}
