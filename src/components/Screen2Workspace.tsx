@@ -136,6 +136,16 @@ export const Screen2Workspace: React.FC = () => {
   const lastSeekTargetRef = useRef<number | null>(null);
   const lastTickTimeRef = useRef<number | null>(null);
   const activeMemeIdRef = useRef<string | null>(null);
+  const isPlayingRef = useRef<boolean>(isPlaying);
+  const currentProjectMsRef = useRef<number>(currentProjectMs);
+
+  useEffect(() => {
+    isPlayingRef.current = isPlaying;
+  }, [isPlaying]);
+
+  useEffect(() => {
+    currentProjectMsRef.current = currentProjectMs;
+  }, [currentProjectMs]);
 
   // Web Audio Context & Node Refs
   const audioContextRef = useRef<AudioContext | null>(null);
@@ -166,13 +176,7 @@ export const Screen2Workspace: React.FC = () => {
   const loadedSecondaryUrlRef = useRef<string | null>(null);
 
   const handleSecondaryReady = useCallback(() => {
-    if (memeVideoRef.current && loadedSecondaryUrlRef.current) {
-      const currentSrc = memeVideoRef.current.currentSrc || memeVideoRef.current.src || '';
-      const target = loadedSecondaryUrlRef.current;
-      if (!currentSrc || currentSrc === target || currentSrc.endsWith(target) || currentSrc.includes(target) || target.includes(currentSrc)) {
-        setIsSecondaryReady(true);
-      }
-    }
+    setIsSecondaryReady(true);
   }, []);
 
   // Frame-accurate playhead-driven transition updater (zero React re-render, zero CSS lag)
@@ -546,175 +550,286 @@ export const Screen2Workspace: React.FC = () => {
     applyPlaybackSpeed(previewSpeed);
   }, [previewSpeed, applyPlaybackSpeed]);
 
-  // Main Virtual Playback Engine RAF Loop (Spec 3)
+  // Main Virtual Playback Engine RAF Loop (Spec 3 - Freeze-Free, Master-Clock Driven)
   useEffect(() => {
     if (!project) return;
 
     const loop = (timestamp: number) => {
-      if (isPlaying) {
+      if (isPlayingRef.current) {
         if (lastTickTimeRef.current === null) {
           lastTickTimeRef.current = timestamp;
         }
-        const deltaSeconds = Math.min(0.1, (timestamp - lastTickTimeRef.current) / 1000);
         lastTickTimeRef.current = timestamp;
 
-        const deltaMs = deltaSeconds * 1000 * previewSpeed;
-        const nextProjectMs = currentProjectMs + deltaMs;
-
-        const activeItems = project.items.filter(it => it.status === 'ACTIVE' || it.status === 'SUGGESTED_MEME');
         const totalDuration = project.totalProjectDurationMs;
+        const activeItems = project.items.filter(it => it.status === 'ACTIVE' || it.status === 'SUGGESTED_MEME');
 
-        if (nextProjectMs >= totalDuration) {
+        if (activeItems.length === 0 || currentProjectMsRef.current >= totalDuration) {
           setIsPlaying(false);
-          setCurrentProjectMs(totalDuration);
+          isPlayingRef.current = false;
           lastTickTimeRef.current = null;
+          setCurrentProjectMs(totalDuration);
+          currentProjectMsRef.current = totalDuration;
+          if (mainVideoRef.current && !mainVideoRef.current.paused) mainVideoRef.current.pause();
+          if (memeVideoRef.current && !memeVideoRef.current.paused) memeVideoRef.current.pause();
+          if (denoisedAudioRef.current && !denoisedAudioRef.current.paused) denoisedAudioRef.current.pause();
           if (bgMusicRef.current && !bgMusicRef.current.paused) bgMusicRef.current.pause();
           return;
         }
 
-        // High-speed cut-skipping: check if mainVideoRef.currentTime entered or crossed a DELETED segment
-        if (mainVideoRef.current && !mainVideoRef.current.paused) {
-          const curSrcMs = Math.round(mainVideoRef.current.currentTime * 1000);
-          const inDeleted = project.items.find(
-            it => it.status === 'DELETED' && curSrcMs >= it.sourceStartMs && curSrcMs < it.sourceEndMs
-          );
-          if (inDeleted) {
-            const nextActiveAfter = project.items.find(
-              it => (it.status === 'ACTIVE' || it.status === 'SUGGESTED_MEME') && it.sourceStartMs >= inDeleted.sourceEndMs
-            );
-            if (nextActiveAfter && lastSeekTargetRef.current !== nextActiveAfter.sourceStartMs) {
-              lastSeekTargetRef.current = nextActiveAfter.sourceStartMs;
-              mainVideoRef.current.currentTime = nextActiveAfter.sourceStartMs / 1000;
-              if (denoisedAudioRef.current) {
-                denoisedAudioRef.current.currentTime = nextActiveAfter.sourceStartMs / 1000;
-              }
-              setCurrentProjectMs(nextActiveAfter.projectStartMs);
-              rafIdRef.current = requestAnimationFrame(loop);
-              return;
-            }
-          }
-        }
-
-        const { item, sourceMs } = mapProjectToSource(nextProjectMs, project.items);
-
-        if (!item) {
+        const curProjMs = currentProjectMsRef.current;
+        let currentItemIndex = activeItems.findIndex(it => curProjMs >= it.projectStartMs && curProjMs < it.projectEndMs);
+        if (currentItemIndex < 0) {
           // If in a gap or deleted region, jump forward to next active clip
-          const nextActive = activeItems.find(it => it.projectStartMs > nextProjectMs);
+          const nextActive = activeItems.find(it => it.projectStartMs > curProjMs);
           if (nextActive) {
+            currentProjectMsRef.current = nextActive.projectStartMs;
             setCurrentProjectMs(nextActive.projectStartMs);
-            if (mainVideoRef.current) {
-              mainVideoRef.current.currentTime = nextActive.sourceStartMs / 1000;
-              lastSeekTargetRef.current = nextActive.sourceStartMs;
-            }
-            if (denoisedAudioRef.current) {
-              denoisedAudioRef.current.currentTime = nextActive.sourceStartMs / 1000;
-            }
+            currentItemIndex = activeItems.indexOf(nextActive);
           } else {
             setIsPlaying(false);
+            isPlayingRef.current = false;
             lastTickTimeRef.current = null;
+            setCurrentProjectMs(totalDuration);
+            currentProjectMsRef.current = totalDuration;
+            if (mainVideoRef.current && !mainVideoRef.current.paused) mainVideoRef.current.pause();
+            if (memeVideoRef.current && !memeVideoRef.current.paused) memeVideoRef.current.pause();
+            if (denoisedAudioRef.current && !denoisedAudioRef.current.paused) denoisedAudioRef.current.pause();
             if (bgMusicRef.current && !bgMusicRef.current.paused) bgMusicRef.current.pause();
+            return;
           }
-          rafIdRef.current = requestAnimationFrame(loop);
-          return;
         }
 
-        // Check if playing a MEME clip
-        if (item.kind === 'MEME_CLIP') {
-          if (!activeMemePlaying) {
-            setActiveMemePlaying(true);
-          }
-          if (mainVideoRef.current && !mainVideoRef.current.paused) mainVideoRef.current.pause();
-          if (denoisedAudioRef.current && !denoisedAudioRef.current.paused) denoisedAudioRef.current.pause();
+        const item = activeItems[currentItemIndex];
 
-          if (memeVideoRef.current) {
-            if (memeVideoRef.current.playbackRate !== previewSpeed) {
-              memeVideoRef.current.playbackRate = previewSpeed;
-              memeVideoRef.current.preservesPitch = true;
-            }
-            if (activeMemeIdRef.current !== item.id || loadedSecondaryUrlRef.current !== item.blobUrl) {
-              activeMemeIdRef.current = item.id;
-              loadedSecondaryUrlRef.current = item.blobUrl;
-              setIsSecondaryReady(false);
-              memeVideoRef.current.src = item.blobUrl;
-              memeVideoRef.current.playbackRate = previewSpeed;
-              memeVideoRef.current.preservesPitch = true;
-              memeVideoRef.current.currentTime = (sourceMs - item.sourceStartMs) / 1000;
-              memeVideoRef.current.play().catch(() => {});
-            } else if (memeVideoRef.current.paused) {
-              memeVideoRef.current.play().catch(() => {});
-            }
-          }
-        } else {
-          // SOURCE_CLIP
+        if (item.kind === 'SOURCE_CLIP') {
+          // SOURCE_CLIP: mainVideoRef is the master video clock
           if (activeMemePlaying) {
             setActiveMemePlaying(false);
           }
           if (memeVideoRef.current && !memeVideoRef.current.paused) {
             memeVideoRef.current.pause();
           }
-          activeMemeIdRef.current = null;
-          loadedSecondaryUrlRef.current = null;
-          if (isSecondaryReady) {
-            setIsSecondaryReady(false);
+
+          const video = mainVideoRef.current;
+          if (video) {
+            if (video.playbackRate !== previewSpeed) {
+              video.playbackRate = previewSpeed;
+              video.preservesPitch = true;
+            }
+
+            if (video.paused && !video.ended && !video.seeking && video.readyState >= 2) {
+              video.play().catch(() => {});
+            }
+
+            // Only update positions if not mid-seek
+            if (!video.seeking) {
+              const curVideoMs = Math.round(video.currentTime * 1000);
+
+              // Check if video reached or passed current segment's sourceEndMs
+              if (curVideoMs >= item.sourceEndMs) {
+                const nextItem = activeItems[currentItemIndex + 1];
+
+                if (!nextItem) {
+                  // Reached end of timeline
+                  setIsPlaying(false);
+                  isPlayingRef.current = false;
+                  lastTickTimeRef.current = null;
+                  setCurrentProjectMs(totalDuration);
+                  currentProjectMsRef.current = totalDuration;
+                  video.pause();
+                  if (denoisedAudioRef.current && !denoisedAudioRef.current.paused) denoisedAudioRef.current.pause();
+                  if (bgMusicRef.current && !bgMusicRef.current.paused) bgMusicRef.current.pause();
+                  return;
+                }
+
+                if (nextItem.kind === 'SOURCE_CLIP') {
+                  // Contiguous Split Rule: if gap <= 80ms, let video play smoothly through with ZERO seek
+                  const isContiguous = Math.abs(nextItem.sourceStartMs - item.sourceEndMs) <= 80;
+                  if (isContiguous) {
+                    const nextProj = nextItem.projectStartMs + Math.max(0, curVideoMs - nextItem.sourceStartMs);
+                    currentProjectMsRef.current = nextProj;
+                    setCurrentProjectMs(nextProj);
+                  } else {
+                    // Non-contiguous cut (>80ms gap): seek once to next clip's start
+                    if (lastSeekTargetRef.current !== nextItem.sourceStartMs) {
+                      lastSeekTargetRef.current = nextItem.sourceStartMs;
+                      video.currentTime = nextItem.sourceStartMs / 1000;
+                    }
+                    currentProjectMsRef.current = nextItem.projectStartMs;
+                    setCurrentProjectMs(nextItem.projectStartMs);
+                  }
+                } else {
+                  // Next item is a MEME_CLIP: switch cleanly
+                  video.pause();
+                  if (denoisedAudioRef.current && !denoisedAudioRef.current.paused) denoisedAudioRef.current.pause();
+                  setActiveMemePlaying(true);
+                  currentProjectMsRef.current = nextItem.projectStartMs;
+                  setCurrentProjectMs(nextItem.projectStartMs);
+
+                  if (memeVideoRef.current) {
+                    if (loadedSecondaryUrlRef.current !== nextItem.blobUrl) {
+                      loadedSecondaryUrlRef.current = nextItem.blobUrl;
+                      setIsSecondaryReady(false);
+                      memeVideoRef.current.src = nextItem.blobUrl;
+                    } else if (memeVideoRef.current.readyState >= 2) {
+                      setIsSecondaryReady(true);
+                    }
+                    memeVideoRef.current.playbackRate = previewSpeed;
+                    memeVideoRef.current.preservesPitch = true;
+                    const memeStartSec = (nextItem.sourceStartMs || 0) / 1000;
+                    if (!memeVideoRef.current.seeking && lastSeekTargetRef.current !== nextItem.sourceStartMs) {
+                      lastSeekTargetRef.current = nextItem.sourceStartMs;
+                      memeVideoRef.current.currentTime = memeStartSec;
+                    }
+                    memeVideoRef.current.play().catch(() => {});
+                  }
+                }
+              } else {
+                // Still playing within item
+                // If video is significantly behind segment start (>250ms), align once
+                const driftBack = item.sourceStartMs - curVideoMs;
+                if (driftBack > 250 && lastSeekTargetRef.current !== item.sourceStartMs) {
+                  lastSeekTargetRef.current = item.sourceStartMs;
+                  video.currentTime = item.sourceStartMs / 1000;
+                }
+
+                // Advance playhead in lockstep with video's native hardware clock
+                const offsetMs = Math.max(0, curVideoMs - item.sourceStartMs);
+                const nextProj = Math.min(item.projectEndMs, item.projectStartMs + offsetMs);
+                currentProjectMsRef.current = nextProj;
+                setCurrentProjectMs(nextProj);
+              }
+
+              // Audio synchronization (denoisedAudioRef follows mainVideoRef, NEVER reverse)
+              if (denoisedAudioRef.current) {
+                const shouldUseDenoised = noiseRemovalEnabled && !!denoisedAudioUrl;
+                if (video.muted !== shouldUseDenoised) video.muted = shouldUseDenoised;
+                if (denoisedAudioRef.current.muted === shouldUseDenoised) denoisedAudioRef.current.muted = !shouldUseDenoised;
+
+                if (shouldUseDenoised) {
+                  const audioDrift = Math.abs(denoisedAudioRef.current.currentTime - video.currentTime);
+                  if (audioDrift > 0.15 && !denoisedAudioRef.current.seeking) {
+                    denoisedAudioRef.current.currentTime = video.currentTime;
+                  }
+                  if (denoisedAudioRef.current.playbackRate !== previewSpeed) {
+                    denoisedAudioRef.current.playbackRate = previewSpeed;
+                    denoisedAudioRef.current.preservesPitch = true;
+                  }
+                  if (denoisedAudioRef.current.paused && !video.paused) {
+                    denoisedAudioRef.current.play().catch(() => {});
+                  }
+                } else if (!denoisedAudioRef.current.paused) {
+                  denoisedAudioRef.current.pause();
+                }
+              }
+            }
+          }
+        } else {
+          // MEME_CLIP: memeVideoRef is the master video clock
+          if (!activeMemePlaying) {
+            setActiveMemePlaying(true);
+          }
+          if (mainVideoRef.current && !mainVideoRef.current.paused) {
+            mainVideoRef.current.pause();
+          }
+          if (denoisedAudioRef.current && !denoisedAudioRef.current.paused) {
+            denoisedAudioRef.current.pause();
           }
 
-          if (mainVideoRef.current) {
-            const targetSec = sourceMs / 1000;
-            const driftSec = Math.abs(mainVideoRef.current.currentTime - targetSec);
-
-            // Sync main video if drifting > 150ms or crossing cut boundaries
-            if (driftSec > 0.15 && lastSeekTargetRef.current !== sourceMs) {
-              lastSeekTargetRef.current = sourceMs;
-              mainVideoRef.current.currentTime = targetSec;
-            }
-
-            if (mainVideoRef.current.playbackRate !== previewSpeed) {
-              mainVideoRef.current.playbackRate = previewSpeed;
-              mainVideoRef.current.preservesPitch = true;
-            }
-
-            if (mainVideoRef.current.paused) {
-              mainVideoRef.current.play().catch(() => {});
-            }
-
-            // Sync denoised audio element in lockstep with main video only when noise removal is active
-            if (denoisedAudioRef.current) {
-              const shouldUseDenoised = noiseRemovalEnabled && !!denoisedAudioUrl;
-              if (mainVideoRef.current && mainVideoRef.current.muted !== shouldUseDenoised) {
-                mainVideoRef.current.muted = shouldUseDenoised;
+          const memeVideo = memeVideoRef.current;
+          if (memeVideo) {
+            if (loadedSecondaryUrlRef.current !== item.blobUrl) {
+              loadedSecondaryUrlRef.current = item.blobUrl;
+              setIsSecondaryReady(false);
+              memeVideo.src = item.blobUrl;
+              memeVideo.playbackRate = previewSpeed;
+              memeVideo.preservesPitch = true;
+              const startSec = (item.sourceStartMs || 0) / 1000;
+              if (!memeVideo.seeking) {
+                memeVideo.currentTime = startSec;
               }
-              if (denoisedAudioRef.current.muted === shouldUseDenoised) {
-                denoisedAudioRef.current.muted = !shouldUseDenoised;
+              memeVideo.play().catch(() => {});
+            } else {
+              if (!isSecondaryReady && memeVideo.readyState >= 2) {
+                setIsSecondaryReady(true);
               }
+              if (memeVideo.playbackRate !== previewSpeed) {
+                memeVideo.playbackRate = previewSpeed;
+                memeVideo.preservesPitch = true;
+              }
+              if (memeVideo.paused && !memeVideo.ended && !memeVideo.seeking && memeVideo.readyState >= 2) {
+                memeVideo.play().catch(() => {});
+              }
+            }
 
-              if (shouldUseDenoised) {
-                const dDriftSec = Math.abs(denoisedAudioRef.current.currentTime - targetSec);
-                if (dDriftSec > 0.03) {
-                  denoisedAudioRef.current.currentTime = targetSec;
+            if (!memeVideo.seeking) {
+              const curMemeMs = Math.round(memeVideo.currentTime * 1000);
+
+              if (curMemeMs >= item.sourceEndMs) {
+                const nextItem = activeItems[currentItemIndex + 1];
+
+                if (!nextItem) {
+                  setIsPlaying(false);
+                  isPlayingRef.current = false;
+                  lastTickTimeRef.current = null;
+                  setCurrentProjectMs(totalDuration);
+                  currentProjectMsRef.current = totalDuration;
+                  memeVideo.pause();
+                  if (bgMusicRef.current && !bgMusicRef.current.paused) bgMusicRef.current.pause();
+                  return;
                 }
-                if (denoisedAudioRef.current.playbackRate !== previewSpeed) {
-                  denoisedAudioRef.current.playbackRate = previewSpeed;
-                  denoisedAudioRef.current.preservesPitch = true;
+
+                if (nextItem.kind === 'MEME_CLIP' && loadedSecondaryUrlRef.current === nextItem.blobUrl) {
+                  // Contiguous split on same meme
+                  const isContiguous = Math.abs(nextItem.sourceStartMs - item.sourceEndMs) <= 80;
+                  if (isContiguous) {
+                    const nextProj = nextItem.projectStartMs + Math.max(0, curMemeMs - nextItem.sourceStartMs);
+                    currentProjectMsRef.current = nextProj;
+                    setCurrentProjectMs(nextProj);
+                  } else {
+                    if (lastSeekTargetRef.current !== nextItem.sourceStartMs) {
+                      lastSeekTargetRef.current = nextItem.sourceStartMs;
+                      memeVideo.currentTime = (nextItem.sourceStartMs || 0) / 1000;
+                    }
+                    currentProjectMsRef.current = nextItem.projectStartMs;
+                    setCurrentProjectMs(nextItem.projectStartMs);
+                  }
+                } else if (nextItem.kind === 'SOURCE_CLIP') {
+                  // Switch back to source clip
+                  memeVideo.pause();
+                  setActiveMemePlaying(false);
+                  currentProjectMsRef.current = nextItem.projectStartMs;
+                  setCurrentProjectMs(nextItem.projectStartMs);
+
+                  if (mainVideoRef.current) {
+                    if (!mainVideoRef.current.seeking && lastSeekTargetRef.current !== nextItem.sourceStartMs) {
+                      lastSeekTargetRef.current = nextItem.sourceStartMs;
+                      mainVideoRef.current.currentTime = nextItem.sourceStartMs / 1000;
+                    }
+                    mainVideoRef.current.play().catch(() => {});
+                  }
+                } else {
+                  // Switch to different meme
+                  currentProjectMsRef.current = nextItem.projectStartMs;
+                  setCurrentProjectMs(nextItem.projectStartMs);
                 }
-                if (denoisedAudioRef.current.paused && isPlaying && !mainVideoRef.current.paused) {
-                  denoisedAudioRef.current.play().catch(() => {});
-                }
-              } else if (!denoisedAudioRef.current.paused) {
-                denoisedAudioRef.current.pause();
+              } else {
+                // Still playing within meme
+                const offsetMs = Math.max(0, curMemeMs - item.sourceStartMs);
+                const nextProj = Math.min(item.projectEndMs, item.projectStartMs + offsetMs);
+                currentProjectMsRef.current = nextProj;
+                setCurrentProjectMs(nextProj);
               }
             }
           }
         }
 
-        // Frame-accurate playhead-driven transition update
-        updateTransitionFrame(nextProjectMs, project.items);
-
-        // Sync Background Music (Looping live preview)
+        // Loop Background Music
         if (bgMusic && !bgMusic.isMuted && bgMusic.volume > 0 && bgMusicRef.current) {
           const musicDurSec = Math.max(0.1, bgMusic.durationMs / 1000);
-          const targetMusicSec = (nextProjectMs / 1000) % musicDurSec;
-          const musicDrift = Math.abs(bgMusicRef.current.currentTime - targetMusicSec);
-          if (musicDrift > 0.15) {
+          const targetMusicSec = (currentProjectMsRef.current / 1000) % musicDurSec;
+          if (Math.abs(bgMusicRef.current.currentTime - targetMusicSec) > 0.15 && !bgMusicRef.current.seeking) {
             bgMusicRef.current.currentTime = targetMusicSec;
           }
           if (bgMusicRef.current.playbackRate !== previewSpeed) {
@@ -728,16 +843,18 @@ export const Screen2Workspace: React.FC = () => {
           bgMusicRef.current.pause();
         }
 
-        setCurrentProjectMs(nextProjectMs);
+        // Frame-accurate playhead-driven transition update
+        updateTransitionFrame(currentProjectMsRef.current, project.items);
       } else {
-        // Paused: halt both video players, denoised audio player, and bg music player
+        // Paused: halt all playback
         lastTickTimeRef.current = null;
+        lastSeekTargetRef.current = null;
         if (mainVideoRef.current && !mainVideoRef.current.paused) mainVideoRef.current.pause();
         if (memeVideoRef.current && !memeVideoRef.current.paused) memeVideoRef.current.pause();
         if (denoisedAudioRef.current && !denoisedAudioRef.current.paused) denoisedAudioRef.current.pause();
         if (bgMusicRef.current && !bgMusicRef.current.paused) bgMusicRef.current.pause();
         if (project) {
-          updateTransitionFrame(currentProjectMs, project.items);
+          updateTransitionFrame(currentProjectMsRef.current, project.items);
         }
       }
 
@@ -749,7 +866,7 @@ export const Screen2Workspace: React.FC = () => {
     return () => {
       if (rafIdRef.current) cancelAnimationFrame(rafIdRef.current);
     };
-  }, [isPlaying, currentProjectMs, project, previewSpeed, denoisedAudioUrl, bgMusic, setCurrentProjectMs, setIsPlaying, updateTransitionFrame]);
+  }, [isPlaying, project, previewSpeed, denoisedAudioUrl, noiseRemovalEnabled, bgMusic, updateTransitionFrame, setIsPlaying, setCurrentProjectMs, activeMemePlaying, isSecondaryReady]);
 
   // Synchronize transition frame immediately whenever playhead position changes (scrubbing, seeking, or playing)
   useEffect(() => {
@@ -781,10 +898,52 @@ export const Screen2Workspace: React.FC = () => {
     if (audioContextRef.current && audioContextRef.current.state === 'suspended') {
       audioContextRef.current.resume();
     }
-    if (!isPlaying && project && currentProjectMs >= project.totalProjectDurationMs) {
+    if (!isPlaying && project && currentProjectMsRef.current >= project.totalProjectDurationMs) {
       setCurrentProjectMs(0);
+      currentProjectMsRef.current = 0;
+      handleSeek(0);
     }
-    setIsPlaying(!isPlaying);
+    const willPlay = !isPlaying;
+    setIsPlaying(willPlay);
+    isPlayingRef.current = willPlay;
+
+    if (willPlay && project) {
+      lastSeekTargetRef.current = null;
+      lastTickTimeRef.current = null;
+      const { item, sourceMs } = mapProjectToSource(currentProjectMsRef.current, project.items);
+      if (item && item.kind === 'SOURCE_CLIP' && mainVideoRef.current) {
+        setActiveMemePlaying(false);
+        const targetSec = sourceMs / 1000;
+        if (Math.abs(mainVideoRef.current.currentTime - targetSec) > 0.15 && !mainVideoRef.current.seeking) {
+          mainVideoRef.current.currentTime = targetSec;
+        }
+        mainVideoRef.current.playbackRate = previewSpeed;
+        mainVideoRef.current.preservesPitch = true;
+        mainVideoRef.current.play().catch(() => {});
+        if (denoisedAudioRef.current && noiseRemovalEnabled && denoisedAudioUrl) {
+          denoisedAudioRef.current.currentTime = mainVideoRef.current.currentTime;
+          denoisedAudioRef.current.playbackRate = previewSpeed;
+          denoisedAudioRef.current.preservesPitch = true;
+          denoisedAudioRef.current.play().catch(() => {});
+        }
+      } else if (item && item.kind === 'MEME_CLIP' && memeVideoRef.current) {
+        setActiveMemePlaying(true);
+        if (loadedSecondaryUrlRef.current !== item.blobUrl) {
+          loadedSecondaryUrlRef.current = item.blobUrl;
+          setIsSecondaryReady(false);
+          memeVideoRef.current.src = item.blobUrl;
+        } else if (!isSecondaryReady && memeVideoRef.current.readyState >= 2) {
+          setIsSecondaryReady(true);
+        }
+        memeVideoRef.current.playbackRate = previewSpeed;
+        memeVideoRef.current.preservesPitch = true;
+        const targetSec = (sourceMs - item.sourceStartMs) / 1000;
+        if (Math.abs(memeVideoRef.current.currentTime - targetSec) > 0.15 && !memeVideoRef.current.seeking) {
+          memeVideoRef.current.currentTime = targetSec;
+        }
+        memeVideoRef.current.play().catch(() => {});
+      }
+    }
   };
 
   // Ensure AudioContext resumes whenever playback is triggered
@@ -800,15 +959,14 @@ export const Screen2Workspace: React.FC = () => {
   // Handle Manual Scrubbing
   const handleSeek = (newProjectMs: number) => {
     const clamped = Math.max(0, Math.min(newProjectMs, project?.totalProjectDurationMs || 0));
+    currentProjectMsRef.current = clamped;
     setCurrentProjectMs(clamped);
+    lastSeekTargetRef.current = null;
 
     if (project) {
       const { item, sourceMs } = mapProjectToSource(clamped, project.items);
       if (item && item.kind === 'SOURCE_CLIP') {
         setActiveMemePlaying(false);
-        setIsSecondaryReady(false);
-        activeMemeIdRef.current = null;
-        loadedSecondaryUrlRef.current = null;
         if (memeVideoRef.current && !memeVideoRef.current.paused) {
           memeVideoRef.current.pause();
         }
@@ -818,24 +976,35 @@ export const Screen2Workspace: React.FC = () => {
           mainVideoRef.current.muted = shouldUseDenoised;
           mainVideoRef.current.currentTime = sec;
           lastSeekTargetRef.current = sourceMs;
+          if (isPlayingRef.current && mainVideoRef.current.paused) {
+            mainVideoRef.current.play().catch(() => {});
+          }
         }
         if (denoisedAudioRef.current) {
           denoisedAudioRef.current.muted = !shouldUseDenoised;
           denoisedAudioRef.current.currentTime = sec;
+          if (shouldUseDenoised && isPlayingRef.current && denoisedAudioRef.current.paused) {
+            denoisedAudioRef.current.play().catch(() => {});
+          }
         }
       } else if (item && item.kind === 'MEME_CLIP') {
         setActiveMemePlaying(true);
         if (mainVideoRef.current && !mainVideoRef.current.paused) mainVideoRef.current.pause();
         if (denoisedAudioRef.current && !denoisedAudioRef.current.paused) denoisedAudioRef.current.pause();
         if (memeVideoRef.current) {
-          if (activeMemeIdRef.current !== item.id || loadedSecondaryUrlRef.current !== item.blobUrl) {
-            activeMemeIdRef.current = item.id;
+          if (loadedSecondaryUrlRef.current !== item.blobUrl) {
             loadedSecondaryUrlRef.current = item.blobUrl;
             setIsSecondaryReady(false);
             memeVideoRef.current.src = item.blobUrl;
+          } else if (memeVideoRef.current.readyState >= 2) {
+            setIsSecondaryReady(true);
           }
           const memeSec = Math.max(0, clamped - item.projectStartMs) / 1000;
           memeVideoRef.current.currentTime = memeSec;
+          lastSeekTargetRef.current = sourceMs;
+          if (isPlayingRef.current && memeVideoRef.current.paused) {
+            memeVideoRef.current.play().catch(() => {});
+          }
         }
       }
 
@@ -843,6 +1012,9 @@ export const Screen2Workspace: React.FC = () => {
       if (bgMusic && bgMusicRef.current) {
         const musicDurSec = Math.max(0.1, bgMusic.durationMs / 1000);
         bgMusicRef.current.currentTime = (clamped / 1000) % musicDurSec;
+        if (isPlayingRef.current && !bgMusic.isMuted && bgMusic.volume > 0 && bgMusicRef.current.paused) {
+          bgMusicRef.current.play().catch(() => {});
+        }
       }
 
       // Frame-accurate playhead-driven transition update
@@ -1612,10 +1784,10 @@ export const Screen2Workspace: React.FC = () => {
                 ref={mainVideoRef}
                 src={project.sourceVideoUrl}
                 playsInline
-                className={`w-full h-full object-contain absolute inset-0 ${
+                className={`w-full h-full object-contain absolute inset-0 transition-opacity duration-75 ${
                   activeMemePlaying
-                    ? 'hidden invisible opacity-0 pointer-events-none z-0'
-                    : 'z-10 opacity-100'
+                    ? 'opacity-0 pointer-events-none z-0'
+                    : 'opacity-100 z-10'
                 }`}
               />
 
@@ -1626,10 +1798,10 @@ export const Screen2Workspace: React.FC = () => {
                 onLoadedData={handleSecondaryReady}
                 onSeeked={handleSecondaryReady}
                 onCanPlay={handleSecondaryReady}
-                className={`w-full h-full object-contain absolute inset-0 ${
-                  activeMemePlaying
-                    ? `z-10 ${isSecondaryReady ? 'opacity-100' : 'opacity-0 pointer-events-none'}`
-                    : 'hidden invisible opacity-0 pointer-events-none z-0'
+                className={`w-full h-full object-contain absolute inset-0 transition-opacity duration-75 ${
+                  activeMemePlaying && isSecondaryReady
+                    ? 'opacity-100 z-10'
+                    : 'opacity-0 pointer-events-none z-0'
                 }`}
               />
 
