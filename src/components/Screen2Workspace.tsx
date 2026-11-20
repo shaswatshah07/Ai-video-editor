@@ -3,7 +3,7 @@ import {
   Play, Pause, RotateCcw, RotateCw, Scissors, Trash2,
   Sparkles, Send, Upload, ChevronRight, ChevronLeft, ChevronDown, ArrowRight,
   Bookmark, Check, X, Wand2, ShieldAlert, Download,
-  Loader2, AlertCircle, RefreshCw, Search, Plus, Film
+  Loader2, AlertCircle, RefreshCw, Search, Plus, Film, GripVertical
 } from 'lucide-react';
 import { useEditorStore } from '../store/useEditorStore';
 import { mapProjectToSource, mapSourceToProjectMs } from '../utils/timelineMath';
@@ -72,6 +72,8 @@ export const Screen2Workspace: React.FC = () => {
     insertMemeAtProjectMs,
     replaceMemeClip,
     removeMemeClip,
+    reorderTimelineItem,
+    appendClipToEnd,
     applyAICommand,
     addCommandLog
   } = useEditorStore();
@@ -119,6 +121,13 @@ export const Screen2Workspace: React.FC = () => {
   const [replacingMemeId, setReplacingMemeId] = useState<string | null>(null);
   const [memeUploadError, setMemeUploadError] = useState<string | null>(null);
   const [isMemeSectionOpen, setIsMemeSectionOpen] = useState<boolean>(true);
+
+  // Drag and drop timeline clip reordering (Step 2)
+  const [draggedItemId, setDraggedItemId] = useState<string | null>(null);
+  const [dropTarget, setDropTarget] = useState<{ id: string; position: 'before' | 'after' } | null>(null);
+
+  // Dedicated + Add Clip input ref (Step 3.1)
+  const addClipInputRef = useRef<HTMLInputElement | null>(null);
 
   // Timeline scrubbing & hover state (Item 2)
   const [isScrubbing, setIsScrubbing] = useState<boolean>(false);
@@ -693,15 +702,15 @@ export const Screen2Workspace: React.FC = () => {
     }
   };
 
-  // Upload Custom Meme with 50 MB and 30s validation (Step 2)
+  // Upload Custom Meme with 100 MB and 180s (3 min) validation (Step 1.2)
   const handleCustomMemeUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
     setMemeUploadError(null);
 
-    // Validate size (max 50 MB)
-    if (file.size > 50 * 1024 * 1024) {
-      setMemeUploadError('File exceeds 50 MB limit. Please select a smaller clip.');
+    // Validate size (max 100 MB)
+    if (file.size > 100 * 1024 * 1024) {
+      setMemeUploadError('File exceeds 100 MB limit. Please select a clip up to 100 MB.');
       e.target.value = '';
       return;
     }
@@ -717,16 +726,16 @@ export const Screen2Workspace: React.FC = () => {
 
     try {
       const meme = await addUploadedMeme(file);
-      // Validate duration (max 30s)
-      if (meme.durationMs > 30500) {
+      // Validate duration (max 180s / 3 mins)
+      if (meme.durationMs > 180500) {
         removeUploadedMeme(meme.id);
-        setMemeUploadError(`Clip duration (${(meme.durationMs / 1000).toFixed(1)}s) exceeds 30-second limit for memes.`);
+        setMemeUploadError(`Clip duration (${(meme.durationMs / 1000).toFixed(1)}s) exceeds 3-minute limit.`);
         return;
       }
 
       addCommandLog({
         id: `cmd_${Date.now()}`,
-        rawInput: `Upload custom meme ${meme.name}`,
+        rawInput: `Upload custom clip ${meme.name}`,
         timestamp: Date.now(),
         parsedCommand: {
           action: 'INSERT_USER_CLIP',
@@ -738,6 +747,46 @@ export const Screen2Workspace: React.FC = () => {
       });
     } catch {
       setMemeUploadError('Failed to read video metadata. Ensure it is a valid video file.');
+    } finally {
+      e.target.value = '';
+    }
+  };
+
+  // Dedicated + Add Clip handler for toolbar file input (Step 3.1)
+  const handleAddClipFileInput = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (file.size > 100 * 1024 * 1024) {
+      alert('File exceeds 100 MB limit. Please select a clip up to 100 MB.');
+      e.target.value = '';
+      return;
+    }
+
+    const validExts = ['.mp4', '.webm', '.mov'];
+    const hasValidExt = validExts.some(ext => file.name.toLowerCase().endsWith(ext));
+    if (!hasValidExt && !file.type.startsWith('video/')) {
+      alert('Please select a valid .mp4, .webm, or .mov video file.');
+      e.target.value = '';
+      return;
+    }
+
+    try {
+      const uploaded = await addUploadedMeme(file);
+      if (uploaded.durationMs > 180500) {
+        removeUploadedMeme(uploaded.id);
+        alert(`Clip duration (${(uploaded.durationMs / 1000).toFixed(1)}s) exceeds 3-minute limit.`);
+        return;
+      }
+      await appendClipToEnd({
+        id: uploaded.id,
+        name: uploaded.name,
+        url: uploaded.blobUrl,
+        durationMs: uploaded.durationMs,
+        isCustom: true
+      });
+    } catch {
+      alert('Failed to read video metadata for the uploaded clip.');
     } finally {
       e.target.value = '';
     }
@@ -1622,6 +1671,15 @@ export const Screen2Workspace: React.FC = () => {
                       {/* Tab 2: Custom User Clips */}
                       {memeTab === 'custom' && (
                         <div className="space-y-2">
+                          {/* 1-Line Helper Step Strip (Step 3.2) */}
+                          <div className="px-2 py-1.5 rounded-lg bg-[#1F1E1C] border border-[#2C2B28] text-[10px] text-[#A19E97] flex items-center justify-between font-mono">
+                            <span>1. Upload MP4</span>
+                            <span className="text-[#6E6B64]">→</span>
+                            <span>2. Move red playhead</span>
+                            <span className="text-[#6E6B64]">→</span>
+                            <span className="text-[#5EEAD4]">3. Click Insert</span>
+                          </div>
+
                           {/* Upload Box */}
                           <label className="border border-dashed border-[#2C2B28] hover:border-[#45423C] bg-[#1F1E1C] hover:bg-[#292825] rounded-lg p-3 flex flex-col items-center justify-center text-center cursor-pointer transition-colors group">
                             <Upload className="w-4 h-4 text-[#E8872A] group-hover:scale-110 transition-transform mb-1" />
@@ -1629,7 +1687,7 @@ export const Screen2Workspace: React.FC = () => {
                               Upload custom .mp4 / .webm clip
                             </span>
                             <span className="text-[9px] text-[#6E6B64] mt-0.5">
-                              Max 50 MB • Up to 30 seconds
+                              Max 100 MB • Up to 3 minutes
                             </span>
                             <input
                               type="file"
@@ -1691,7 +1749,7 @@ export const Screen2Workspace: React.FC = () => {
                                   </div>
 
                                   <div className="flex items-center space-x-1 flex-shrink-0">
-                                    {/* Action Button */}
+                                    {/* Action Buttons (Step 3.2: Insert at Playhead + Add to End) */}
                                     {replacingMemeId ? (
                                       <button
                                         onClick={async () => {
@@ -1721,34 +1779,51 @@ export const Screen2Workspace: React.FC = () => {
                                         Replace
                                       </button>
                                     ) : (
-                                      <button
-                                        onClick={async () => {
-                                          await insertMemeAtProjectMs({
-                                            id: clip.id,
-                                            name: clip.name,
-                                            url: clip.blobUrl,
-                                            durationMs: clip.durationMs,
-                                            isCustom: true
-                                          }, currentProjectMs);
-                                          addCommandLog({
-                                            id: `cmd_${Date.now()}`,
-                                            rawInput: `Insert custom clip ${clip.name}`,
-                                            timestamp: Date.now(),
-                                            parsedCommand: {
-                                              action: 'INSERT_USER_CLIP',
-                                              payload: { clipId: clip.id, atProjectMs: currentProjectMs },
-                                              explanation: `Inserted ${clip.name}`
-                                            },
-                                            status: 'SUCCESS',
-                                            appliedMessage: `Inserted custom clip "${clip.name}" at ${(currentProjectMs / 1000).toFixed(1)}s.`
-                                          });
-                                        }}
-                                        className="px-2 py-1 bg-[#E8872A] hover:bg-[#F59A3D] text-[#11100E] font-semibold rounded text-[10px] flex items-center space-x-0.5 transition-colors"
-                                        title={`Insert at ${(currentProjectMs / 1000).toFixed(1)}s`}
-                                      >
-                                        <Plus className="w-2.5 h-2.5" />
-                                        <span>Insert</span>
-                                      </button>
+                                      <>
+                                        <button
+                                          onClick={async () => {
+                                            await insertMemeAtProjectMs({
+                                              id: clip.id,
+                                              name: clip.name,
+                                              url: clip.blobUrl,
+                                              durationMs: clip.durationMs,
+                                              isCustom: true
+                                            }, currentProjectMs);
+                                            addCommandLog({
+                                              id: `cmd_${Date.now()}`,
+                                              rawInput: `Insert custom clip ${clip.name}`,
+                                              timestamp: Date.now(),
+                                              parsedCommand: {
+                                                action: 'INSERT_USER_CLIP',
+                                                payload: { clipId: clip.id, atProjectMs: currentProjectMs },
+                                                explanation: `Inserted ${clip.name}`
+                                              },
+                                              status: 'SUCCESS',
+                                              appliedMessage: `Inserted "${clip.name}" at ${(currentProjectMs / 1000).toFixed(1)}s.`
+                                            });
+                                          }}
+                                          className="px-1.5 py-1 bg-[#E8872A] hover:bg-[#F59A3D] text-[#11100E] font-semibold rounded text-[10px] flex items-center space-x-0.5 transition-colors"
+                                          title={`Insert at ${(currentProjectMs / 1000).toFixed(1)}s (splits clip at playhead)`}
+                                        >
+                                          <Plus className="w-2.5 h-2.5" />
+                                          <span>At Playhead</span>
+                                        </button>
+                                        <button
+                                          onClick={async () => {
+                                            await appendClipToEnd({
+                                              id: clip.id,
+                                              name: clip.name,
+                                              url: clip.blobUrl,
+                                              durationMs: clip.durationMs,
+                                              isCustom: true
+                                            });
+                                          }}
+                                          className="px-1.5 py-1 bg-[#23221F] hover:bg-[#2E2C28] text-[#E6E3DC] hover:text-[#F4F2EE] border border-[#35332F] rounded text-[10px] font-medium transition-colors"
+                                          title="Append to end of timeline"
+                                        >
+                                          <span>+ End</span>
+                                        </button>
+                                      </>
                                     )}
 
                                     {/* Delete clip button */}
@@ -1914,6 +1989,21 @@ export const Screen2Workspace: React.FC = () => {
                 </span>
               </button>
               <button
+                onClick={() => addClipInputRef.current?.click()}
+                className="px-2 py-0.5 bg-[#23221F] hover:bg-[#2E2C28] text-[#E6E3DC] hover:text-[#F4F2EE] border border-[#35332F] rounded text-[11px] font-medium transition-colors flex items-center space-x-1"
+                title="Add an extra video clip to the end of the timeline (up to 3 min / 100 MB)"
+              >
+                <Plus className="w-3 h-3 text-[#E8872A]" />
+                <span>+ Add Clip</span>
+              </button>
+              <input
+                ref={addClipInputRef}
+                type="file"
+                accept="video/mp4,video/webm,video/quicktime"
+                onChange={handleAddClipFileInput}
+                className="hidden"
+              />
+              <button
                 onClick={() => {
                   setIsRightOpen(true);
                   setIsMemeSectionOpen(true);
@@ -2048,6 +2138,7 @@ export const Screen2Workspace: React.FC = () => {
 
                 const isSilence = item.status === 'SUGGESTED_SILENCE_CUT';
                 const isMeme = item.kind === 'MEME_CLIP';
+                const isDraggable = item.status === 'ACTIVE';
                 const hasThumbnails = Object.keys(thumbnails).length > 0;
                 const isNarrow = item.durationMs < 2000;
                 const isHighZoom = timelineZoom >= 3;
@@ -2057,13 +2148,48 @@ export const Screen2Workspace: React.FC = () => {
                 return (
                   <div
                     key={item.id}
+                    draggable={isDraggable}
+                    onDragStart={(e) => {
+                      if (!isDraggable) return;
+                      setDraggedItemId(item.id);
+                      e.dataTransfer.effectAllowed = 'move';
+                      e.dataTransfer.setData('text/plain', item.id);
+                    }}
+                    onDragOver={(e) => {
+                      if (!draggedItemId || draggedItemId === item.id || !isDraggable) return;
+                      e.preventDefault();
+                      e.dataTransfer.dropEffect = 'move';
+                      const rect = e.currentTarget.getBoundingClientRect();
+                      const mouseX = e.clientX - rect.left;
+                      const position: 'before' | 'after' = mouseX < rect.width / 2 ? 'before' : 'after';
+                      if (!dropTarget || dropTarget.id !== item.id || dropTarget.position !== position) {
+                        setDropTarget({ id: item.id, position });
+                      }
+                    }}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      if (!draggedItemId || draggedItemId === item.id || !dropTarget || dropTarget.id !== item.id) {
+                        setDraggedItemId(null);
+                        setDropTarget(null);
+                        return;
+                      }
+                      reorderTimelineItem(draggedItemId, item.id, dropTarget.position);
+                      setDraggedItemId(null);
+                      setDropTarget(null);
+                    }}
+                    onDragEnd={() => {
+                      setDraggedItemId(null);
+                      setDropTarget(null);
+                    }}
                     onClick={(e) => {
                       e.stopPropagation();
                       setSelectedItemId(item.id);
                     }}
-                    style={{ width: `${durPct}%`, minWidth: '34px' }}
-                    title={`${item.title} (${(item.durationMs / 1000).toFixed(1)}s)`}
-                    className={`h-11 rounded-lg px-2 py-1 flex flex-col justify-between transition-all relative overflow-hidden select-none cursor-pointer ${
+                    style={{ width: `${durPct}%`, minWidth: '38px' }}
+                    title={`${item.title} (${(item.durationMs / 1000).toFixed(1)}s)${isDraggable ? ' • Drag to reorder' : ''}`}
+                    className={`h-11 rounded-lg px-2 py-1 flex flex-col justify-between transition-all relative select-none cursor-pointer ${
+                      draggedItemId === item.id ? 'opacity-50' : 'opacity-100'
+                    } ${
                       isSelected
                         ? 'ring-2 ring-[#E8872A] border-transparent shadow-md'
                         : 'border border-[#2C2B28]'
@@ -2077,9 +2203,17 @@ export const Screen2Workspace: React.FC = () => {
                         : 'bg-[#22211E] text-[#F4F2EE] border border-[#3A3833] hover:border-[#45423C]'
                     }`}
                   >
+                    {/* Amber Drop Indicator Lines (Step 2.4) */}
+                    {dropTarget?.id === item.id && dropTarget.position === 'before' && (
+                      <div className="absolute left-0 top-0 bottom-0 w-[3px] bg-[#E8872A] z-40 shadow-[0_0_8px_rgba(232,135,42,0.9)] pointer-events-none rounded-l" />
+                    )}
+                    {dropTarget?.id === item.id && dropTarget.position === 'after' && (
+                      <div className="absolute right-0 top-0 bottom-0 w-[3px] bg-[#E8872A] z-40 shadow-[0_0_8px_rgba(232,135,42,0.9)] pointer-events-none rounded-r" />
+                    )}
+
                     {/* Filmstrip Frame Thumbnails (Item 1) */}
                     {hasThumbnails && item.kind === 'SOURCE_CLIP' && !isSilence && (
-                      <div className="absolute inset-0 flex flex-row overflow-hidden pointer-events-none opacity-85">
+                      <div className="absolute inset-0 flex flex-row overflow-hidden pointer-events-none opacity-85 rounded-lg">
                         {Array.from({ length: tileCount }).map((_, tileIdx) => {
                           const tileSourceMs = item.sourceStartMs + (tileIdx * item.durationMs) / tileCount;
                           const nearestMs = Math.round(tileSourceMs / 500) * 500;
@@ -2101,15 +2235,31 @@ export const Screen2Workspace: React.FC = () => {
                     )}
 
                     <div className="relative z-10 flex items-center justify-between">
-                      <span className="text-[11px] font-semibold truncate drop-shadow-md">
-                        {isMeme
-                          ? `🎬 ${item.title}`
-                          : isNarrow && !isSilence
-                          ? ''
-                          : item.title}
-                      </span>
+                      <div className="flex items-center min-w-0 mr-1 overflow-hidden">
+                        {isDraggable && (
+                          <span
+                            className="cursor-grab active:cursor-grabbing text-[#8A8780] hover:text-[#F4F2EE] mr-1 flex-shrink-0"
+                            title="Grab and drag to move clip before or after other clips"
+                          >
+                            <GripVertical className="w-3 h-3" />
+                          </span>
+                        )}
+                        <span className="text-[11px] font-semibold truncate drop-shadow-md">
+                          {isMeme
+                            ? `🎬 ${item.title}`
+                            : isNarrow && !isSilence
+                            ? ''
+                            : item.title}
+                        </span>
+                      </div>
+
                       {isSilence && (
-                        <div className="flex items-center space-x-1" onClick={(e) => e.stopPropagation()}>
+                        <div
+                          className="flex items-center space-x-1"
+                          draggable={false}
+                          onDragStart={(e) => e.stopPropagation()}
+                          onClick={(e) => e.stopPropagation()}
+                        >
                           <button
                             onClick={() => acceptSilenceCut(item.id)}
                             className="p-1 bg-[#DC2626]/80 hover:bg-[#DC2626] rounded text-white"
@@ -2127,7 +2277,12 @@ export const Screen2Workspace: React.FC = () => {
                         </div>
                       )}
                       {isMeme && (
-                        <div className="flex items-center space-x-1" onClick={(e) => e.stopPropagation()}>
+                        <div
+                          className="flex items-center space-x-1"
+                          draggable={false}
+                          onDragStart={(e) => e.stopPropagation()}
+                          onClick={(e) => e.stopPropagation()}
+                        >
                           <button
                             onClick={() => {
                               setReplacingMemeId(replacingMemeId === item.id ? null : item.id);
@@ -2163,8 +2318,10 @@ export const Screen2Workspace: React.FC = () => {
                       )}
                     </div>
 
-                    {/* Transition Picker Diamond */}
+                    {/* Transition Picker Diamond / Badge (Step 3.3) */}
                     <div
+                      draggable={false}
+                      onDragStart={(e) => e.stopPropagation()}
                       onClick={(e) => {
                         e.stopPropagation();
                         const types: TransitionType[] = ['none', 'fade', 'dissolve', 'wipeleft', 'slideup'];
@@ -2172,10 +2329,19 @@ export const Screen2Workspace: React.FC = () => {
                         const nextType = types[(curIdx + 1) % types.length];
                         setTransition(item.id, nextType);
                       }}
-                      className="absolute right-0 top-1/2 -translate-y-1/2 translate-x-1/2 w-4 h-4 rounded-full bg-[#1F1E1C] border border-[#35332F] hover:border-[#E8872A] flex items-center justify-center text-[8px] text-[#A19E97] z-20 shadow cursor-pointer"
-                      title={`Click to cycle transition (Current: ${item.transitionOut?.type || 'none'})`}
+                      className={`absolute right-0 top-1/2 -translate-y-1/2 translate-x-1/2 w-4 h-4 rounded-full flex items-center justify-center text-[8px] z-20 shadow cursor-pointer transition-all ${
+                        item.transitionOut && item.transitionOut.type !== 'none'
+                          ? 'bg-[#29180B] border border-[#E8872A] text-[#E8872A] hover:bg-[#3D2310] scale-110'
+                          : 'bg-[#1F1E1C] border border-[#35332F] hover:border-[#E8872A] text-[#A19E97] hover:text-[#E8872A]'
+                      }`}
+                      title={`Click to toggle clip transition (Fade / None) - Current: ${item.transitionOut?.type || 'none'}`}
                     >
-                      ◇
+                      {item.transitionOut && item.transitionOut.type !== 'none' && (
+                        <span className="absolute -top-4 left-1/2 -translate-x-1/2 px-1 py-0.2 rounded bg-[#E8872A] text-[#11100E] font-bold text-[8px] uppercase tracking-wider shadow whitespace-nowrap pointer-events-none">
+                          {item.transitionOut.type}
+                        </span>
+                      )}
+                      <span>⧖</span>
                     </div>
                   </div>
                 );

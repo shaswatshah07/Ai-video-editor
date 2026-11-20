@@ -101,6 +101,8 @@ interface EditorState {
   removeOrDetectSilences: (param?: SilenceSensitivity | number) => Promise<{ changed: boolean; message: string; count?: number; totalSilenceMs?: number; newDurationMs?: number }>;
   setTransition: (itemId: string, type: TransitionType, durationMs?: number) => void;
   trimProjectRange: (startMs: number, endMs: number) => void;
+  reorderTimelineItem: (sourceItemId: string, targetItemId: string, position: 'before' | 'after') => void;
+  appendClipToEnd: (clip: { id: string; name: string; url: string; durationMs: number; isCustom?: boolean }) => Promise<void>;
   insertMemeAtProjectMs: (clip: { id: string; name: string; url: string; durationMs: number; isCustom?: boolean }, targetProjMs: number) => Promise<void>;
   replaceMemeClip: (itemId: string, newClip: { id: string; name: string; url: string; durationMs: number; isCustom?: boolean }) => Promise<void>;
   removeMemeClip: (itemId: string) => void;
@@ -729,6 +731,107 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         totalProjectDurationMs: totalProjMs,
         updatedAt: Date.now()
       }
+    });
+  },
+
+  reorderTimelineItem: (sourceItemId: string, targetItemId: string, position: 'before' | 'after') => {
+    const { project } = get();
+    if (!project || sourceItemId === targetItemId) return;
+
+    const sourceIndex = project.items.findIndex((it) => it.id === sourceItemId);
+    const targetIndex = project.items.findIndex((it) => it.id === targetItemId);
+    if (sourceIndex === -1 || targetIndex === -1) return;
+
+    const sourceItem = project.items[sourceIndex];
+    const targetItem = project.items[targetIndex];
+
+    get().pushHistory();
+
+    const newItems = [...project.items];
+    newItems.splice(sourceIndex, 1);
+
+    const newTargetIndex = newItems.findIndex((it) => it.id === targetItemId);
+    if (newTargetIndex === -1) return;
+
+    const insertAt = position === 'before' ? newTargetIndex : newTargetIndex + 1;
+    newItems.splice(insertAt, 0, sourceItem);
+
+    const recalculated = recalculateTimeline(newItems);
+    const totalProjMs = getTotalProjectDuration(recalculated);
+
+    set({
+      project: {
+        ...project,
+        items: recalculated,
+        totalProjectDurationMs: totalProjMs,
+        updatedAt: Date.now()
+      }
+    });
+
+    const msg = `Moved clip "${sourceItem.title || 'Clip'}" ${position} "${targetItem.title || 'Clip'}".`;
+    get().addCommandLog({
+      id: `cmd_${Date.now()}`,
+      rawInput: `Reorder clip (${position})`,
+      timestamp: Date.now(),
+      parsedCommand: {
+        action: 'TRIM_SECTION',
+        payload: { startMs: sourceItem.projectStartMs, endMs: sourceItem.projectEndMs },
+        explanation: msg
+      },
+      status: 'SUCCESS',
+      appliedMessage: msg
+    });
+  },
+
+  appendClipToEnd: async (clip: { id: string; name: string; url: string; durationMs: number; isCustom?: boolean }) => {
+    const { project } = get();
+    if (!project) return;
+    get().pushHistory();
+
+    const currentTotalMs = getTotalProjectDuration(project.items);
+    const newItem: TimelineItem = {
+      id: `clip_${clip.id}_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+      kind: 'MEME_CLIP',
+      title: clip.name,
+      blobUrl: clip.url,
+      sourceStartMs: 0,
+      sourceEndMs: clip.durationMs,
+      durationMs: clip.durationMs,
+      projectStartMs: currentTotalMs,
+      projectEndMs: currentTotalMs + clip.durationMs,
+      status: 'ACTIVE',
+      transitionOut: { type: 'none', durationMs: 0 },
+      meta: {
+        memeCategory: clip.id,
+        isCustomUpload: !!clip.isCustom
+      }
+    };
+
+    const newItems = [...project.items, newItem];
+    const recalculated = recalculateTimeline(newItems);
+    const newTotalMs = getTotalProjectDuration(recalculated);
+
+    set({
+      project: {
+        ...project,
+        items: recalculated,
+        totalProjectDurationMs: newTotalMs,
+        updatedAt: Date.now()
+      }
+    });
+
+    const msg = `Appended "${clip.name}" (${(clip.durationMs / 1000).toFixed(1)}s) to end of timeline.`;
+    get().addCommandLog({
+      id: `cmd_${Date.now()}`,
+      rawInput: `Add clip "${clip.name}" to end`,
+      timestamp: Date.now(),
+      parsedCommand: {
+        action: 'INSERT_USER_CLIP',
+        payload: { clipId: clip.id, atProjectMs: currentTotalMs },
+        explanation: msg
+      },
+      status: 'SUCCESS',
+      appliedMessage: msg
     });
   },
 
