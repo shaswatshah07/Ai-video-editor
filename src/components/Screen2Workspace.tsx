@@ -8,11 +8,50 @@ import {
 import { useEditorStore } from '../store/useEditorStore';
 import { mapProjectToSource, mapSourceToProjectMs } from '../utils/timelineMath';
 import { parseCommandWithFallback } from '../utils/commandParser';
-import { TransitionType } from '../types/edl';
+import { TransitionType, TimelineItem } from '../types/edl';
 import { SilenceSensitivity, SILENCE_PRESETS } from '../utils/silenceDetector';
 import { downloadTranscriptAsTxt } from '../utils/transcriptParser';
 import { generateDenoisedAudio } from '../utils/audioDenoiser';
 import { MEME_LIBRARY } from '../utils/memeLibrary';
+
+interface ActiveTransitionMatch {
+  boundaryMs: number;
+  type: TransitionType;
+  delta: number;
+}
+
+function findActiveTransition(
+  projectMs: number,
+  items: TimelineItem[]
+): ActiveTransitionMatch | null {
+  const activeItems = items.filter(
+    (it) => it.status === 'ACTIVE' || it.status === 'SUGGESTED_MEME'
+  );
+  if (activeItems.length < 2) return null;
+
+  const HALF_WINDOW_MS = 300;
+
+  for (let i = 0; i < activeItems.length - 1; i++) {
+    const prevItem = activeItems[i];
+
+    if (!prevItem.transitionOut || prevItem.transitionOut.type === 'none') {
+      continue;
+    }
+
+    const boundaryMs = prevItem.projectEndMs;
+    const delta = projectMs - boundaryMs;
+
+    if (delta >= -HALF_WINDOW_MS && delta <= HALF_WINDOW_MS) {
+      return {
+        boundaryMs,
+        type: prevItem.transitionOut.type,
+        delta
+      };
+    }
+  }
+
+  return null;
+}
 
 export const Screen2Workspace: React.FC = () => {
   const {
@@ -79,9 +118,10 @@ export const Screen2Workspace: React.FC = () => {
     addCommandLog
   } = useEditorStore();
 
-  // Dual Video Elements (Spec 3)
+  // Dual Video Elements (Spec 3) & Frame-Accurate Transition Stage
   const mainVideoRef = useRef<HTMLVideoElement | null>(null);
   const memeVideoRef = useRef<HTMLVideoElement | null>(null);
+  const transitionStageRef = useRef<HTMLDivElement | null>(null);
 
   // RAF synchronization & Seek Loop Guard
   const rafIdRef = useRef<number | null>(null);
@@ -108,7 +148,6 @@ export const Screen2Workspace: React.FC = () => {
   const veMakeupGainRef = useRef<GainNode | null>(null);
 
   // UI state
-  const [activeTransitionClass, setActiveTransitionClass] = useState<string>('');
   const [promptInput, setPromptInput] = useState<string>('');
   const [isAiProcessing, setIsAiProcessing] = useState<boolean>(false);
   const [leftTab, setLeftTab] = useState<'transcript' | 'chapters'>('transcript');
@@ -124,6 +163,75 @@ export const Screen2Workspace: React.FC = () => {
       const target = loadedSecondaryUrlRef.current;
       if (!currentSrc || currentSrc === target || currentSrc.endsWith(target) || currentSrc.includes(target) || target.includes(currentSrc)) {
         setIsSecondaryReady(true);
+      }
+    }
+  }, []);
+
+  // Frame-accurate playhead-driven transition updater (zero React re-render, zero CSS lag)
+  const updateTransitionFrame = useCallback((projectMs: number, items: TimelineItem[]) => {
+    if (!transitionStageRef.current) return;
+    const el = transitionStageRef.current;
+    const match = findActiveTransition(projectMs, items);
+
+    if (!match) {
+      if (el.style.opacity !== '1') el.style.opacity = '1';
+      if (el.style.clipPath !== 'none') el.style.clipPath = 'none';
+      if (el.style.transform !== 'none') el.style.transform = 'none';
+      if (el.style.filter !== 'none') el.style.filter = 'none';
+      return;
+    }
+
+    const { delta, type } = match;
+
+    if (type === 'fade') {
+      const opacity = delta < 0
+        ? Math.max(0, Math.min(1, Math.abs(delta) / 300))
+        : Math.max(0, Math.min(1, delta / 300));
+      el.style.opacity = String(opacity);
+      el.style.clipPath = 'none';
+      el.style.transform = 'none';
+      el.style.filter = 'none';
+    } else if (type === 'dissolve') {
+      const frac = delta < 0
+        ? Math.max(0, Math.min(1, Math.abs(delta) / 300))
+        : Math.max(0, Math.min(1, delta / 300));
+      el.style.opacity = String(frac);
+      el.style.filter = `blur(${(1 - frac) * 6}px)`;
+      el.style.clipPath = 'none';
+      el.style.transform = 'none';
+    } else if (type === 'wipeleft') {
+      el.style.opacity = '1';
+      el.style.transform = 'none';
+      el.style.filter = 'none';
+      if (delta < 0) {
+        const frac = Math.max(0, Math.min(1, (delta + 300) / 300));
+        el.style.clipPath = `inset(0 ${(1 - frac) * 100}% 0 0)`;
+      } else {
+        const frac = Math.max(0, Math.min(1, delta / 300));
+        el.style.clipPath = `inset(0 0 0 ${(1 - frac) * 100}%)`;
+      }
+    } else if (type === 'wiperight') {
+      el.style.opacity = '1';
+      el.style.transform = 'none';
+      el.style.filter = 'none';
+      if (delta < 0) {
+        const frac = Math.max(0, Math.min(1, (delta + 300) / 300));
+        el.style.clipPath = `inset(0 0 0 ${(1 - frac) * 100}%)`;
+      } else {
+        const frac = Math.max(0, Math.min(1, delta / 300));
+        el.style.clipPath = `inset(0 ${(1 - frac) * 100}% 0 0)`;
+      }
+    } else if (type === 'slideup') {
+      el.style.clipPath = 'none';
+      el.style.filter = 'none';
+      if (delta < 0) {
+        const frac = Math.max(0, Math.min(1, (delta + 300) / 300));
+        el.style.transform = `translateY(${(1 - frac) * -100}%)`;
+        el.style.opacity = String(frac);
+      } else {
+        const frac = Math.max(0, Math.min(1, delta / 300));
+        el.style.transform = `translateY(${(1 - frac) * 100}%)`;
+        el.style.opacity = String(frac);
       }
     }
   }, []);
@@ -368,7 +476,12 @@ export const Screen2Workspace: React.FC = () => {
     loadedSecondaryUrlRef.current = null;
     setIsSecondaryReady(false);
     setActiveMemePlaying(false);
-    setActiveTransitionClass('');
+    if (transitionStageRef.current) {
+      transitionStageRef.current.style.opacity = '1';
+      transitionStageRef.current.style.clipPath = 'none';
+      transitionStageRef.current.style.transform = 'none';
+      transitionStageRef.current.style.filter = 'none';
+    }
     if (memeVideoRef.current) {
       memeVideoRef.current.pause();
       memeVideoRef.current.removeAttribute('src');
@@ -546,20 +659,8 @@ export const Screen2Workspace: React.FC = () => {
           }
         }
 
-        // Check for transition trigger near cut boundary
-        if (item.transitionOut && item.transitionOut.type !== 'none') {
-          const distToEnd = item.projectEndMs - nextProjectMs;
-          if (distToEnd > 0 && distToEnd <= item.transitionOut.durationMs) {
-            const cls = `transition-${item.transitionOut.type}`;
-            if (activeTransitionClass !== cls) {
-              setActiveTransitionClass(cls);
-            }
-          } else if (activeTransitionClass) {
-            setActiveTransitionClass('');
-          }
-        } else if (activeTransitionClass) {
-          setActiveTransitionClass('');
-        }
+        // Frame-accurate playhead-driven transition update
+        updateTransitionFrame(nextProjectMs, project.items);
 
         setCurrentProjectMs(nextProjectMs);
       } else {
@@ -568,6 +669,9 @@ export const Screen2Workspace: React.FC = () => {
         if (mainVideoRef.current && !mainVideoRef.current.paused) mainVideoRef.current.pause();
         if (memeVideoRef.current && !memeVideoRef.current.paused) memeVideoRef.current.pause();
         if (denoisedAudioRef.current && !denoisedAudioRef.current.paused) denoisedAudioRef.current.pause();
+        if (project) {
+          updateTransitionFrame(currentProjectMs, project.items);
+        }
       }
 
       rafIdRef.current = requestAnimationFrame(loop);
@@ -578,7 +682,14 @@ export const Screen2Workspace: React.FC = () => {
     return () => {
       if (rafIdRef.current) cancelAnimationFrame(rafIdRef.current);
     };
-  }, [isPlaying, currentProjectMs, project, activeTransitionClass, previewSpeed, denoisedAudioUrl, setCurrentProjectMs, setIsPlaying]);
+  }, [isPlaying, currentProjectMs, project, previewSpeed, denoisedAudioUrl, setCurrentProjectMs, setIsPlaying, updateTransitionFrame]);
+
+  // Synchronize transition frame immediately whenever playhead position changes (scrubbing, seeking, or playing)
+  useEffect(() => {
+    if (project) {
+      updateTransitionFrame(currentProjectMs, project.items);
+    }
+  }, [currentProjectMs, project, updateTransitionFrame]);
 
   // Auto-scroll playhead into view when playing and timeline is zoomed
   useEffect(() => {
@@ -658,17 +769,8 @@ export const Screen2Workspace: React.FC = () => {
         }
       }
 
-      // Check transition state on seek
-      if (item && item.transitionOut && item.transitionOut.type !== 'none') {
-        const distToEnd = item.projectEndMs - clamped;
-        if (distToEnd > 0 && distToEnd <= item.transitionOut.durationMs) {
-          setActiveTransitionClass(`transition-${item.transitionOut.type}`);
-        } else {
-          setActiveTransitionClass('');
-        }
-      } else {
-        setActiveTransitionClass('');
-      }
+      // Frame-accurate playhead-driven transition update
+      updateTransitionFrame(clamped, project.items);
     }
   };
 
@@ -1383,45 +1485,52 @@ export const Screen2Workspace: React.FC = () => {
 
           {/* Dual-Video Canvas Frame */}
           <div className="relative w-full max-w-3xl aspect-video bg-black rounded-xl overflow-hidden border border-[#2C2B28] flex items-center justify-center">
-            {/* Main Video Element */}
-            <video
-              ref={mainVideoRef}
-              src={project.sourceVideoUrl}
-              playsInline
-              className={`w-full h-full object-contain absolute inset-0 ${
-                activeMemePlaying
-                  ? 'hidden invisible opacity-0 pointer-events-none z-0'
-                  : `z-10 opacity-100 ${activeTransitionClass}`
-              }`}
-            />
+            {/* Playhead-driven Frame-accurate Transition Stage (Spec 1) */}
+            <div
+              ref={transitionStageRef}
+              className="w-full h-full absolute inset-0 overflow-hidden flex items-center justify-center will-change-transform"
+              style={{ opacity: 1, clipPath: 'none', transform: 'none' }}
+            >
+              {/* Main Video Element */}
+              <video
+                ref={mainVideoRef}
+                src={project.sourceVideoUrl}
+                playsInline
+                className={`w-full h-full object-contain absolute inset-0 ${
+                  activeMemePlaying
+                    ? 'hidden invisible opacity-0 pointer-events-none z-0'
+                    : 'z-10 opacity-100'
+                }`}
+              />
 
-            {/* Stacked Meme Video Element (Spec 3) */}
-            <video
-              ref={memeVideoRef}
-              playsInline
-              onLoadedData={handleSecondaryReady}
-              onSeeked={handleSecondaryReady}
-              onCanPlay={handleSecondaryReady}
-              className={`w-full h-full object-contain absolute inset-0 ${
-                activeMemePlaying
-                  ? `z-10 ${isSecondaryReady ? `opacity-100 ${activeTransitionClass}` : 'opacity-0 pointer-events-none'}`
-                  : 'hidden invisible opacity-0 pointer-events-none z-0'
-              }`}
-            />
+              {/* Stacked Meme Video Element (Spec 3) */}
+              <video
+                ref={memeVideoRef}
+                playsInline
+                onLoadedData={handleSecondaryReady}
+                onSeeked={handleSecondaryReady}
+                onCanPlay={handleSecondaryReady}
+                className={`w-full h-full object-contain absolute inset-0 ${
+                  activeMemePlaying
+                    ? `z-10 ${isSecondaryReady ? 'opacity-100' : 'opacity-0 pointer-events-none'}`
+                    : 'hidden invisible opacity-0 pointer-events-none z-0'
+                }`}
+              />
 
-            {/* Denoised Audio Element for Spectral Noise Removal */}
-            <audio
-              ref={denoisedAudioRef}
-              src={denoisedAudioUrl || undefined}
-              preload="auto"
-              playsInline
-              className="hidden"
-            />
+              {/* Denoised Audio Element for Spectral Noise Removal */}
+              <audio
+                ref={denoisedAudioRef}
+                src={denoisedAudioUrl || undefined}
+                preload="auto"
+                playsInline
+                className="hidden"
+              />
+            </div>
 
             {/* Click to play overlay */}
             <div
               onClick={togglePlayPause}
-              className="absolute inset-0 cursor-pointer flex items-center justify-center group"
+              className="absolute inset-0 cursor-pointer flex items-center justify-center group z-30"
             >
               {!isPlaying && (
                 <div className="w-16 h-16 rounded-full bg-[#E8872A] text-[#11100E] flex items-center justify-center shadow-lg transform group-hover:scale-105 transition-all">
