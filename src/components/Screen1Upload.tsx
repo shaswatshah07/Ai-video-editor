@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Upload, Sparkles, Wand2, ArrowRight, AlertCircle, FileVideo } from 'lucide-react';
+import { Upload, Wand2, ArrowRight, AlertCircle, FileVideo } from 'lucide-react';
 import { useEditorStore } from '../store/useEditorStore';
 import { TimelineItem } from '../types/edl';
 
@@ -121,24 +121,15 @@ export const Screen1Upload: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-[#0E0E0D] text-[#F4F2EE] flex flex-col justify-between p-6">
-      {/* Top Navigation Bar */}
-      <header className="max-w-6xl mx-auto w-full flex items-center justify-between pb-6 border-b border-[#2C2B28]">
-        <div className="flex items-center space-x-3">
-          <div className="w-10 h-10 rounded-xl bg-[#1F1E1C] border border-[#2C2B28] flex items-center justify-center">
-            <Sparkles className="w-5 h-5 text-[#E8872A]" />
-          </div>
-          <div>
-            <h1 className="text-xl font-bold tracking-tight text-[#F4F2EE]">
-              AI Video Editor Studio
-            </h1>
-            <p className="text-xs text-[#A19E97]">Strict ₹0 Budget • Browser-First InShot Workflow</p>
-          </div>
-        </div>
-      </header>
+    <div className="min-h-screen bg-[#0E0E0D] text-[#F4F2EE] flex flex-col px-6 overflow-y-auto">
+      {/* Top Reserved Open Hero Space */}
+      <section
+        id="hero-space"
+        className="w-full max-w-6xl mx-auto min-h-[280px] md:min-h-[340px] flex flex-col items-center justify-center pt-12 pb-8"
+      />
 
-      {/* Main Content Area */}
-      <main className="max-w-6xl mx-auto w-full my-8 grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+      {/* Main Content Area: Upload & Mode Selection */}
+      <main className="max-w-6xl mx-auto w-full pb-16 grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
         {/* Left Column: Drag & Drop Dropzone */}
         <div className="lg:col-span-7 space-y-6">
           <div
@@ -281,7 +272,7 @@ export const Screen1Upload: React.FC = () => {
       </main>
 
       {/* Footer */}
-      <footer className="max-w-6xl mx-auto w-full pt-4 border-t border-[#2C2B28] text-center text-xs text-[#6E6B64]">
+      <footer className="max-w-6xl mx-auto w-full pt-4 pb-6 border-t border-[#2C2B28] text-center text-xs text-[#6E6B64] mt-auto">
         AI Video Editor • 100% Client-Side Processing • Scaler YIIC 9.0 Week 2
       </footer>
     </div>
