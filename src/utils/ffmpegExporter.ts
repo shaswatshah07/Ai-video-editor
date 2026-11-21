@@ -337,11 +337,12 @@ export async function exportProjectVideo(
     let audioFilters = '';
     if (noiseRemovalActive) {
       audioFilters += useFallbackNoiseFilter
-        ? ',highpass=f=90,afftdn=nr=10:nf=-25:tn=1'
-        : ',highpass=f=90,afftdn=nr=14:nf=-25:tn=1';
+        ? ',highpass=f=120,lowpass=f=7500,afftdn=nr=18:nf=-22:tn=1'
+        : ',highpass=f=150,lowpass=f=7000,afftdn=nr=26:nf=-20:tn=1';
     }
     if (voiceEnhanceActive) {
-      audioFilters += ',highpass=f=85,equalizer=f=260:t=q:w=1.2:g=-3.5,equalizer=f=2800:t=q:w=1.0:g=4.5,acompressor=threshold=-16dB:ratio=3:attack=10:release=100:makeup=3.5,alimiter=limit=0.95';
+      const hp = noiseRemovalActive ? '' : ',highpass=f=85';
+      audioFilters += `${hp},equalizer=f=260:t=q:w=1.2:g=-3.5,equalizer=f=2800:t=q:w=1.0:g=4.5,acompressor=threshold=-16dB:ratio=3:attack=10:release=100:makeup=3.5,alimiter=limit=0.95`;
     }
 
     // Process each segment in chronological order

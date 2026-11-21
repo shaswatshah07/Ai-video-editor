@@ -718,7 +718,21 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   applySelectedSilenceCuts: () => {
     const { project } = get();
     if (!project) return;
+
+    const silencesToCut = project.items.filter(
+      (it) => it.status === 'SUGGESTED_SILENCE_CUT' && it.meta?.silenceSelected !== false
+    );
+    const cutCount = silencesToCut.length;
+    if (cutCount === 0) return;
+
     get().pushHistory();
+
+    const savedMs = silencesToCut.reduce(
+      (sum, it) => sum + (it.durationMs || (it.sourceEndMs - it.sourceStartMs)),
+      0
+    );
+    const savedSec = (savedMs / 1000).toFixed(1);
+
     const updated = project.items.map((it) => {
       if (it.status === 'SUGGESTED_SILENCE_CUT') {
         const isSelected = it.meta?.silenceSelected !== false;
@@ -729,8 +743,10 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       }
       return it;
     });
+
     const recalculated = recalculateTimeline(updated);
     const totalProjMs = getTotalProjectDuration(recalculated);
+
     set({
       project: {
         ...project,
@@ -738,6 +754,19 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         totalProjectDurationMs: totalProjMs,
         updatedAt: Date.now()
       }
+    });
+
+    get().addCommandLog({
+      id: `cmd_silence_${Date.now()}`,
+      rawInput: 'Apply selected silence cuts',
+      timestamp: Date.now(),
+      parsedCommand: {
+        action: 'REMOVE_SILENCE',
+        payload: { minDurationMs: 0, paddingPreMs: 0, paddingPostMs: 0 },
+        explanation: `Applied ${cutCount} silence cuts (saved ${savedSec}s)`
+      },
+      status: 'SUCCESS',
+      appliedMessage: `Applied ${cutCount} silence cuts (saved ${savedSec}s)`
     });
   },
 

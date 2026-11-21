@@ -146,9 +146,12 @@ export const Screen2Workspace: React.FC = () => {
 
   // Web Audio Context & Native Real-Time DSP Filter Refs (audible with zero echo)
   const audioContextRef = useRef<AudioContext | null>(null);
-  const nrHighPassRef = useRef<BiquadFilterNode | null>(null);
+  const nrHighPass1Ref = useRef<BiquadFilterNode | null>(null);
+  const nrHighPass2Ref = useRef<BiquadFilterNode | null>(null);
   const nrLowPassRef = useRef<BiquadFilterNode | null>(null);
   const nrHighShelfRef = useRef<BiquadFilterNode | null>(null);
+  const nrGateGainRef = useRef<GainNode | null>(null);
+  const nrAnalyserRef = useRef<AnalyserNode | null>(null);
   const veWarmthCutRef = useRef<BiquadFilterNode | null>(null);
   const vePresenceBoostRef = useRef<BiquadFilterNode | null>(null);
   const veCompressorRef = useRef<DynamicsCompressorNode | null>(null);
@@ -301,28 +304,46 @@ export const Screen2Workspace: React.FC = () => {
       const ctx = audioContextRef.current;
 
       // Build Real-Time DSP Filter Chain once
-      if (!nrHighPassRef.current) {
+      if (!nrHighPass1Ref.current) {
         // 1. Noise Removal Stage (audible in live preview, matches FFmpeg native export filters)
-        // High-pass filter at 120 Hz (removes low-end rumble, transparent at 10 Hz when OFF)
-        const nrHighPass = ctx.createBiquadFilter();
-        nrHighPass.type = 'highpass';
-        nrHighPass.frequency.value = noiseRemovalEnabled ? 120 : 10;
-        nrHighPass.Q.value = 0.7071;
-        nrHighPassRef.current = nrHighPass;
+        // Cascaded High-pass filter stage 1 at 160 Hz (12 dB/oct cut, transparent at 10 Hz when OFF)
+        const nrHighPass1 = ctx.createBiquadFilter();
+        nrHighPass1.type = 'highpass';
+        nrHighPass1.frequency.value = noiseRemovalEnabled ? 160 : 10;
+        nrHighPass1.Q.value = 0.7071;
+        nrHighPass1Ref.current = nrHighPass1;
 
-        // Low-pass filter at 7200 Hz (cuts high-frequency hiss, transparent at 22 kHz when OFF)
+        // Cascaded High-pass filter stage 2 at 160 Hz (combines to 24 dB/oct steep cut for room rumble & fan hum)
+        const nrHighPass2 = ctx.createBiquadFilter();
+        nrHighPass2.type = 'highpass';
+        nrHighPass2.frequency.value = noiseRemovalEnabled ? 160 : 10;
+        nrHighPass2.Q.value = 0.7071;
+        nrHighPass2Ref.current = nrHighPass2;
+
+        // Low-pass filter at 6500 Hz (cuts high-frequency hiss, transparent at 22 kHz when OFF)
         const nrLowPass = ctx.createBiquadFilter();
         nrLowPass.type = 'lowpass';
-        nrLowPass.frequency.value = noiseRemovalEnabled ? 7200 : 22000;
+        nrLowPass.frequency.value = noiseRemovalEnabled ? 6500 : 22000;
         nrLowPass.Q.value = 0.7071;
         nrLowPassRef.current = nrLowPass;
 
-        // High-shelf filter at 6000 Hz, -4.0 dB (cuts remaining background hiss, 0 dB when OFF)
+        // High-shelf filter at 4800 Hz, -6.0 dB (steep anti-hiss reduction, 0 dB when OFF)
         const nrHighShelf = ctx.createBiquadFilter();
         nrHighShelf.type = 'highshelf';
-        nrHighShelf.frequency.value = 6000;
-        nrHighShelf.gain.value = noiseRemovalEnabled ? -4.0 : 0;
+        nrHighShelf.frequency.value = 4800;
+        nrHighShelf.gain.value = noiseRemovalEnabled ? -6.0 : 0;
         nrHighShelfRef.current = nrHighShelf;
+
+        // Noise Gate / Downward Expander Gain Node
+        const nrGateGain = ctx.createGain();
+        nrGateGain.gain.value = 1.0;
+        nrGateGainRef.current = nrGateGain;
+
+        // Listen-only Analyser Node for envelope detection (zero output audio impact)
+        const nrAnalyser = ctx.createAnalyser();
+        nrAnalyser.fftSize = 256;
+        nrAnalyser.smoothingTimeConstant = 0.3;
+        nrAnalyserRef.current = nrAnalyser;
 
         // 2. Voice Enhancement Stage (Warmth cut + Presence boost + Dynamics compressor + Makeup gain)
         // Boxiness/room-echo cut: peaking filter at 260 Hz, Q = 1.2, -3.5 dB (0 dB when OFF)
@@ -355,11 +376,17 @@ export const Screen2Workspace: React.FC = () => {
         veMakeupGain.gain.value = voiceEnhanceEnabled ? 1.25 : 1.0;
         veMakeupGainRef.current = veMakeupGain;
 
-        // Connect the real-time DSP filter chain:
-        // nrHighPass -> nrLowPass -> nrHighShelf -> veWarmthCut -> vePresenceBoost -> veCompressor -> veMakeupGain -> destination
-        nrHighPass.connect(nrLowPass);
+        // Connect the real-time DSP filter chain strictly in series:
+        // nrHighPass1 -> nrHighPass2 -> nrLowPass -> nrHighShelf -> nrGateGain -> veWarmthCut -> vePresenceBoost -> veCompressor -> veMakeupGain -> destination
+        nrHighPass1.connect(nrHighPass2);
+        nrHighPass2.connect(nrLowPass);
         nrLowPass.connect(nrHighShelf);
-        nrHighShelf.connect(veWarmthCut);
+        nrHighShelf.connect(nrGateGain);
+
+        // Tap envelope detection analyzer off nrHighShelf (listen-only, no parallel route to destination)
+        nrHighShelf.connect(nrAnalyser);
+
+        nrGateGain.connect(veWarmthCut);
         veWarmthCut.connect(vePresenceBoost);
         vePresenceBoost.connect(veCompressor);
         veCompressor.connect(veMakeupGain);
@@ -368,10 +395,10 @@ export const Screen2Workspace: React.FC = () => {
 
       // Connect primary <video> element to the DSP chain once (guarded by WeakMap cache)
       let sourceNode = mediaSourceCache.get(videoEl);
-      if (!sourceNode && nrHighPassRef.current) {
+      if (!sourceNode && nrHighPass1Ref.current) {
         sourceNode = ctx.createMediaElementSource(videoEl);
         mediaSourceCache.set(videoEl, sourceNode);
-        sourceNode.connect(nrHighPassRef.current);
+        sourceNode.connect(nrHighPass1Ref.current);
       }
     } catch {
       // Audio element might already be connected or blocked by autoplay policy
@@ -384,15 +411,21 @@ export const Screen2Workspace: React.FC = () => {
     if (!ctx) return;
     const now = ctx.currentTime;
 
-    // Real-Time Noise Removal filters
-    if (nrHighPassRef.current) {
-      nrHighPassRef.current.frequency.setValueAtTime(noiseRemovalEnabled ? 120 : 10, now);
+    // Real-Time Noise Removal cascaded filters
+    if (nrHighPass1Ref.current) {
+      nrHighPass1Ref.current.frequency.setValueAtTime(noiseRemovalEnabled ? 160 : 10, now);
+    }
+    if (nrHighPass2Ref.current) {
+      nrHighPass2Ref.current.frequency.setValueAtTime(noiseRemovalEnabled ? 160 : 10, now);
     }
     if (nrLowPassRef.current) {
-      nrLowPassRef.current.frequency.setValueAtTime(noiseRemovalEnabled ? 7200 : 22000, now);
+      nrLowPassRef.current.frequency.setValueAtTime(noiseRemovalEnabled ? 6500 : 22000, now);
     }
     if (nrHighShelfRef.current) {
-      nrHighShelfRef.current.gain.setValueAtTime(noiseRemovalEnabled ? -4.0 : 0, now);
+      nrHighShelfRef.current.gain.setValueAtTime(noiseRemovalEnabled ? -6.0 : 0, now);
+    }
+    if (!noiseRemovalEnabled && nrGateGainRef.current) {
+      nrGateGainRef.current.gain.setValueAtTime(1.0, now);
     }
 
     // Real-Time Speaker Voice Enhancement filters
@@ -410,6 +443,53 @@ export const Screen2Workspace: React.FC = () => {
       veMakeupGainRef.current.gain.setValueAtTime(voiceEnhanceEnabled ? 1.25 : 1.0, now);
     }
   }, [voiceEnhanceEnabled, noiseRemovalEnabled]);
+
+  // Real-Time Smooth Downward Expander / Noise Gate Envelope Loop
+  useEffect(() => {
+    let animId: number;
+    const dataArray = new Uint8Array(256);
+
+    const updateGate = () => {
+      const ctx = audioContextRef.current;
+      const analyser = nrAnalyserRef.current;
+      const gateGain = nrGateGainRef.current;
+
+      if (ctx && analyser && gateGain) {
+        const now = ctx.currentTime;
+        if (!noiseRemovalEnabled) {
+          gateGain.gain.setTargetAtTime(1.0, now, 0.02);
+        } else {
+          analyser.getByteTimeDomainData(dataArray);
+          let sum = 0;
+          for (let i = 0; i < dataArray.length; i++) {
+            const norm = (dataArray[i] - 128) / 128;
+            sum += norm * norm;
+          }
+          const rms = Math.sqrt(sum / dataArray.length);
+
+          if (rms < 0.022) {
+            // Below speech threshold: smooth downward attenuation to 0.08 (~-22 dB) with release 0.18s
+            gateGain.gain.setTargetAtTime(0.08, now, 0.18);
+          } else {
+            // Speech detected: fast attack 0.015s to full 1.0x gain
+            gateGain.gain.setTargetAtTime(1.0, now, 0.015);
+          }
+        }
+      }
+
+      animId = requestAnimationFrame(updateGate);
+    };
+
+    animId = requestAnimationFrame(updateGate);
+    return () => cancelAnimationFrame(animId);
+  }, [noiseRemovalEnabled]);
+
+  // Ensure AudioContext resumes whenever Noise Removal is toggled ON
+  useEffect(() => {
+    if (noiseRemovalEnabled && audioContextRef.current && audioContextRef.current.state === 'suspended') {
+      audioContextRef.current.resume();
+    }
+  }, [noiseRemovalEnabled]);
 
   // Reset secondary video state whenever project changes
   useEffect(() => {
@@ -1239,7 +1319,7 @@ export const Screen2Workspace: React.FC = () => {
               }
               toggleNoiseRemoval();
             }}
-            title="Background Noise Removal: Real-time highpass (120Hz), lowpass (7200Hz), and highshelf filter removing fan hum, hiss, and room rumble"
+            title="Background Noise Removal: 160Hz cascaded HPF, 6.5kHz lowpass, -6dB anti-hiss shelf & smooth noise gate"
             className={`px-2.5 py-1 rounded-lg text-xs font-medium flex items-center space-x-1.5 border transition-all ${
               noiseRemovalEnabled
                 ? 'bg-[#14B8A6]/15 border-[#2DD4BF]/50 text-[#5EEAD4]'
@@ -1618,26 +1698,32 @@ export const Screen2Workspace: React.FC = () => {
             const selectedSilences = silenceItems.filter(it => it.meta?.silenceSelected !== false).length;
 
             return (
-              <div className="absolute top-4 left-6 right-6 bg-[#D97706]/15 border border-[#F59E0B]/50 rounded-xl px-4 py-2 flex items-center justify-between text-xs z-20 backdrop-blur">
-                <div className="flex items-center space-x-2 text-[#FCD34D]">
+              <div className="absolute top-4 left-6 right-6 bg-[#D97706]/15 border border-[#F59E0B]/50 rounded-xl px-4 py-2 flex flex-wrap md:flex-nowrap items-center justify-between text-xs z-40 pointer-events-auto backdrop-blur gap-2 shadow-lg">
+                <div className="flex items-center space-x-2 text-[#FCD34D] pr-4">
                   <ShieldAlert className="w-4 h-4 flex-shrink-0 text-[#F59E0B]" />
                   <span>
                     <strong>Awkward Pauses Detected:</strong> Review amber intervals on timeline or click to clean up <span className="text-[#A19E97] font-normal text-[11px]">(Experimental — review before accepting; best on low-noise audio)</span>:
                   </span>
                 </div>
-                <div className="flex items-center space-x-2">
+                <div className="flex items-center space-x-2 flex-shrink-0">
                   <button
                     type="button"
-                    onClick={clearAllSilences}
-                    className="bg-[#23221F] hover:bg-[#2E2C28] text-[#E6E3DC] hover:text-[#F4F2EE] border border-[#35332F] px-3 py-1 rounded-lg text-xs font-medium transition-colors"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      clearAllSilences();
+                    }}
+                    className="bg-[#23221F] hover:bg-[#2E2C28] text-[#E6E3DC] hover:text-[#F4F2EE] border border-[#35332F] px-3 py-1 rounded-lg text-xs font-medium transition-colors cursor-pointer"
                   >
                     Cancel / Clear Silences
                   </button>
                   <button
                     type="button"
-                    onClick={applySelectedSilenceCuts}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      applySelectedSilenceCuts();
+                    }}
                     disabled={selectedSilences === 0}
-                    className="bg-[#E8872A] hover:bg-[#F59A3D] disabled:opacity-40 disabled:cursor-not-allowed text-[#11100E] font-semibold px-3 py-1 rounded-lg text-xs transition-colors shadow-none"
+                    className="bg-[#E8872A] hover:bg-[#F59A3D] disabled:opacity-40 disabled:cursor-not-allowed text-[#11100E] font-semibold px-3 py-1 rounded-lg text-xs transition-colors shadow-none cursor-pointer"
                   >
                     Apply Selected Cuts ({selectedSilences}/{totalSilences})
                   </button>

@@ -420,7 +420,7 @@ export function injectSilenceCutsIntoTimeline(
         sourceEndMs: sEnd,
         durationMs: gapDurMs,
         status: 'SUGGESTED_SILENCE_CUT',
-        meta: { silenceRms: silence.avgRms }
+        meta: { silenceRms: silence.avgRms, silenceSelected: true }
       });
 
       // Right kept part

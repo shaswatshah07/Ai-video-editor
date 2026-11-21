@@ -844,6 +844,7 @@ export const Screen1Upload: React.FC = () => {
   };
 
   const handleLoadSampleClip = async (e: React.MouseEvent) => {
+    e.preventDefault();
     e.stopPropagation();
     if (isLoadingSample || isProcessing) return;
     setIsLoadingSample(true);
@@ -851,11 +852,12 @@ export const Screen1Upload: React.FC = () => {
 
     try {
       const res = await fetch('/sample-video.mp4');
-      if (!res.ok) {
-        throw new Error(`Failed to load sample clip (HTTP ${res.status})`);
+      const contentType = res.headers.get('content-type') || '';
+      if (!res.ok || contentType.includes('text/html')) {
+        throw new Error(`Failed to load sample clip: sample video file not found (HTTP ${res.status})`);
       }
       const blob = await res.blob();
-      const sampleFile = new File([blob], 'fastcutz-sample.mp4', { type: 'video/mp4' });
+      const sampleFile = new File([blob], 'sample-video.mp4', { type: 'video/mp4' });
       validateAndSetFile(sampleFile);
     } catch (err: any) {
       setErrorMsg(err?.message || 'Could not load sample video clip. Please check your connection or browse a file.');
@@ -1472,7 +1474,7 @@ export const Screen1Upload: React.FC = () => {
                 type="file"
                 accept="video/mp4,video/quicktime,video/webm"
                 onChange={handleFileInput}
-                className="absolute inset-0 opacity-0 cursor-pointer"
+                className="absolute inset-0 opacity-0 cursor-pointer z-10"
                 disabled={isProcessing}
               />
 
@@ -1485,7 +1487,7 @@ export const Screen1Upload: React.FC = () => {
               </div>
 
               {selectedFile ? (
-                <div className="space-y-1">
+                <div className="space-y-1 relative z-20">
                   <p className="text-sm font-semibold text-[#22D3EE]">{selectedFile.name}</p>
                   <p className="text-xs text-[#A5B4DC] tabular-nums">
                     {(selectedFile.size / (1024 * 1024)).toFixed(2)} MB • Ready for processing
@@ -1502,7 +1504,7 @@ export const Screen1Upload: React.FC = () => {
                   <p className="text-xs text-[#7B8EC8]">
                     Supports MP4, MOV, and WebM • Max 250 MB • Max 5 minutes
                   </p>
-                  <div>
+                  <div className="relative z-20">
                     <button
                       type="button"
                       onClick={handleLoadSampleClip}
