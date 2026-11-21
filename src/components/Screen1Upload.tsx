@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Upload, Wand2, ArrowRight, AlertCircle, FileVideo } from 'lucide-react';
+import { Upload, Wand2, ArrowRight, AlertCircle, FileVideo, Loader2 } from 'lucide-react';
 import { useEditorStore } from '../store/useEditorStore';
 import { TimelineItem } from '../types/edl';
 import { MEME_LIBRARY, MemeLibraryItem } from '../utils/memeLibrary';
@@ -604,6 +604,7 @@ export const Screen1Upload: React.FC = () => {
 
   const [isDragging, setIsDragging] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [isLoadingSample, setIsLoadingSample] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [processingStatus, setProcessingStatus] = useState<string>('');
@@ -840,6 +841,27 @@ export const Screen1Upload: React.FC = () => {
     }
 
     setSelectedFile(file);
+  };
+
+  const handleLoadSampleClip = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (isLoadingSample || isProcessing) return;
+    setIsLoadingSample(true);
+    setErrorMsg(null);
+
+    try {
+      const res = await fetch('/sample-video.mp4');
+      if (!res.ok) {
+        throw new Error(`Failed to load sample clip (HTTP ${res.status})`);
+      }
+      const blob = await res.blob();
+      const sampleFile = new File([blob], 'fastcutz-sample.mp4', { type: 'video/mp4' });
+      validateAndSetFile(sampleFile);
+    } catch (err: any) {
+      setErrorMsg(err?.message || 'Could not load sample video clip. Please check your connection or browse a file.');
+    } finally {
+      setIsLoadingSample(false);
+    }
   };
 
   const handleStartEditing = async (isAutoMode: boolean) => {
@@ -1480,6 +1502,23 @@ export const Screen1Upload: React.FC = () => {
                   <p className="text-xs text-[#7B8EC8]">
                     Supports MP4, MOV, and WebM • Max 250 MB • Max 5 minutes
                   </p>
+                  <div>
+                    <button
+                      type="button"
+                      onClick={handleLoadSampleClip}
+                      disabled={isLoadingSample || isProcessing}
+                      className="mt-3 inline-flex items-center gap-1.5 rounded-full border border-[#3B4C80] bg-[#1E294B]/80 px-3 py-1 text-xs text-[#7DD3FC] hover:border-[#FF6B35] hover:text-white transition cursor-pointer disabled:opacity-50"
+                    >
+                      {isLoadingSample ? (
+                        <>
+                          <Loader2 className="w-3 h-3 animate-spin text-[#FF6B35]" />
+                          <span>Loading sample clip...</span>
+                        </>
+                      ) : (
+                        <span>No video handy? Load sample clip →</span>
+                      )}
+                    </button>
+                  </div>
                 </div>
               )}
             </div>
