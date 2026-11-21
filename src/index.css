@@ -120,3 +120,34 @@
   transform-box: fill-box;
   transform-origin: center;
 }
+
+/* Fastcutz Cupboard Search & Computer Pop Animations */
+@keyframes fastcutz-search {
+  0%, 100% { transform: translateY(0px) rotate(0deg); }
+  25% { transform: translateY(-4px) rotate(-6deg); }
+  75% { transform: translateY(-2px) rotate(6deg); }
+}
+
+.animate-fastcutz-search {
+  animation: fastcutz-search 0.38s ease-in-out infinite;
+  transform-origin: center bottom;
+}
+
+@keyframes computer-pop {
+  0% { transform: scale(1); filter: drop-shadow(0 0 0 rgba(45, 212, 191, 0)); }
+  35% { transform: scale(1.08); filter: drop-shadow(0 0 18px rgba(45, 212, 191, 0.75)); }
+  100% { transform: scale(1); filter: drop-shadow(0 0 4px rgba(45, 212, 191, 0.2)); }
+}
+
+.animate-computer-pop {
+  animation: computer-pop 0.65s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes float-badge {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-3px); }
+}
+
+.animate-float-badge {
+  animation: float-badge 2s ease-in-out infinite;
+}
