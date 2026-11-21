@@ -243,3 +243,19 @@
 .animate-cut-badge-pop {
   animation: cut-badge-pop 650ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
+
+/* Studio Indoor Plant Living Sway */
+@keyframes studio-plant-sway {
+  0%, 100% {
+    transform: rotate(0deg);
+  }
+  50% {
+    transform: rotate(1.8deg);
+  }
+}
+
+.animate-studio-plant-sway {
+  animation: studio-plant-sway 7s ease-in-out infinite;
+  transform-origin: 50% 85%;
+}
+

@@ -157,6 +157,452 @@ const TravelingRobot: React.FC<{ isSearching: boolean; isCarrying: boolean }> = 
   );
 };
 
+/**
+ * Studio Key Light / Softbox
+ * Angled ~20° to cast a soft warm volumetric amber light cone onto the Upload Dropbox
+ */
+const StudioKeyLight: React.FC = () => {
+  return (
+    <div
+      className="hidden lg:block pointer-events-none select-none absolute left-2 xl:left-6 top-0 bottom-4 z-0 w-[105px] xl:w-[130px]"
+      aria-hidden="true"
+    >
+      <svg
+        viewBox="0 0 130 420"
+        preserveAspectRatio="xMidYMax meet"
+        className="w-full h-full overflow-visible"
+        fill="none"
+        xmlns="http://www.w3.org/2000/svg"
+      >
+        <defs>
+          {/* Volumetric Studio Beam Gradient */}
+          <linearGradient id="softbox-beam" x1="0%" y1="0%" x2="100%" y2="80%">
+            <stop offset="0%" stopColor="#E8872A" stopOpacity="0.22" />
+            <stop offset="30%" stopColor="#E8872A" stopOpacity="0.09" />
+            <stop offset="70%" stopColor="#E8872A" stopOpacity="0.03" />
+            <stop offset="100%" stopColor="#E8872A" stopOpacity="0" />
+          </linearGradient>
+
+          {/* Softbox Diffuser Face Gradient */}
+          <linearGradient id="diffuser-glow" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stopColor="#FFE0B2" />
+            <stop offset="40%" stopColor="#F59E0B" />
+            <stop offset="100%" stopColor="#E8872A" />
+          </linearGradient>
+
+          {/* Metal Stand Linear Gradient */}
+          <linearGradient id="stand-metal" x1="0%" y1="0%" x2="100%" y2="0%">
+            <stop offset="0%" stopColor="#1C1B19" />
+            <stop offset="50%" stopColor="#383631" />
+            <stop offset="100%" stopColor="#22211E" />
+          </linearGradient>
+        </defs>
+
+        {/* --- Volumetric Light Cone projecting rightward toward the upload dropbox --- */}
+        <polygon
+          points="88,32 380,120 340,390 88,96"
+          fill="url(#softbox-beam)"
+          className="mix-blend-screen opacity-90"
+        />
+
+        {/* --- Tripod Stand Base Floor Shadow --- */}
+        <ellipse cx="65" cy="405" rx="44" ry="7" fill="#000000" fillOpacity="0.45" />
+
+        {/* --- Tripod Legs (3-leg studio c-stand base) --- */}
+        {/* Left leg */}
+        <path d="M65 355 L20 402" stroke="#252421" strokeWidth="4.5" strokeLinecap="round" />
+        <path d="M65 355 L20 402" stroke="#3C3A36" strokeWidth="1.5" strokeLinecap="round" />
+        <circle cx="20" cy="402" r="3.5" fill="#141412" stroke="#3A3833" strokeWidth="1" />
+
+        {/* Center leg */}
+        <path d="M65 355 L65 405" stroke="#2B2A27" strokeWidth="4.5" strokeLinecap="round" />
+        <path d="M65 355 L65 405" stroke="#4A4742" strokeWidth="1.5" strokeLinecap="round" />
+        <circle cx="65" cy="405" r="3.5" fill="#141412" stroke="#3A3833" strokeWidth="1" />
+
+        {/* Right leg */}
+        <path d="M65 355 L110 402" stroke="#252421" strokeWidth="4.5" strokeLinecap="round" />
+        <path d="M65 355 L110 402" stroke="#3C3A36" strokeWidth="1.5" strokeLinecap="round" />
+        <circle cx="110" cy="402" r="3.5" fill="#141412" stroke="#3A3833" strokeWidth="1" />
+
+        {/* Leg Collar Clamp & Tightener */}
+        <rect x="58" y="350" width="14" height="9" rx="2" fill="#1F1E1C" stroke="#383631" strokeWidth="1" />
+        <circle cx="74" cy="354.5" r="2.5" fill="#E8872A" />
+
+        {/* Telescoping Shafts (Lower & Upper) */}
+        {/* Lower thick shaft */}
+        <rect x="62.5" y="195" width="5" height="157" rx="1.5" fill="url(#stand-metal)" stroke="#161614" strokeWidth="0.8" />
+        {/* Mid Collar */}
+        <rect x="60" y="190" width="10" height="7" rx="1.5" fill="#242320" stroke="#3C3A36" strokeWidth="0.8" />
+        <circle cx="72" cy="193.5" r="2" fill="#E8872A" />
+
+        {/* Upper riser shaft */}
+        <rect x="63.5" y="75" width="3" height="117" rx="1" fill="#3A3833" stroke="#201F1D" strokeWidth="0.6" />
+        {/* Top Swivel Mount & Tilt Bracket */}
+        <rect x="61" y="68" width="8" height="9" rx="2" fill="#2B2A26" stroke="#42403B" strokeWidth="0.8" />
+        <circle cx="65" cy="72.5" r="2" fill="#E8872A" />
+
+        {/* --- Softbox Head Assembly (Angled ~20° toward dropbox) --- */}
+        <g transform="rotate(20 65 70)">
+          {/* Rear Housing Heatsink & Fixture Body */}
+          <path
+            d="M38 52 L56 38 L56 82 L38 72 Z"
+            fill="#181816"
+            stroke="#2E2C28"
+            strokeWidth="1.2"
+          />
+          {/* Cooling Fins / Texture */}
+          <line x1="43" y1="51" x2="43" y2="73" stroke="#2A2926" strokeWidth="1" />
+          <line x1="49" y1="45" x2="49" y2="77" stroke="#2A2926" strokeWidth="1" />
+
+          {/* Rear Power Indicator LED */}
+          <circle cx="42" cy="62" r="1.8" fill="#E8872A" className="animate-pulse" />
+
+          {/* Softbox Canopy / Outer Funnel (Reflector Cone) */}
+          <path
+            d="M56 38 L88 24 L88 96 L56 82 Z"
+            fill="#1E1D1B"
+            stroke="#383631"
+            strokeWidth="1.4"
+          />
+
+          {/* Angled Barn Doors / Light Spill Flags */}
+          {/* Top Barn Door */}
+          <polygon
+            points="88,24 108,16 104,27 88,27"
+            fill="#23221F"
+            stroke="#3F3C36"
+            strokeWidth="0.8"
+          />
+          {/* Bottom Barn Door */}
+          <polygon
+            points="88,93 104,93 108,104 88,96"
+            fill="#23221F"
+            stroke="#3F3C36"
+            strokeWidth="0.8"
+          />
+
+          {/* Luminous Diffuser Front Screen (Soft Warm Glow) */}
+          <rect
+            x="86"
+            y="26"
+            width="6"
+            height="68"
+            rx="2.5"
+            fill="url(#diffuser-glow)"
+            stroke="#FDE68A"
+            strokeWidth="0.8"
+          />
+          {/* Diffuser Core Highlight */}
+          <rect
+            x="87.5"
+            y="30"
+            width="3"
+            height="60"
+            rx="1.5"
+            fill="#FFFBEB"
+            fillOpacity="0.85"
+          />
+        </g>
+      </svg>
+    </div>
+  );
+};
+
+/**
+ * Studio Editor Chair (Back View)
+ * Centered directly below the Upload Dropbox, facing toward the dropbox as the studio screen
+ */
+const StudioEditorChair: React.FC = () => {
+  return (
+    <div
+      className="w-[135px] md:w-[155px] h-[135px] md:h-[150px] flex items-center justify-center pointer-events-none select-none"
+      aria-hidden="true"
+    >
+      <svg
+        viewBox="0 0 155 150"
+        className="w-full h-full drop-shadow-[0_8px_16px_rgba(0,0,0,0.5)]"
+        fill="none"
+        xmlns="http://www.w3.org/2000/svg"
+      >
+        <defs>
+          <linearGradient id="chair-spine" x1="0%" y1="0%" x2="100%" y2="0%">
+            <stop offset="0%" stopColor="#181816" />
+            <stop offset="50%" stopColor="#2E2C28" />
+            <stop offset="100%" stopColor="#181816" />
+          </linearGradient>
+
+          <linearGradient id="chair-piston" x1="0%" y1="0%" x2="100%" y2="0%">
+            <stop offset="0%" stopColor="#23221F" />
+            <stop offset="50%" stopColor="#4A4742" />
+            <stop offset="100%" stopColor="#23221F" />
+          </linearGradient>
+        </defs>
+
+        {/* Ambient Floor Shadow Ellipse */}
+        <ellipse cx="77.5" cy="142" rx="46" ry="6" fill="#000000" fillOpacity="0.45" />
+
+        {/* 5-Spoke Caster Base */}
+        {/* Spoke 1: Far Left */}
+        <line x1="77.5" y1="124" x2="42" y2="138" stroke="#1F1E1C" strokeWidth="4" strokeLinecap="round" />
+        <line x1="77.5" y1="124" x2="42" y2="138" stroke="#383631" strokeWidth="1.2" strokeLinecap="round" />
+        <circle cx="42" cy="139" r="3" fill="#141412" stroke="#2C2B28" strokeWidth="1" />
+
+        {/* Spoke 2: Mid Left */}
+        <line x1="77.5" y1="124" x2="58" y2="143" stroke="#242320" strokeWidth="4.5" strokeLinecap="round" />
+        <line x1="77.5" y1="124" x2="58" y2="143" stroke="#3E3C36" strokeWidth="1.5" strokeLinecap="round" />
+        <circle cx="58" cy="144" r="3" fill="#141412" stroke="#2C2B28" strokeWidth="1" />
+
+        {/* Spoke 3: Center Down */}
+        <line x1="77.5" y1="124" x2="77.5" y2="145" stroke="#282724" strokeWidth="5" strokeLinecap="round" />
+        <line x1="77.5" y1="124" x2="77.5" y2="145" stroke="#48453F" strokeWidth="1.5" strokeLinecap="round" />
+        <circle cx="77.5" cy="146" r="3.2" fill="#141412" stroke="#2C2B28" strokeWidth="1" />
+
+        {/* Spoke 4: Mid Right */}
+        <line x1="77.5" y1="124" x2="97" y2="143" stroke="#242320" strokeWidth="4.5" strokeLinecap="round" />
+        <line x1="77.5" y1="124" x2="97" y2="143" stroke="#3E3C36" strokeWidth="1.5" strokeLinecap="round" />
+        <circle cx="97" cy="144" r="3" fill="#141412" stroke="#2C2B28" strokeWidth="1" />
+
+        {/* Spoke 5: Far Right */}
+        <line x1="77.5" y1="124" x2="113" y2="138" stroke="#1F1E1C" strokeWidth="4" strokeLinecap="round" />
+        <line x1="77.5" y1="124" x2="113" y2="138" stroke="#383631" strokeWidth="1.2" strokeLinecap="round" />
+        <circle cx="113" cy="139" r="3" fill="#141412" stroke="#2C2B28" strokeWidth="1" />
+
+        {/* Center Hub Star Cap */}
+        <circle cx="77.5" cy="124" r="6" fill="#1C1B19" stroke="#3C3A35" strokeWidth="1.2" />
+
+        {/* Pneumatic Gas-Lift Piston Cylinder */}
+        <rect x="74" y="104" width="7" height="20" rx="1.5" fill="url(#chair-piston)" stroke="#161614" strokeWidth="0.8" />
+        {/* Tilt Mechanism Under-Seat Box */}
+        <rect x="66" y="99" width="23" height="7" rx="2" fill="#1F1E1C" stroke="#35332F" strokeWidth="1" />
+        {/* Tilt tension knob */}
+        <rect x="74" y="103" width="7" height="3" rx="1" fill="#E8872A" opacity="0.85" />
+
+        {/* Armrests (Left & Right - Peeking out symmetrically) */}
+        {/* Left Armrest */}
+        <path
+          d="M44 68 C44 54 48 48 55 48 L56 52 C51 52 48 56 48 68 L48 83 C48 87 53 88 58 88 L58 92 C50 92 44 89 44 83 Z"
+          fill="#1C1B19"
+          stroke="#35332F"
+          strokeWidth="1"
+        />
+        {/* Left armrest soft top pad */}
+        <rect x="42" y="47" width="14" height="4.5" rx="2" fill="#292824" stroke="#42403A" strokeWidth="0.8" />
+
+        {/* Right Armrest */}
+        <path
+          d="M111 68 C111 54 107 48 100 48 L99 52 C104 52 107 56 107 68 L107 83 C107 87 102 88 97 88 L97 92 C105 92 111 89 111 83 Z"
+          fill="#1C1B19"
+          stroke="#35332F"
+          strokeWidth="1"
+        />
+        {/* Right armrest soft top pad */}
+        <rect x="99" y="47" width="14" height="4.5" rx="2" fill="#292824" stroke="#42403A" strokeWidth="0.8" />
+
+        {/* High-Back Contoured Creator Shell (Back View) */}
+        {/* Main Outer Backrest Silhouette */}
+        <path
+          d="M58 26 C58 23 60 21 64 21 L91 21 C95 21 97 23 97 26 L95 44 C99 52 102 60 102 74 C102 89 97 96 92 98 L63 98 C58 96 53 89 53 74 C53 60 56 52 60 44 Z"
+          fill="#1C1B19"
+          stroke="#383631"
+          strokeWidth="1.4"
+        />
+
+        {/* Back Spine Reinforcement Frame (Y-Shaped Studio Support Structure) */}
+        <path
+          d="M74.5 30 L80.5 30 L80.5 96 L74.5 96 Z"
+          fill="url(#chair-spine)"
+          stroke="#302E29"
+          strokeWidth="0.8"
+        />
+
+        {/* Lumbar Support Ribbed Wings (Left & Right) */}
+        <path
+          d="M60 62 C65 65 72 66 74 66 L74 77 C71 77 64 76 58 71 Z"
+          fill="#252421"
+          stroke="#35332F"
+          strokeWidth="0.8"
+        />
+        <path
+          d="M95 62 C90 65 83 66 81 66 L81 77 C84 77 91 76 97 71 Z"
+          fill="#252421"
+          stroke="#35332F"
+          strokeWidth="0.8"
+        />
+
+        {/* Upper Backrest Cushion Contour */}
+        <rect x="63" y="32" width="29" height="18" rx="4" fill="#23221F" stroke="#33312C" strokeWidth="0.8" />
+
+        {/* Headrest Cushion Unit (Top Center) */}
+        <rect x="61" y="9" width="33" height="15" rx="4.5" fill="#22211E" stroke="#3E3C36" strokeWidth="1.2" />
+        <rect x="63.5" y="11.5" width="28" height="10" rx="3" fill="#191816" />
+
+        {/* Signature Amber Stitching Accent on Headrest */}
+        <line x1="66" y1="16.5" x2="89" y2="16.5" stroke="#E8872A" strokeWidth="1.2" strokeDasharray="3 1.5" strokeLinecap="round" />
+
+        {/* Headrest Mounting Bracket Neck */}
+        <rect x="73.5" y="21" width="8" height="4" rx="1" fill="#2E2C28" stroke="#3C3A35" strokeWidth="0.8" />
+      </svg>
+    </div>
+  );
+};
+
+/**
+ * Potted Indoor Studio Plants
+ * Living studio greenery beside the Mode A/B cards with gentle ambient sway
+ */
+const StudioPottedPlants: React.FC = () => {
+  return (
+    <div
+      className="hidden lg:block pointer-events-none select-none absolute right-2 xl:right-6 bottom-2 z-0 w-[110px] xl:w-[140px]"
+      aria-hidden="true"
+    >
+      <svg
+        viewBox="0 0 140 210"
+        className="w-full h-auto drop-shadow-[0_8px_16px_rgba(0,0,0,0.45)] overflow-visible"
+        fill="none"
+        xmlns="http://www.w3.org/2000/svg"
+      >
+        <defs>
+          <linearGradient id="plant-leaf-dark" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stopColor="#2A665A" />
+            <stop offset="50%" stopColor="#1F4F46" />
+            <stop offset="100%" stopColor="#163832" />
+          </linearGradient>
+
+          <linearGradient id="plant-leaf-light" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stopColor="#3B8476" />
+            <stop offset="60%" stopColor="#2A665A" />
+            <stop offset="100%" stopColor="#193F37" />
+          </linearGradient>
+
+          <linearGradient id="pot-ceramic" x1="0%" y1="0%" x2="100%" y2="0%">
+            <stop offset="0%" stopColor="#1A1917" />
+            <stop offset="45%" stopColor="#282622" />
+            <stop offset="100%" stopColor="#1A1917" />
+          </linearGradient>
+        </defs>
+
+        {/* Ambient Floor Shadow */}
+        <ellipse cx="68" cy="198" rx="48" ry="7" fill="#000000" fillOpacity="0.45" />
+
+        {/* --- Swaying Foliage Cluster (Top Leaves) --- */}
+        <g className="animate-studio-plant-sway">
+          {/* Back Tall Snake Plant Spear (Center-Right) */}
+          <path
+            d="M68 135 C70 90 85 45 76 10 C68 45 66 90 68 135 Z"
+            fill="url(#plant-leaf-dark)"
+            stroke="#132B26"
+            strokeWidth="1"
+          />
+          {/* Variegation Edge band */}
+          <path
+            d="M74 15 C79 50 72 90 70 130"
+            stroke="#2DD4BF"
+            strokeWidth="0.8"
+            strokeOpacity="0.35"
+            strokeLinecap="round"
+          />
+
+          {/* Tall Snake Plant Spear (Left-leaning) */}
+          <path
+            d="M62 135 C58 95 44 55 48 20 C56 55 64 95 62 135 Z"
+            fill="url(#plant-leaf-light)"
+            stroke="#163832"
+            strokeWidth="1"
+          />
+          <path
+            d="M49 26 C53 60 59 95 60 130"
+            stroke="#2DD4BF"
+            strokeWidth="0.8"
+            strokeOpacity="0.3"
+            strokeLinecap="round"
+          />
+
+          {/* Tall Central Spear */}
+          <path
+            d="M66 135 C64 80 62 40 65 6 C69 40 70 80 66 135 Z"
+            fill="url(#plant-leaf-dark)"
+            stroke="#163832"
+            strokeWidth="1"
+          />
+          {/* Variegation tiger stripes */}
+          <line x1="64" y1="35" x2="67" y2="37" stroke="#2DD4BF" strokeOpacity="0.35" strokeWidth="0.9" />
+          <line x1="64" y1="55" x2="68" y2="57" stroke="#2DD4BF" strokeOpacity="0.35" strokeWidth="0.9" />
+          <line x1="65" y1="75" x2="68" y2="78" stroke="#2DD4BF" strokeOpacity="0.35" strokeWidth="0.9" />
+
+          {/* Broad Arching Monstera Leaf (Left) */}
+          <path
+            d="M60 138 C50 115 28 100 12 108 C15 125 35 138 60 138 Z"
+            fill="url(#plant-leaf-dark)"
+            stroke="#163832"
+            strokeWidth="1"
+          />
+          {/* Leaf slit cutout */}
+          <path d="M26 114 C32 118 36 122 36 122" stroke="#102521" strokeWidth="1.5" strokeLinecap="round" />
+
+          {/* Broad Arching Leaf (Right) */}
+          <path
+            d="M72 138 C85 115 110 105 122 115 C115 130 95 140 72 138 Z"
+            fill="url(#plant-leaf-light)"
+            stroke="#1F4F46"
+            strokeWidth="1"
+          />
+          {/* Leaf vein */}
+          <path d="M78 136 C92 126 108 118 116 116" stroke="#2DD4BF" strokeOpacity="0.25" strokeWidth="1" />
+        </g>
+
+        {/* --- Main Ribbed Floor Planter Pot --- */}
+        {/* Pot Base Body */}
+        <path
+          d="M48 142 L53 194 C53 196 55 198 58 198 L82 198 C85 198 87 196 87 194 L92 142 Z"
+          fill="url(#pot-ceramic)"
+          stroke="#38352F"
+          strokeWidth="1.2"
+        />
+
+        {/* Planter Vertical Rib Details */}
+        <line x1="56" y1="144" x2="60" y2="194" stroke="#3A3732" strokeWidth="1" />
+        <line x1="63" y1="144" x2="66" y2="196" stroke="#3A3732" strokeWidth="1" />
+        <line x1="70" y1="144" x2="70" y2="196" stroke="#44413B" strokeWidth="1" />
+        <line x1="77" y1="144" x2="74" y2="196" stroke="#3A3732" strokeWidth="1" />
+        <line x1="84" y1="144" x2="80" y2="194" stroke="#3A3732" strokeWidth="1" />
+
+        {/* Pot Soil Top */}
+        <ellipse cx="70" cy="142" rx="22" ry="5" fill="#141311" stroke="#2B2925" strokeWidth="1" />
+
+        {/* Warm Umber/Terracotta Planter Rim Collar */}
+        <path
+          d="M46 138 L94 138 C95 138 96 139 96 141 L94 144 C94 145 93 146 92 146 L48 146 C47 146 46 145 46 144 L44 141 C44 139 45 138 46 138 Z"
+          fill="#8C5327"
+          stroke="#A7632F"
+          strokeWidth="0.8"
+        />
+
+        {/* --- Small Companion Succulent Pot (Nestled to the right) --- */}
+        <g>
+          {/* Companion Pot Shadow */}
+          <ellipse cx="106" cy="197" rx="14" ry="3.5" fill="#000000" fillOpacity="0.35" />
+          {/* Mini Pot Body */}
+          <path
+            d="M96 172 L99 194 C99 196 101 197 103 197 L111 197 C113 197 115 196 115 194 L118 172 Z"
+            fill="#22201D"
+            stroke="#383631"
+            strokeWidth="0.8"
+          />
+          {/* Mini Pot Rim */}
+          <rect x="95" y="170" width="24" height="3" rx="1.5" fill="#2E2C28" stroke="#44413B" strokeWidth="0.8" />
+          {/* Succulent Rosette Leaves */}
+          <circle cx="107" cy="168" r="4" fill="#2A665A" stroke="#1F4F46" strokeWidth="0.8" />
+          <circle cx="103" cy="169" r="3.5" fill="#3B8476" stroke="#2A665A" strokeWidth="0.6" />
+          <circle cx="111" cy="169" r="3.5" fill="#3B8476" stroke="#2A665A" strokeWidth="0.6" />
+          <circle cx="107" cy="165" r="3.2" fill="#4E9F8E" stroke="#2DD4BF" strokeWidth="0.6" />
+        </g>
+      </svg>
+    </div>
+  );
+};
+
+
 export const Screen1Upload: React.FC = () => {
   const { loadProject, setScreen, toggleVoiceEnhance, toggleNoiseReduction, generateTranscript } = useEditorStore();
 
@@ -910,148 +1356,162 @@ export const Screen1Upload: React.FC = () => {
         </div>
       </section>
 
-      {/* Main Content Area: Lowered Upload Dropbox & Mode Selection */}
-      <main className="max-w-6xl mx-auto w-full px-6 pb-16 grid grid-cols-1 lg:grid-cols-12 gap-8 items-start mt-1">
-        {/* Left Column: Drag & Drop Dropzone */}
-        <div className="lg:col-span-7 space-y-6">
-          <div
-            onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
-            onDragLeave={() => setIsDragging(false)}
-            onDrop={handleFileDrop}
-            className={`relative border-2 border-dashed rounded-2xl p-8 flex flex-col items-center justify-center text-center transition-all ${
-              isDragging
-                ? 'border-[#E8872A] bg-[#E8872A]/10 scale-[1.01]'
-                : selectedFile
-                ? 'border-[#2DD4BF]/50 bg-[#14B8A6]/10'
-                : 'border-[#2C2B28] hover:border-[#45423C] bg-[#161614]'
-            }`}
-          >
-            <input
-              type="file"
-              accept="video/mp4,video/quicktime,video/webm"
-              onChange={handleFileInput}
-              className="absolute inset-0 opacity-0 cursor-pointer"
-              disabled={isProcessing}
-            />
+      {/* Studio Stage Section: Key Light (Left) + Upload Dropbox / Mode Cards (Center) + Potted Plants (Right) */}
+      <section className="relative w-full max-w-[1440px] mx-auto overflow-hidden">
+        {/* Studio Key Light (Angled towards the Upload Dropbox) */}
+        <StudioKeyLight />
 
-            <div className="w-16 h-16 rounded-2xl bg-[#1F1E1C] border border-[#2C2B28] flex items-center justify-center mb-4">
+        {/* Studio Potted Indoor Plants (Bottom Right beside Mode Cards) */}
+        <StudioPottedPlants />
+
+        {/* Main Content Area: Lowered Upload Dropbox & Mode Selection */}
+        <main className="max-w-6xl mx-auto w-full px-6 pb-16 grid grid-cols-1 lg:grid-cols-12 gap-8 items-start mt-1 relative z-10">
+          {/* Left Column: Drag & Drop Dropzone */}
+          <div className="lg:col-span-7 space-y-4">
+            <div
+              onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
+              onDragLeave={() => setIsDragging(false)}
+              onDrop={handleFileDrop}
+              className={`relative border-2 border-dashed rounded-2xl p-8 flex flex-col items-center justify-center text-center transition-all ${
+                isDragging
+                  ? 'border-[#E8872A] bg-[#E8872A]/10 scale-[1.01]'
+                  : selectedFile
+                  ? 'border-[#2DD4BF]/50 bg-[#14B8A6]/10'
+                  : 'border-[#2C2B28] hover:border-[#45423C] bg-[#161614]'
+              }`}
+            >
+              <input
+                type="file"
+                accept="video/mp4,video/quicktime,video/webm"
+                onChange={handleFileInput}
+                className="absolute inset-0 opacity-0 cursor-pointer"
+                disabled={isProcessing}
+              />
+
+              <div className="w-16 h-16 rounded-2xl bg-[#1F1E1C] border border-[#2C2B28] flex items-center justify-center mb-4">
+                {selectedFile ? (
+                  <FileVideo className="w-8 h-8 text-[#5EEAD4]" />
+                ) : (
+                  <Upload className="w-8 h-8 text-[#A19E97]" />
+                )}
+              </div>
+
               {selectedFile ? (
-                <FileVideo className="w-8 h-8 text-[#5EEAD4]" />
+                <div className="space-y-1">
+                  <p className="text-sm font-semibold text-[#5EEAD4]">{selectedFile.name}</p>
+                  <p className="text-xs text-[#A19E97] tabular-nums">
+                    {(selectedFile.size / (1024 * 1024)).toFixed(2)} MB • Ready for processing
+                  </p>
+                  <span className="inline-block mt-2 text-xs text-[#E8872A] hover:underline cursor-pointer">
+                    Click or drag to change file
+                  </span>
+                </div>
               ) : (
-                <Upload className="w-8 h-8 text-[#A19E97]" />
+                <div className="space-y-2">
+                  <p className="text-base font-medium text-[#F4F2EE]">
+                    Drag and drop your video here, or <span className="text-[#E8872A] font-semibold underline">browse files</span>
+                  </p>
+                  <p className="text-xs text-[#6E6B64]">
+                    Supports MP4, MOV, and WebM • Max 250 MB • Max 5 minutes
+                  </p>
+                </div>
               )}
             </div>
 
-            {selectedFile ? (
-              <div className="space-y-1">
-                <p className="text-sm font-semibold text-[#5EEAD4]">{selectedFile.name}</p>
-                <p className="text-xs text-[#A19E97] tabular-nums">
-                  {(selectedFile.size / (1024 * 1024)).toFixed(2)} MB • Ready for processing
-                </p>
-                <span className="inline-block mt-2 text-xs text-[#E8872A] hover:underline cursor-pointer">
-                  Click or drag to change file
-                </span>
+            {/* Studio Editor Chair (Directly below Dropbox, facing it as screen) */}
+            <div className="flex justify-center pointer-events-none select-none pt-1">
+              <StudioEditorChair />
+            </div>
+
+            {errorMsg && (
+              <div className="flex items-center space-x-2 p-3 bg-[#DC2626]/12 border border-[#EF4444]/40 rounded-xl text-[#F87171] text-xs">
+                <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                <span>{errorMsg}</span>
               </div>
-            ) : (
-              <div className="space-y-2">
-                <p className="text-base font-medium text-[#F4F2EE]">
-                  Drag and drop your video here, or <span className="text-[#E8872A] font-semibold underline">browse files</span>
-                </p>
-                <p className="text-xs text-[#6E6B64]">
-                  Supports MP4, MOV, and WebM • Max 250 MB • Max 5 minutes
-                </p>
+            )}
+
+            {isProcessing && (
+              <div className="p-4 bg-[#1F1E1C] border border-[#2C2B28] rounded-xl space-y-2">
+                <div className="flex items-center justify-between text-xs text-[#F4F2EE]">
+                  <span className="flex items-center space-x-2">
+                    <div className="w-2 h-2 rounded-full bg-[#E8872A] animate-ping" />
+                    <span>{processingStatus}</span>
+                  </span>
+                </div>
+                <div className="w-full bg-[#161614] h-1.5 rounded-full overflow-hidden">
+                  <div className="bg-[#E8872A] h-full w-2/3 animate-pulse" />
+                </div>
               </div>
             )}
           </div>
 
-          {errorMsg && (
-            <div className="flex items-center space-x-2 p-3 bg-[#DC2626]/12 border border-[#EF4444]/40 rounded-xl text-[#F87171] text-xs">
-              <AlertCircle className="w-4 h-4 flex-shrink-0" />
-              <span>{errorMsg}</span>
-            </div>
-          )}
+          {/* Right Column: Mode Selection (Auto Edit vs Custom Edit) */}
+          <div className="lg:col-span-5 space-y-6">
+            {/* Card A: Auto Edit Recipes */}
+            <div className="bg-[#161614] border border-[#2C2B28] rounded-2xl p-6 space-y-4">
+              <div className="flex items-center space-x-3">
+                <div className="w-8 h-8 rounded-lg bg-[#1F1E1C] border border-[#2C2B28] text-[#E8872A] flex items-center justify-center">
+                  <Wand2 className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-semibold text-[#F4F2EE]">Mode A: AI Auto-Edit</h3>
+                  <p className="text-xs text-[#A19E97]">Select automated enhancements to apply</p>
+                </div>
+              </div>
 
-          {isProcessing && (
-            <div className="p-4 bg-[#1F1E1C] border border-[#2C2B28] rounded-xl space-y-2">
-              <div className="flex items-center justify-between text-xs text-[#F4F2EE]">
-                <span className="flex items-center space-x-2">
-                  <div className="w-2 h-2 rounded-full bg-[#E8872A] animate-ping" />
-                  <span>{processingStatus}</span>
-                </span>
+              <div className="space-y-2.5 pt-2">
+                {[
+                  { key: 'transcript', label: 'Generate Word-Level Transcript' },
+                  { key: 'timestamps', label: 'Create Chapter Timestamps' },
+                  { key: 'voiceEnhance', label: 'Enhance speaker audio' },
+                  { key: 'noiseReduction', label: 'Remove background noise' }
+                ].map(({ key, label }) => (
+                  <label
+                    key={key}
+                    className="flex items-center space-x-3 text-xs text-[#A19E97] cursor-pointer select-none hover:text-[#F4F2EE] transition-colors"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={autoOptions[key as keyof typeof autoOptions]}
+                      onChange={(e) =>
+                        setAutoOptions({ ...autoOptions, [key]: e.target.checked })
+                      }
+                      className="w-4 h-4 rounded border-[#2C2B28] text-[#E8872A] focus:ring-[#E8872A]/40 bg-[#1F1E1C]"
+                    />
+                    <span className="flex items-center space-x-2">
+                      <span>{label}</span>
+                    </span>
+                  </label>
+                ))}
               </div>
-              <div className="w-full bg-[#161614] h-1.5 rounded-full overflow-hidden">
-                <div className="bg-[#E8872A] h-full w-2/3 animate-pulse" />
-              </div>
-            </div>
-          )}
-        </div>
 
-        {/* Right Column: Mode Selection (Auto Edit vs Custom Edit) */}
-        <div className="lg:col-span-5 space-y-6">
-          {/* Card A: Auto Edit Recipes */}
-          <div className="bg-[#161614] border border-[#2C2B28] rounded-2xl p-6 space-y-4">
-            <div className="flex items-center space-x-3">
-              <div className="w-8 h-8 rounded-lg bg-[#1F1E1C] border border-[#2C2B28] text-[#E8872A] flex items-center justify-center">
-                <Wand2 className="w-4 h-4" />
-              </div>
+              <button
+                onClick={() => handleStartEditing(true)}
+                disabled={!selectedFile || isProcessing}
+                className="w-full flex items-center justify-center space-x-2 bg-[#E8872A] hover:bg-[#F59A3D] text-[#11100E] font-semibold py-2.5 px-4 rounded-lg text-sm transition-all disabled:opacity-40 disabled:cursor-not-allowed shadow-none active:scale-[0.99]"
+              >
+                <span>Start Auto Edit</span>
+                <ArrowRight className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Card B: Custom Edit */}
+            <div className="bg-[#161614] border border-[#2C2B28] rounded-2xl p-5 flex items-center justify-between">
               <div>
-                <h3 className="text-sm font-semibold text-[#F4F2EE]">Mode A: AI Auto-Edit</h3>
-                <p className="text-xs text-[#A19E97]">Select automated enhancements to apply</p>
+                <h4 className="text-sm font-semibold text-[#F4F2EE]">Mode B: Custom Edit</h4>
+                <p className="text-xs text-[#A19E97]">Direct workspace access without auto changes</p>
               </div>
+              <button
+                onClick={() => handleStartEditing(false)}
+                disabled={!selectedFile || isProcessing}
+                className="px-4 py-2 bg-[#23221F] hover:bg-[#2E2C28] border border-[#35332F] text-[#E6E3DC] text-xs font-medium rounded-lg transition-colors disabled:opacity-40"
+              >
+                Custom Edit
+              </button>
             </div>
-
-            <div className="space-y-2.5 pt-2">
-              {[
-                { key: 'transcript', label: 'Generate Word-Level Transcript' },
-                { key: 'timestamps', label: 'Create Chapter Timestamps' },
-                { key: 'voiceEnhance', label: 'Enhance speaker audio' },
-                { key: 'noiseReduction', label: 'Remove background noise' }
-              ].map(({ key, label }) => (
-                <label
-                  key={key}
-                  className="flex items-center space-x-3 text-xs text-[#A19E97] cursor-pointer select-none hover:text-[#F4F2EE] transition-colors"
-                >
-                  <input
-                    type="checkbox"
-                    checked={autoOptions[key as keyof typeof autoOptions]}
-                    onChange={(e) =>
-                      setAutoOptions({ ...autoOptions, [key]: e.target.checked })
-                    }
-                    className="w-4 h-4 rounded border-[#2C2B28] text-[#E8872A] focus:ring-[#E8872A]/40 bg-[#1F1E1C]"
-                  />
-                  <span className="flex items-center space-x-2">
-                    <span>{label}</span>
-                  </span>
-                </label>
-              ))}
-            </div>
-
-            <button
-              onClick={() => handleStartEditing(true)}
-              disabled={!selectedFile || isProcessing}
-              className="w-full flex items-center justify-center space-x-2 bg-[#E8872A] hover:bg-[#F59A3D] text-[#11100E] font-semibold py-2.5 px-4 rounded-lg text-sm transition-all disabled:opacity-40 disabled:cursor-not-allowed shadow-none active:scale-[0.99]"
-            >
-              <span>Start Auto Edit</span>
-              <ArrowRight className="w-4 h-4" />
-            </button>
           </div>
-
-          {/* Card B: Custom Edit */}
-          <div className="bg-[#161614] border border-[#2C2B28] rounded-2xl p-5 flex items-center justify-between">
-            <div>
-              <h4 className="text-sm font-semibold text-[#F4F2EE]">Mode B: Custom Edit</h4>
-              <p className="text-xs text-[#A19E97]">Direct workspace access without auto changes</p>
-            </div>
-            <button
-              onClick={() => handleStartEditing(false)}
-              disabled={!selectedFile || isProcessing}
-              className="px-4 py-2 bg-[#23221F] hover:bg-[#2E2C28] border border-[#35332F] text-[#E6E3DC] text-xs font-medium rounded-lg transition-colors disabled:opacity-40"
-            >
-              Custom Edit
-            </button>
-          </div>
-        </div>
-      </main>
+        </main>
+      </section>
 
       {/* Footer */}
       <footer className="max-w-6xl mx-auto w-full px-6 pt-4 pb-6 border-t border-[#2C2B28] text-center text-xs text-[#6E6B64] mt-auto">
