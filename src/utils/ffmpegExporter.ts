@@ -333,12 +333,12 @@ export async function exportProjectVideo(
     // Normalization video filter
     const normVideo = `fps=30,scale=${targetW}:${targetH}:force_original_aspect_ratio=decrease,pad=${targetW}:${targetH}:(ow-iw)/2:(oh-ih)/2:black,setsar=1,format=yuv420p`;
 
-    // Native audible audio DSP filters applied directly to source stream [0:a]
+    // Native audible audio DSP filters applied directly to source stream [0:a] and all user video segments
     let audioFilters = '';
     if (noiseRemovalActive) {
       audioFilters += useFallbackNoiseFilter
-        ? ',highpass=f=120,lowpass=f=7500,afftdn=nr=18:nf=-22:tn=1'
-        : ',highpass=f=150,lowpass=f=7000,afftdn=nr=26:nf=-20:tn=1';
+        ? ',highpass=f=180,highpass=f=180,lowpass=f=6200,agate=threshold=0.035:ratio=5:attack=15:release=180:range=0.05'
+        : ',highpass=f=180,highpass=f=180,lowpass=f=6200,afftdn=nr=40:nf=-25:tn=1,agate=threshold=0.035:ratio=5:attack=15:release=180:range=0.05';
     }
     if (voiceEnhanceActive) {
       const hp = noiseRemovalActive ? '' : ',highpass=f=85';
@@ -361,14 +361,16 @@ export async function exportProjectVideo(
           filterParts.push(`anullsrc=r=44100:cl=stereo:d=${durSec},atrim=0:${durSec}[a${i}]`);
         }
       } else {
-        // MEME_CLIP
+        // MEME_CLIP or added user clip
+        const isUserClip = !!item.meta?.isAddedClip || (item.id.startsWith('clip_') && !item.meta?.memeCategory?.startsWith('meme_'));
         const memeInfo = memeInputMap.get(item.blobUrl);
         const inputIdx = memeInfo ? memeInfo.inputIndex : 0;
 
         filterParts.push(`[${inputIdx}:v]trim=start=${startSec}:end=${endSec},setpts=PTS-STARTPTS,${normVideo}[v${i}]`);
 
         if (memeInfo && memeInfo.hasAudio) {
-          filterParts.push(`[${inputIdx}:a]atrim=start=${startSec}:end=${endSec},asetpts=PTS-STARTPTS,aresample=44100:async=1,aformat=sample_fmts=fltp:channel_layouts=stereo,apad,atrim=0:${durSec}[a${i}]`);
+          const segAudioFilters = isUserClip ? audioFilters : '';
+          filterParts.push(`[${inputIdx}:a]atrim=start=${startSec}:end=${endSec},asetpts=PTS-STARTPTS,aresample=44100:async=1,aformat=sample_fmts=fltp:channel_layouts=stereo${segAudioFilters},apad,atrim=0:${durSec}[a${i}]`);
         } else {
           // Silent meme fallback
           filterParts.push(`anullsrc=r=44100:cl=stereo:d=${durSec},atrim=0:${durSec}[a${i}]`);

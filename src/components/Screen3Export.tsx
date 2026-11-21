@@ -213,7 +213,7 @@ export const Screen3Export: React.FC = () => {
             )}
 
             {/* Edit Summary Card */}
-            <div className="grid grid-cols-2 sm:grid-cols-6 gap-3 pt-2">
+            <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 pt-2">
               <div className="bg-[#1F1E1C] border border-[#2C2B28] p-3 rounded-xl text-center">
                 <span className="text-[10px] uppercase font-bold text-[#A19E97] tracking-wider">Cuts Applied</span>
                 <p className="text-base font-bold text-[#E8872A] tabular-nums">{cutsCount} Cuts</p>
@@ -233,13 +233,6 @@ export const Screen3Export: React.FC = () => {
                 <span className="text-[10px] uppercase font-bold text-[#A19E97] tracking-wider">Voice Enhance</span>
                 <p className={`text-base font-bold tabular-nums ${exportResult?.voiceEnhanceBaked ? 'text-[#5EEAD4]' : 'text-[#6E6B64]'}`}>
                   {exportResult?.voiceEnhanceBaked ? 'Baked In' : 'Off'}
-                </p>
-              </div>
-
-              <div className="bg-[#1F1E1C] border border-[#2C2B28] p-3 rounded-xl text-center">
-                <span className="text-[10px] uppercase font-bold text-[#A19E97] tracking-wider">Noise Removal</span>
-                <p className={`text-base font-bold tabular-nums ${exportResult?.noiseRemovalBaked ? 'text-[#5EEAD4]' : 'text-[#6E6B64]'}`}>
-                  {exportResult?.noiseRemovalBaked ? 'Baked In' : 'Off'}
                 </p>
               </div>
 
@@ -302,7 +295,7 @@ export const Screen3Export: React.FC = () => {
                   <div>
                     <span className="text-[#A19E97]">Background Noise Removal: </span>
                     <span className={exportResult.noiseRemovalBaked ? 'text-[#5EEAD4] font-bold' : 'text-[#6E6B64]'}>
-                      {exportResult.noiseRemovalBaked ? 'Baked into MP4 (Adaptive STFT Wiener Spectral Denoiser)' : 'Disabled'}
+                      {exportResult.noiseRemovalBaked ? 'Baked into MP4 (Cascaded 180Hz HPF + 6.2kHz LPF + 40dB FFT Denoiser + Agate Gate)' : 'Disabled'}
                     </span>
                   </div>
                   <div>
@@ -341,7 +334,7 @@ export const Screen3Export: React.FC = () => {
 
       {/* Footer */}
       <footer className="max-w-4xl mx-auto w-full pt-4 border-t border-[#2C2B28] text-center text-xs text-[#6E6B64] flex items-center justify-between">
-        <span>AI Video Editor • Frame-Accurate Re-encode Engine</span>
+        <span>Fastcutz.ai</span>
         <span>Scaler YIIC 9.0 Week 2</span>
       </footer>
     </div>

@@ -148,8 +148,8 @@ export const Screen2Workspace: React.FC = () => {
   const audioContextRef = useRef<AudioContext | null>(null);
   const nrHighPass1Ref = useRef<BiquadFilterNode | null>(null);
   const nrHighPass2Ref = useRef<BiquadFilterNode | null>(null);
+  const nrFanHumCutRef = useRef<BiquadFilterNode | null>(null);
   const nrLowPassRef = useRef<BiquadFilterNode | null>(null);
-  const nrHighShelfRef = useRef<BiquadFilterNode | null>(null);
   const nrGateGainRef = useRef<GainNode | null>(null);
   const nrAnalyserRef = useRef<AnalyserNode | null>(null);
   const veWarmthCutRef = useRef<BiquadFilterNode | null>(null);
@@ -306,33 +306,34 @@ export const Screen2Workspace: React.FC = () => {
       // Build Real-Time DSP Filter Chain once
       if (!nrHighPass1Ref.current) {
         // 1. Noise Removal Stage (audible in live preview, matches FFmpeg native export filters)
-        // Cascaded High-pass filter stage 1 at 160 Hz (12 dB/oct cut, transparent at 10 Hz when OFF)
+        // Cascaded High-pass filter stage 1 at 180 Hz (cuts fan motor hum, transparent at 10 Hz when OFF)
         const nrHighPass1 = ctx.createBiquadFilter();
         nrHighPass1.type = 'highpass';
-        nrHighPass1.frequency.value = noiseRemovalEnabled ? 160 : 10;
+        nrHighPass1.frequency.value = noiseRemovalEnabled ? 180 : 10;
         nrHighPass1.Q.value = 0.7071;
         nrHighPass1Ref.current = nrHighPass1;
 
-        // Cascaded High-pass filter stage 2 at 160 Hz (combines to 24 dB/oct steep cut for room rumble & fan hum)
+        // Cascaded High-pass filter stage 2 at 180 Hz (combines to 24 dB/oct steep cut for ceiling fan hum)
         const nrHighPass2 = ctx.createBiquadFilter();
         nrHighPass2.type = 'highpass';
-        nrHighPass2.frequency.value = noiseRemovalEnabled ? 160 : 10;
+        nrHighPass2.frequency.value = noiseRemovalEnabled ? 180 : 10;
         nrHighPass2.Q.value = 0.7071;
         nrHighPass2Ref.current = nrHighPass2;
 
-        // Low-pass filter at 6500 Hz (cuts high-frequency hiss, transparent at 22 kHz when OFF)
+        // Peaking cut filter at 250 Hz, Q = 1.2, -5.0 dB (targets resonant ceiling fan motor drone, 0 dB when OFF)
+        const nrFanHumCut = ctx.createBiquadFilter();
+        nrFanHumCut.type = 'peaking';
+        nrFanHumCut.frequency.value = 250;
+        nrFanHumCut.Q.value = 1.2;
+        nrFanHumCut.gain.value = noiseRemovalEnabled ? -5.0 : 0;
+        nrFanHumCutRef.current = nrFanHumCut;
+
+        // Low-pass filter at 6200 Hz (cuts fan blade air-whoosh and high hiss, transparent at 22 kHz when OFF)
         const nrLowPass = ctx.createBiquadFilter();
         nrLowPass.type = 'lowpass';
-        nrLowPass.frequency.value = noiseRemovalEnabled ? 6500 : 22000;
+        nrLowPass.frequency.value = noiseRemovalEnabled ? 6200 : 22000;
         nrLowPass.Q.value = 0.7071;
         nrLowPassRef.current = nrLowPass;
-
-        // High-shelf filter at 4800 Hz, -6.0 dB (steep anti-hiss reduction, 0 dB when OFF)
-        const nrHighShelf = ctx.createBiquadFilter();
-        nrHighShelf.type = 'highshelf';
-        nrHighShelf.frequency.value = 4800;
-        nrHighShelf.gain.value = noiseRemovalEnabled ? -6.0 : 0;
-        nrHighShelfRef.current = nrHighShelf;
 
         // Noise Gate / Downward Expander Gain Node
         const nrGateGain = ctx.createGain();
@@ -377,14 +378,14 @@ export const Screen2Workspace: React.FC = () => {
         veMakeupGainRef.current = veMakeupGain;
 
         // Connect the real-time DSP filter chain strictly in series:
-        // nrHighPass1 -> nrHighPass2 -> nrLowPass -> nrHighShelf -> nrGateGain -> veWarmthCut -> vePresenceBoost -> veCompressor -> veMakeupGain -> destination
+        // nrHighPass1 -> nrHighPass2 -> nrFanHumCut -> nrLowPass -> nrGateGain -> veWarmthCut -> vePresenceBoost -> veCompressor -> veMakeupGain -> destination
         nrHighPass1.connect(nrHighPass2);
-        nrHighPass2.connect(nrLowPass);
-        nrLowPass.connect(nrHighShelf);
-        nrHighShelf.connect(nrGateGain);
+        nrHighPass2.connect(nrFanHumCut);
+        nrFanHumCut.connect(nrLowPass);
+        nrLowPass.connect(nrGateGain);
 
-        // Tap envelope detection analyzer off nrHighShelf (listen-only, no parallel route to destination)
-        nrHighShelf.connect(nrAnalyser);
+        // Tap envelope detection analyzer off nrLowPass (listen-only, no parallel route to destination)
+        nrLowPass.connect(nrAnalyser);
 
         nrGateGain.connect(veWarmthCut);
         veWarmthCut.connect(vePresenceBoost);
@@ -413,16 +414,16 @@ export const Screen2Workspace: React.FC = () => {
 
     // Real-Time Noise Removal cascaded filters
     if (nrHighPass1Ref.current) {
-      nrHighPass1Ref.current.frequency.setValueAtTime(noiseRemovalEnabled ? 160 : 10, now);
+      nrHighPass1Ref.current.frequency.setValueAtTime(noiseRemovalEnabled ? 180 : 10, now);
     }
     if (nrHighPass2Ref.current) {
-      nrHighPass2Ref.current.frequency.setValueAtTime(noiseRemovalEnabled ? 160 : 10, now);
+      nrHighPass2Ref.current.frequency.setValueAtTime(noiseRemovalEnabled ? 180 : 10, now);
+    }
+    if (nrFanHumCutRef.current) {
+      nrFanHumCutRef.current.gain.setValueAtTime(noiseRemovalEnabled ? -5.0 : 0, now);
     }
     if (nrLowPassRef.current) {
-      nrLowPassRef.current.frequency.setValueAtTime(noiseRemovalEnabled ? 6500 : 22000, now);
-    }
-    if (nrHighShelfRef.current) {
-      nrHighShelfRef.current.gain.setValueAtTime(noiseRemovalEnabled ? -6.0 : 0, now);
+      nrLowPassRef.current.frequency.setValueAtTime(noiseRemovalEnabled ? 6200 : 22000, now);
     }
     if (!noiseRemovalEnabled && nrGateGainRef.current) {
       nrGateGainRef.current.gain.setValueAtTime(1.0, now);
@@ -444,10 +445,12 @@ export const Screen2Workspace: React.FC = () => {
     }
   }, [voiceEnhanceEnabled, noiseRemovalEnabled]);
 
-  // Real-Time Smooth Downward Expander / Noise Gate Envelope Loop
+  // Real-Time Adaptive Downward Expander / Noise Gate Envelope Loop
   useEffect(() => {
     let animId: number;
     const dataArray = new Uint8Array(256);
+    const recentRmsHistory: number[] = [];
+    let rollingNoiseFloor = 0.015;
 
     const updateGate = () => {
       const ctx = audioContextRef.current;
@@ -467,12 +470,29 @@ export const Screen2Workspace: React.FC = () => {
           }
           const rms = Math.sqrt(sum / dataArray.length);
 
-          if (rms < 0.022) {
-            // Below speech threshold: smooth downward attenuation to 0.08 (~-22 dB) with release 0.18s
-            gateGain.gain.setTargetAtTime(0.08, now, 0.18);
+          // Maintain rolling history of recent RMS frames (~50 frames ≈ 0.8s)
+          recentRmsHistory.push(rms);
+          if (recentRmsHistory.length > 50) {
+            recentRmsHistory.shift();
+          }
+
+          // Track rolling background noiseFloor from the lowest ~20% of recent RMS frames
+          if (recentRmsHistory.length >= 10) {
+            const sorted = [...recentRmsHistory].sort((a, b) => a - b);
+            const lowestIdx = Math.floor(sorted.length * 0.20);
+            const measuredFloor = sorted[lowestIdx];
+            rollingNoiseFloor = rollingNoiseFloor * 0.95 + measuredFloor * 0.05;
+          }
+
+          // Adaptive threshold based on measured continuous fan/room noise floor
+          const gateThreshold = Math.max(0.018, rollingNoiseFloor * 1.9);
+
+          if (rms < gateThreshold) {
+            // Below speech threshold: smooth downward attenuation to 0.05 with release 0.15s to silence fan hum
+            gateGain.gain.setTargetAtTime(0.05, now, 0.15);
           } else {
-            // Speech detected: fast attack 0.015s to full 1.0x gain
-            gateGain.gain.setTargetAtTime(1.0, now, 0.015);
+            // Speech detected: fast attack 0.012s to full 1.0x gain
+            gateGain.gain.setTargetAtTime(1.0, now, 0.012);
           }
         }
       }
@@ -1319,7 +1339,7 @@ export const Screen2Workspace: React.FC = () => {
               }
               toggleNoiseRemoval();
             }}
-            title="Background Noise Removal: 160Hz cascaded HPF, 6.5kHz lowpass, -6dB anti-hiss shelf & smooth noise gate"
+            title="Background Noise Removal: Cascaded 180Hz HPF, 250Hz motor cut, 6.2kHz lowpass & adaptive noise gate"
             className={`px-2.5 py-1 rounded-lg text-xs font-medium flex items-center space-x-1.5 border transition-all ${
               noiseRemovalEnabled
                 ? 'bg-[#14B8A6]/15 border-[#2DD4BF]/50 text-[#5EEAD4]'
