@@ -11,6 +11,9 @@ type BotPhase = 'idle' | 'to-cupboard' | 'searching' | 'to-computer' | 'insertin
 type FrameSlotType = 'slotA' | 'welcome' | 'to' | 'fastcutz' | 'slotB';
 const SEQUENCE_ORDER: FrameSlotType[] = ['slotA', 'welcome', 'to', 'fastcutz', 'slotB'];
 
+// Exact duration matching .animate-filmstrip-marquee (28s in src/index.css) for 1-full-roll restoration
+const FULL_ROLL_MS = 28000;
+
 /**
  * Stationary Docking Cradle
  * Anchored permanently flush on the top edge of the left-hand Upload Dropbox
@@ -178,6 +181,14 @@ export const Screen1Upload: React.FC = () => {
   const [botPhase, setBotPhase] = useState<BotPhase>('idle');
   const [showEasyBubble, setShowEasyBubble] = useState(false);
   const nextReplaceSlotRef = useRef<number>(0);
+
+  // Interactive Scissor-Cut state
+  const filmstripRef = useRef<HTMLDivElement>(null);
+  const [isHoveringStrip, setIsHoveringStrip] = useState(false);
+  const [cursorPos, setCursorPos] = useState({ x: -100, y: -100 });
+  const [isSnipping, setIsSnipping] = useState(false);
+  const [cutFrames, setCutFrames] = useState<Record<string, 'cutting' | 'cut'>>({});
+
   const animTimersRef = useRef<NodeJS.Timeout[]>([]);
 
   // Cleanup timers on unmount
@@ -187,6 +198,45 @@ export const Screen1Upload: React.FC = () => {
       animTimersRef.current = [];
     };
   }, []);
+
+  // Track cursor position inside filmstrip for custom scissors
+  const handleStripMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (!filmstripRef.current) return;
+    const rect = filmstripRef.current.getBoundingClientRect();
+    setCursorPos({
+      x: e.clientX - rect.left,
+      y: e.clientY - rect.top
+    });
+  };
+
+  // Trigger Interactive Scissor Cut on a frame
+  const handleCutFrame = (instanceKey: string) => {
+    if (cutFrames[instanceKey]) return;
+
+    // 1. Physically snap scissor blades shut
+    setIsSnipping(true);
+    const snipTimer = setTimeout(() => setIsSnipping(false), 260);
+    animTimersRef.current.push(snipTimer);
+
+    // 2. Set state to 'cutting' (triggers amber flash line, CUT badge, left/right physics drop)
+    setCutFrames(prev => ({ ...prev, [instanceKey]: 'cutting' }));
+
+    // 3. After 560ms (split animation finishes), transition to 'cut' (recessed splice gap)
+    const dropTimer = setTimeout(() => {
+      setCutFrames(prev => ({ ...prev, [instanceKey]: 'cut' }));
+    }, 560);
+    animTimersRef.current.push(dropTimer);
+
+    // 4. Restore frame after exactly 1 full rolling cycle (28s)
+    const restoreTimer = setTimeout(() => {
+      setCutFrames(prev => {
+        const next = { ...prev };
+        delete next[instanceKey];
+        return next;
+      });
+    }, FULL_ROLL_MS);
+    animTimersRef.current.push(restoreTimer);
+  };
 
   // Trigger Interactive Meme Fetch Sequence
   const handleFetchMeme = () => {
@@ -353,16 +403,15 @@ export const Screen1Upload: React.FC = () => {
     }
   };
 
-  // Helper to render individual filmstrip frame (supporting dynamic active meme video slots)
-  const renderFilmstripFrame = (frameType: FrameSlotType, key: string) => {
+  // Internal visual element of a frame (rendered normally or duplicated into split halves)
+  const renderFrameVisual = (frameType: FrameSlotType) => {
     const meme = frameType === 'slotA' ? slotMemes[0] : frameType === 'slotB' ? slotMemes[1] : null;
     const isFastcutz = frameType === 'fastcutz';
     const hasMeme = meme !== null;
 
     return (
       <div
-        key={key}
-        className={`w-[220px] md:w-[250px] h-[82px] md:h-[92px] shrink-0 rounded-lg border flex flex-col justify-between p-1.5 md:p-2 relative select-none overflow-hidden transition-all ${
+        className={`w-full h-full rounded-lg border flex flex-col justify-between p-1.5 md:p-2 relative overflow-hidden transition-all ${
           hasMeme
             ? 'bg-black border-[#2DD4BF]/60 shadow-[0_0_20px_-6px_rgba(45,212,191,0.35)]'
             : isFastcutz
@@ -486,6 +535,82 @@ export const Screen1Upload: React.FC = () => {
     );
   };
 
+  // Helper to render individual filmstrip frame (supporting normal, cutting, and cut splice-gap states)
+  const renderFilmstripFrame = (frameType: FrameSlotType, instanceKey: string) => {
+    const state = cutFrames[instanceKey];
+
+    return (
+      <div
+        key={instanceKey}
+        className="w-[220px] md:w-[250px] h-[82px] md:h-[92px] shrink-0 relative select-none"
+      >
+        {/* State 1: Normal Interactive Frame (Scissors hover & click) */}
+        {!state && (
+          <div
+            onClick={() => handleCutFrame(instanceKey)}
+            className="w-full h-full cursor-pointer group rounded-lg transition-all hover:border-[#E8872A]/80 hover:shadow-[0_0_14px_rgba(232,135,42,0.25)]"
+          >
+            {renderFrameVisual(frameType)}
+          </div>
+        )}
+
+        {/* State 2: 'cutting' (0–560ms) - Left/right split shear and drop + amber cut line + CUT badge */}
+        {state === 'cutting' && (
+          <div className="w-full h-full relative overflow-visible rounded-lg bg-[#0B0B0A]/90 border border-[#2C2B28]/50">
+            {/* Left half with inset(0 50% 0 0) and animate-frame-split-left */}
+            <div
+              className="absolute inset-0 rounded-lg overflow-hidden animate-frame-split-left pointer-events-none"
+              style={{ clipPath: 'inset(0 50% 0 0)' }}
+            >
+              {renderFrameVisual(frameType)}
+            </div>
+
+            {/* Right half with inset(0 0 0 50%) and animate-frame-split-right */}
+            <div
+              className="absolute inset-0 rounded-lg overflow-hidden animate-frame-split-right pointer-events-none"
+              style={{ clipPath: 'inset(0 0 0 50%)' }}
+            >
+              {renderFrameVisual(frameType)}
+            </div>
+
+            {/* Vertical Amber Cut Slice Line */}
+            <div className="absolute inset-y-0 left-1/2 -translate-x-1/2 w-[2px] bg-[#E8872A] shadow-[0_0_10px_#E8872A] animate-cut-slice-line z-30 pointer-events-none" />
+
+            {/* Floating ✂ CUT Badge */}
+            <div className="absolute top-1/2 left-1/2 z-40 pointer-events-none animate-cut-badge-pop whitespace-nowrap">
+              <span className="px-2 py-0.5 rounded-full bg-[#1C1A17] border border-[#E8872A] text-[#FCD34D] font-mono text-[9px] font-bold shadow-lg">
+                ✂ CUT
+              </span>
+            </div>
+          </div>
+        )}
+
+        {/* State 3: 'cut' (560ms until 1 full roll finishes) - Clean Recessed Cutout Slot */}
+        {state === 'cut' && (
+          <div className="w-full h-full rounded-lg border border-dashed border-[#E8872A]/30 bg-[#0B0B0A]/90 flex flex-col items-center justify-center space-y-1 p-2 relative overflow-hidden">
+            <div className="absolute top-1.5 inset-x-2 flex items-center justify-between opacity-30">
+              <div className="w-2.5 h-1 rounded-[1.5px] bg-[#2A2926]" />
+              <div className="w-2.5 h-1 rounded-[1.5px] bg-[#2A2926]" />
+            </div>
+            <div className="flex items-center space-x-1 text-[#E8872A]/70">
+              <span className="text-xs">✂</span>
+              <span className="font-mono text-[8px] md:text-[9px] text-[#A19E97]/80 tracking-widest uppercase">
+                SPLICE GAP
+              </span>
+            </div>
+            <span className="font-mono text-[7px] text-[#52504B] tracking-wider">
+              RESTORES NEXT ROLL
+            </span>
+            <div className="absolute bottom-1.5 inset-x-2 flex items-center justify-between opacity-30">
+              <div className="w-2.5 h-1 rounded-[1.5px] bg-[#2A2926]" />
+              <div className="w-2.5 h-1 rounded-[1.5px] bg-[#2A2926]" />
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
+
   // Robot transition speed mapping
   const robotTransitionDuration =
     botPhase === 'to-computer'
@@ -498,12 +623,79 @@ export const Screen1Upload: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-[#0E0E0D] text-[#F4F2EE] flex flex-col overflow-y-auto">
-      {/* Top Rolling Cinema Filmstrip Hero (Slimmer vertical height) */}
+      {/* Top Rolling Cinema Filmstrip Hero with Custom Scissor Cursor */}
       <section id="hero-space" className="w-full overflow-hidden pt-4 pb-2">
-        <div className="w-full relative overflow-hidden py-1.5 bg-[#141412] border-y border-[#2C2B28]">
+        <div
+          ref={filmstripRef}
+          onMouseEnter={() => setIsHoveringStrip(true)}
+          onMouseLeave={() => setIsHoveringStrip(false)}
+          onMouseMove={handleStripMouseMove}
+          className={`w-full relative overflow-hidden py-1.5 bg-[#141412] border-y border-[#2C2B28] ${
+            isHoveringStrip ? 'md:cursor-none' : ''
+          }`}
+        >
+          {/* Subtle Discoverability Hint */}
+          <div className="pointer-events-none absolute top-1.5 right-4 z-20 flex items-center space-x-1 opacity-70">
+            <span className="text-[10px] font-mono text-[#6B6862] tracking-wider">Click any frame to cut ✂</span>
+          </div>
+
           {/* Left & Right Gradient Fade Masks */}
           <div className="pointer-events-none absolute inset-y-0 left-0 w-24 md:w-36 bg-gradient-to-r from-[#0E0E0D] to-transparent z-10" />
           <div className="pointer-events-none absolute inset-y-0 right-0 w-24 md:w-36 bg-gradient-to-l from-[#0E0E0D] to-transparent z-10" />
+
+          {/* Floating Custom Studio Scissor Cursor (Follows Pointer & Snips on Click) */}
+          {isHoveringStrip && (
+            <div
+              className="pointer-events-none absolute z-40 transition-transform duration-75 ease-out"
+              style={{
+                left: `${cursorPos.x}px`,
+                top: `${cursorPos.y}px`,
+                transform: 'translate(-30%, -30%) rotate(-25deg)',
+                willChange: 'left, top'
+              }}
+            >
+              <svg
+                viewBox="0 0 28 28"
+                className="w-7 h-7 overflow-visible drop-shadow-[0_2px_8px_rgba(0,0,0,0.85)]"
+                fill="none"
+                xmlns="http://www.w3.org/2000/svg"
+              >
+                {/* Top Blade & Handle */}
+                <g className={isSnipping ? 'animate-scissor-top' : ''}>
+                  <path
+                    d="M12 14 L26 8 C27 7.5 26.5 6 25 6.5 L12 12 Z"
+                    fill="#F4F2EE"
+                    stroke="#C5C2BA"
+                    strokeWidth="0.5"
+                  />
+                  <path
+                    d="M12 14 C10 13 8 10 5 10 C2 10 1 13 1 15 C1 18 3 20 6 19 C9 18 11 16 12 14 Z"
+                    fill="none"
+                    stroke="#E8872A"
+                    strokeWidth="2"
+                  />
+                </g>
+                {/* Bottom Blade & Handle */}
+                <g className={isSnipping ? 'animate-scissor-bottom' : ''}>
+                  <path
+                    d="M12 14 L26 20 C27 20.5 26.5 22 25 21.5 L12 16 Z"
+                    fill="#E6E3DC"
+                    stroke="#A19E97"
+                    strokeWidth="0.5"
+                  />
+                  <path
+                    d="M12 14 C10 15 8 18 5 18 C2 18 1 15 1 13 C1 10 3 8 6 9 C9 10 11 12 12 14 Z"
+                    fill="none"
+                    stroke="#E8872A"
+                    strokeWidth="2"
+                  />
+                </g>
+                {/* Pivot Screw */}
+                <circle cx="12" cy="14" r="2" fill="#E8872A" stroke="#1F1E1C" strokeWidth="0.8" />
+                <circle cx="12" cy="14" r="0.75" fill="#FFFFFF" />
+              </svg>
+            </div>
+          )}
 
           {/* Marquee Track (Smooth, continuous -50% marquee loop) */}
           <div className="flex w-max animate-filmstrip-marquee select-none">
