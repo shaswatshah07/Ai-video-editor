@@ -83,3 +83,40 @@
   from { transform: translateY(100%); opacity: 0.5; }
   to { transform: translateY(0); opacity: 1; }
 }
+
+/* Hero Rolling Filmstrip Animation */
+@keyframes filmstrip-marquee {
+  0% { transform: translate3d(0, 0, 0); }
+  100% { transform: translate3d(-50%, 0, 0); }
+}
+
+.animate-filmstrip-marquee {
+  animation: filmstrip-marquee 28s linear infinite;
+  will-change: transform;
+}
+
+.animate-filmstrip-marquee:hover {
+  animation-play-state: paused;
+}
+
+/* Fastcutz Robot Mascot Animations */
+@keyframes fastcutz-breathe {
+  0%, 100% { transform: translateY(0px); }
+  50% { transform: translateY(-2.5px); }
+}
+
+.animate-fastcutz-breathe {
+  animation: fastcutz-breathe 3.6s ease-in-out infinite;
+  will-change: transform;
+}
+
+@keyframes fastcutz-blink {
+  0%, 44%, 48%, 100% { transform: scaleY(1); }
+  46% { transform: scaleY(0.12); }
+}
+
+.animate-fastcutz-blink {
+  animation: fastcutz-blink 4.2s ease-in-out infinite;
+  transform-box: fill-box;
+  transform-origin: center;
+}
