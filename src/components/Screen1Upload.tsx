@@ -608,10 +608,10 @@ export const Screen1Upload: React.FC = () => {
   const [isProcessing, setIsProcessing] = useState(false);
   const [processingStatus, setProcessingStatus] = useState<string>('');
 
-  // Auto Edit Checkboxes (4 options)
+  // Auto Edit Checkboxes (3 options)
   const [autoOptions, setAutoOptions] = useState({
     transcript: true,
-    timestamps: true,
+    timestamps: false,
     voiceEnhance: true,
     noiseReduction: true
   });
@@ -1528,7 +1528,6 @@ export const Screen1Upload: React.FC = () => {
               <div className="space-y-2.5 pt-2">
                 {[
                   { key: 'transcript', label: 'Generate Word-Level Transcript' },
-                  { key: 'timestamps', label: 'Create Chapter Timestamps' },
                   { key: 'voiceEnhance', label: 'Enhance speaker audio' },
                   { key: 'noiseReduction', label: 'Remove background noise' }
                 ].map(({ key, label }) => (

@@ -33,15 +33,36 @@ async function getTranscriber(
     modelDtype = { encoder_model: 'q4', decoder_model_merged: 'q4' };
   }
 
+  const fileProgressMap = new Map<string, { loaded: number; total: number }>();
+  let lastReportedPercent = 0;
+
   const pipelineOptions: any = {
     device: currentDevice,
     dtype: modelDtype,
     progress_callback: (p: any) => {
       if (p.status === 'progress') {
+        const fileKey = p.file || 'weights';
+        const loaded = typeof p.loaded === 'number' ? p.loaded : 0;
+        const total = typeof p.total === 'number' ? p.total : 0;
+        if (total > 0) {
+          fileProgressMap.set(fileKey, { loaded, total });
+        }
+
+        let totalLoaded = 0;
+        let totalBytes = 0;
+        fileProgressMap.forEach((entry) => {
+          totalLoaded += entry.loaded;
+          totalBytes += entry.total;
+        });
+
+        const currentFilePct = typeof p.progress === 'number' ? Math.round(p.progress) : 0;
+        const aggregatePct = totalBytes > 0 ? Math.round((totalLoaded / totalBytes) * 100) : currentFilePct;
+        lastReportedPercent = Math.max(lastReportedPercent, aggregatePct);
+
         self.postMessage({
           type: 'DOWNLOAD_PROGRESS',
-          file: p.file || 'weights',
-          progress: typeof p.progress === 'number' ? Math.round(p.progress) : 0,
+          file: fileKey,
+          progress: Math.min(100, lastReportedPercent),
           loaded: p.loaded,
           total: p.total
         });
@@ -51,9 +72,14 @@ async function getTranscriber(
           file: p.file || 'weights'
         });
       } else if (p.status === 'done') {
+        const fileKey = p.file || 'weights';
+        if (fileProgressMap.has(fileKey)) {
+          const entry = fileProgressMap.get(fileKey)!;
+          fileProgressMap.set(fileKey, { loaded: entry.total, total: entry.total });
+        }
         self.postMessage({
           type: 'DOWNLOAD_DONE',
-          file: p.file || 'weights'
+          file: fileKey
         });
       }
     }

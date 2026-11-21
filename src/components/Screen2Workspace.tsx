@@ -2,7 +2,7 @@ import React, { useRef, useEffect, useState, useCallback, useMemo } from 'react'
 import {
   Play, Pause, RotateCcw, RotateCw, Scissors, Trash2,
   Sparkles, Send, Upload, ChevronRight, ChevronLeft, ChevronDown, ArrowRight,
-  Bookmark, Check, X, Wand2, ShieldAlert, Download,
+  Check, X, Wand2, ShieldAlert, Download,
   Loader2, AlertCircle, RefreshCw, Search, Plus, Film, GripVertical,
   Music, Volume2, VolumeX
 } from 'lucide-react';
@@ -10,9 +10,8 @@ import { useEditorStore } from '../store/useEditorStore';
 import { mapProjectToSource, mapSourceToProjectMs } from '../utils/timelineMath';
 import { parseCommandWithFallback } from '../utils/commandParser';
 import { TransitionType, TimelineItem } from '../types/edl';
-import { SilenceSensitivity, SILENCE_PRESETS } from '../utils/silenceDetector';
+import { SILENCE_PRESETS } from '../utils/silenceDetector';
 import { downloadTranscriptAsTxt } from '../utils/transcriptParser';
-import { generateDenoisedAudio } from '../utils/audioDenoiser';
 import { MEME_LIBRARY } from '../utils/memeLibrary';
 
 interface ActiveTransitionMatch {
@@ -54,6 +53,9 @@ function findActiveTransition(
   return null;
 }
 
+// Module-level cache to ensure primary <video> MediaElementAudioSourceNode is attached ONCE (WeakMap guarded)
+const mediaSourceCache = new WeakMap<HTMLMediaElement, MediaElementAudioSourceNode>();
+
 export const Screen2Workspace: React.FC = () => {
   const {
     project,
@@ -61,7 +63,6 @@ export const Screen2Workspace: React.FC = () => {
     isPlaying,
     previewSpeed,
     timelineZoom,
-    silenceSensitivity,
     thumbnails,
     clipFilmstrips,
     thumbnailProgress,
@@ -69,10 +70,6 @@ export const Screen2Workspace: React.FC = () => {
     commandLogs,
     voiceEnhanceEnabled,
     noiseRemovalEnabled,
-    denoisedAudioUrl,
-    denoisedAudioBlob,
-    isDenoising,
-    denoiseProgress,
     undoStack,
     redoStack,
     transcriptionStatus,
@@ -88,23 +85,22 @@ export const Screen2Workspace: React.FC = () => {
     setPreviewSpeed,
     zoomIn,
     zoomOut,
-    setSilenceSensitivity,
     setTranscriptQuality,
     setTranscriptMode,
     updateTranscriptWord,
     generateTranscript,
+    cancelTranscription,
     setSelectedItemId,
     splitAtPlayhead,
     deleteSelected,
-    acceptSilenceCut,
     keepSilencePause,
     detectSilencesOnly,
+    toggleSilenceSelected,
+    clearAllSilences,
+    applySelectedSilenceCuts,
     setTransition,
     toggleVoiceEnhance,
     toggleNoiseRemoval,
-    setDenoisedAudio,
-    setIsDenoising,
-    setDenoiseProgress,
     undo,
     redo,
     userUploadedClips,
@@ -148,28 +144,19 @@ export const Screen2Workspace: React.FC = () => {
     currentProjectMsRef.current = currentProjectMs;
   }, [currentProjectMs]);
 
-  // Web Audio Context & Node Refs
+  // Web Audio Context & Native Real-Time DSP Filter Refs (audible with zero echo)
   const audioContextRef = useRef<AudioContext | null>(null);
-  const rawSourceAttachedRef = useRef<boolean>(false);
-  const denoisedSourceAttachedRef = useRef<boolean>(false);
-  const denoisedAudioRef = useRef<HTMLAudioElement | null>(null);
-
-  // Crossfade gain nodes
-  const rawGainRef = useRef<GainNode | null>(null);
-  const denoisedGainRef = useRef<GainNode | null>(null);
-
-  // Speaker Voice Enhancement stage refs (Stronger Spec)
-  const veHighPassRef = useRef<BiquadFilterNode | null>(null);
+  const nrHighPassRef = useRef<BiquadFilterNode | null>(null);
+  const nrLowPassRef = useRef<BiquadFilterNode | null>(null);
+  const nrHighShelfRef = useRef<BiquadFilterNode | null>(null);
   const veWarmthCutRef = useRef<BiquadFilterNode | null>(null);
   const vePresenceBoostRef = useRef<BiquadFilterNode | null>(null);
-  const veHighShelfRef = useRef<BiquadFilterNode | null>(null);
   const veCompressorRef = useRef<DynamicsCompressorNode | null>(null);
   const veMakeupGainRef = useRef<GainNode | null>(null);
 
   // UI state
   const [promptInput, setPromptInput] = useState<string>('');
   const [isAiProcessing, setIsAiProcessing] = useState<boolean>(false);
-  const [leftTab, setLeftTab] = useState<'transcript' | 'chapters'>('transcript');
   const [isLeftOpen, setIsLeftOpen] = useState<boolean>(true);
   const [isRightOpen, setIsRightOpen] = useState<boolean>(true);
   const [activeMemePlaying, setActiveMemePlaying] = useState<boolean>(false);
@@ -262,6 +249,7 @@ export const Screen2Workspace: React.FC = () => {
 
   // Dedicated + Add Clip input ref (Step 3.1)
   const addClipInputRef = useRef<HTMLInputElement | null>(null);
+  const customClipsListRef = useRef<HTMLDivElement | null>(null);
 
   // Timeline scrubbing & hover state (Item 2)
   const [isScrubbing, setIsScrubbing] = useState<boolean>(false);
@@ -300,23 +288,10 @@ export const Screen2Workspace: React.FC = () => {
     });
   }, [project?.transcript, project?.items, getWordProjectMs]);
 
-  // Connect denoised <audio> element to Web Audio gain node
-  const connectDenoisedSource = useCallback(() => {
-    const ctx = audioContextRef.current;
-    const audioEl = denoisedAudioRef.current;
-    if (!ctx || !audioEl || denoisedSourceAttachedRef.current || !denoisedGainRef.current) return;
-    try {
-      const dSource = ctx.createMediaElementSource(audioEl);
-      dSource.connect(denoisedGainRef.current);
-      denoisedSourceAttachedRef.current = true;
-    } catch {
-      // Element might already be connected
-    }
-  }, []);
-
-  // Setup Web Audio Node Chain on user gesture or mount
+  // Setup Web Audio Node Chain on user gesture, playback start, or mount
   const setupWebAudio = useCallback(() => {
-    if (!mainVideoRef.current) return;
+    const videoEl = mainVideoRef.current;
+    if (!videoEl) return;
 
     try {
       if (!audioContextRef.current) {
@@ -325,176 +300,116 @@ export const Screen2Workspace: React.FC = () => {
       }
       const ctx = audioContextRef.current;
 
-      // 1. Build Voice Enhancement Chain once if not yet initialized
-      if (!veHighPassRef.current) {
-        // High-pass filter at 100 Hz (removes rumble, transparent at 10 Hz when OFF)
-        const veHighPass = ctx.createBiquadFilter();
-        veHighPass.type = 'highpass';
-        veHighPass.frequency.value = voiceEnhanceEnabled ? 100 : 10;
-        veHighPass.Q.value = 0.7071;
-        veHighPassRef.current = veHighPass;
+      // Build Real-Time DSP Filter Chain once
+      if (!nrHighPassRef.current) {
+        // 1. Noise Removal Stage (audible in live preview, matches FFmpeg native export filters)
+        // High-pass filter at 120 Hz (removes low-end rumble, transparent at 10 Hz when OFF)
+        const nrHighPass = ctx.createBiquadFilter();
+        nrHighPass.type = 'highpass';
+        nrHighPass.frequency.value = noiseRemovalEnabled ? 120 : 10;
+        nrHighPass.Q.value = 0.7071;
+        nrHighPassRef.current = nrHighPass;
 
-        // Boxiness/room-echo cut: peaking filter at 320 Hz, Q = 1.1, -3.0 dB (0 dB when OFF)
+        // Low-pass filter at 7200 Hz (cuts high-frequency hiss, transparent at 22 kHz when OFF)
+        const nrLowPass = ctx.createBiquadFilter();
+        nrLowPass.type = 'lowpass';
+        nrLowPass.frequency.value = noiseRemovalEnabled ? 7200 : 22000;
+        nrLowPass.Q.value = 0.7071;
+        nrLowPassRef.current = nrLowPass;
+
+        // High-shelf filter at 6000 Hz, -4.0 dB (cuts remaining background hiss, 0 dB when OFF)
+        const nrHighShelf = ctx.createBiquadFilter();
+        nrHighShelf.type = 'highshelf';
+        nrHighShelf.frequency.value = 6000;
+        nrHighShelf.gain.value = noiseRemovalEnabled ? -4.0 : 0;
+        nrHighShelfRef.current = nrHighShelf;
+
+        // 2. Voice Enhancement Stage (Warmth cut + Presence boost + Dynamics compressor + Makeup gain)
+        // Boxiness/room-echo cut: peaking filter at 260 Hz, Q = 1.2, -3.5 dB (0 dB when OFF)
         const veWarmthCut = ctx.createBiquadFilter();
         veWarmthCut.type = 'peaking';
-        veWarmthCut.frequency.value = 320;
-        veWarmthCut.Q.value = 1.1;
-        veWarmthCut.gain.value = voiceEnhanceEnabled ? -3.0 : 0;
+        veWarmthCut.frequency.value = 260;
+        veWarmthCut.Q.value = 1.2;
+        veWarmthCut.gain.value = voiceEnhanceEnabled ? -3.5 : 0;
         veWarmthCutRef.current = veWarmthCut;
 
-        // Clean vocal clarity: peaking filter at 3200 Hz, Q = 1.0, +2.2 dB (0 dB when OFF)
+        // Vocal clarity boost: peaking filter at 2800 Hz, Q = 1.0, +4.5 dB (0 dB when OFF)
         const vePresenceBoost = ctx.createBiquadFilter();
         vePresenceBoost.type = 'peaking';
-        vePresenceBoost.frequency.value = 3200;
+        vePresenceBoost.frequency.value = 2800;
         vePresenceBoost.Q.value = 1.0;
-        vePresenceBoost.gain.value = voiceEnhanceEnabled ? 2.2 : 0;
+        vePresenceBoost.gain.value = voiceEnhanceEnabled ? 4.5 : 0;
         vePresenceBoostRef.current = vePresenceBoost;
 
-        // Gentle de-harsh shelf: highshelf at 7500 Hz, -1.5 dB (0 dB when OFF)
-        const veHighShelf = ctx.createBiquadFilter();
-        veHighShelf.type = 'highshelf';
-        veHighShelf.frequency.value = 7500;
-        veHighShelf.gain.value = voiceEnhanceEnabled ? -1.5 : 0;
-        veHighShelfRef.current = veHighShelf;
-
-        // Very light compressor (prevents pumping room echo): threshold -10, knee 18, ratio 1.8, attack 0.015, release 0.12
+        // Voice compressor: threshold -18 dB, ratio 3.5, attack 10ms, release 120ms (transparent when OFF)
         const veCompressor = ctx.createDynamicsCompressor();
-        veCompressor.threshold.value = voiceEnhanceEnabled ? -10 : 0;
-        veCompressor.knee.value = 18;
-        veCompressor.ratio.value = voiceEnhanceEnabled ? 1.8 : 1;
-        veCompressor.attack.value = 0.015;
+        veCompressor.threshold.value = voiceEnhanceEnabled ? -18 : 0;
+        veCompressor.knee.value = 12;
+        veCompressor.ratio.value = voiceEnhanceEnabled ? 3.5 : 1;
+        veCompressor.attack.value = 0.01;
         veCompressor.release.value = 0.12;
         veCompressorRef.current = veCompressor;
 
-        // Makeup Gain: 1.08 when ON, 1.0 when OFF
+        // Makeup Gain: 1.25x (+2 dB) when ON, 1.0x when OFF
         const veMakeupGain = ctx.createGain();
-        veMakeupGain.gain.value = voiceEnhanceEnabled ? 1.08 : 1.0;
+        veMakeupGain.gain.value = voiceEnhanceEnabled ? 1.25 : 1.0;
         veMakeupGainRef.current = veMakeupGain;
 
-        // Chain connections:
-        // veHighPass -> veWarmthCut -> vePresenceBoost -> veHighShelf -> veCompressor -> veMakeupGain -> destination
-        veHighPass.connect(veWarmthCut);
+        // Connect the real-time DSP filter chain:
+        // nrHighPass -> nrLowPass -> nrHighShelf -> veWarmthCut -> vePresenceBoost -> veCompressor -> veMakeupGain -> destination
+        nrHighPass.connect(nrLowPass);
+        nrLowPass.connect(nrHighShelf);
+        nrHighShelf.connect(veWarmthCut);
         veWarmthCut.connect(vePresenceBoost);
-        vePresenceBoost.connect(veHighShelf);
-        veHighShelf.connect(veCompressor);
+        vePresenceBoost.connect(veCompressor);
         veCompressor.connect(veMakeupGain);
         veMakeupGain.connect(ctx.destination);
       }
 
-      // 2. Build Raw & Denoised crossfade gain nodes with strict mutual exclusion
-      const shouldUseDenoised = noiseRemovalEnabled && !!denoisedAudioUrl;
-
-      if (!rawGainRef.current && veHighPassRef.current) {
-        const rawGain = ctx.createGain();
-        rawGain.gain.setValueAtTime(shouldUseDenoised ? 0.0 : 1.0, ctx.currentTime);
-        rawGain.connect(veHighPassRef.current);
-        rawGainRef.current = rawGain;
+      // Connect primary <video> element to the DSP chain once (guarded by WeakMap cache)
+      let sourceNode = mediaSourceCache.get(videoEl);
+      if (!sourceNode && nrHighPassRef.current) {
+        sourceNode = ctx.createMediaElementSource(videoEl);
+        mediaSourceCache.set(videoEl, sourceNode);
+        sourceNode.connect(nrHighPassRef.current);
       }
-
-      if (!denoisedGainRef.current && veHighPassRef.current) {
-        const denoisedGain = ctx.createGain();
-        denoisedGain.gain.setValueAtTime(shouldUseDenoised ? 1.0 : 0.0, ctx.currentTime);
-        denoisedGain.connect(veHighPassRef.current);
-        denoisedGainRef.current = denoisedGain;
-      }
-
-      if (mainVideoRef.current) {
-        mainVideoRef.current.muted = shouldUseDenoised;
-      }
-      if (denoisedAudioRef.current) {
-        denoisedAudioRef.current.muted = !shouldUseDenoised;
-      }
-
-      // 3. Attach main video source
-      if (!rawSourceAttachedRef.current && mainVideoRef.current && rawGainRef.current) {
-        const rawSource = ctx.createMediaElementSource(mainVideoRef.current);
-        rawSource.connect(rawGainRef.current);
-        rawSourceAttachedRef.current = true;
-      }
-
-      // 4. Attach denoised audio source if ready
-      connectDenoisedSource();
     } catch {
-      // Audio element might already be connected or blocked
+      // Audio element might already be connected or blocked by autoplay policy
     }
-  }, [voiceEnhanceEnabled, noiseRemovalEnabled, denoisedAudioUrl, connectDenoisedSource]);
+  }, [voiceEnhanceEnabled, noiseRemovalEnabled]);
 
-  // Dynamically update audio node parameters when store toggles
+  // Dynamically update audio node parameters when store toggles (instant live auditioning)
   useEffect(() => {
     const ctx = audioContextRef.current;
     if (!ctx) return;
     const now = ctx.currentTime;
 
-    // Strict mutual exclusion between Raw and Denoised audio (zero bleed, zero echo)
-    const shouldUseDenoised = noiseRemovalEnabled && !!denoisedAudioUrl;
-    if (rawGainRef.current) {
-      rawGainRef.current.gain.setValueAtTime(shouldUseDenoised ? 0.0 : 1.0, now);
+    // Real-Time Noise Removal filters
+    if (nrHighPassRef.current) {
+      nrHighPassRef.current.frequency.setValueAtTime(noiseRemovalEnabled ? 120 : 10, now);
     }
-    if (denoisedGainRef.current) {
-      denoisedGainRef.current.gain.setValueAtTime(shouldUseDenoised ? 1.0 : 0.0, now);
+    if (nrLowPassRef.current) {
+      nrLowPassRef.current.frequency.setValueAtTime(noiseRemovalEnabled ? 7200 : 22000, now);
     }
-
-    if (mainVideoRef.current) {
-      mainVideoRef.current.muted = shouldUseDenoised;
-    }
-    if (denoisedAudioRef.current) {
-      denoisedAudioRef.current.muted = !shouldUseDenoised;
-      if (!shouldUseDenoised && !denoisedAudioRef.current.paused) {
-        denoisedAudioRef.current.pause();
-      }
+    if (nrHighShelfRef.current) {
+      nrHighShelfRef.current.gain.setValueAtTime(noiseRemovalEnabled ? -4.0 : 0, now);
     }
 
-    // Speaker Voice Enhancement Stage (Clean, Dry Vocal Clarity, Zero Reverb Pumping)
-    if (veHighPassRef.current) {
-      veHighPassRef.current.frequency.setValueAtTime(voiceEnhanceEnabled ? 100 : 10, now);
-    }
+    // Real-Time Speaker Voice Enhancement filters
     if (veWarmthCutRef.current) {
-      veWarmthCutRef.current.frequency.setValueAtTime(320, now);
-      veWarmthCutRef.current.gain.setValueAtTime(voiceEnhanceEnabled ? -3.0 : 0, now);
+      veWarmthCutRef.current.gain.setValueAtTime(voiceEnhanceEnabled ? -3.5 : 0, now);
     }
     if (vePresenceBoostRef.current) {
-      vePresenceBoostRef.current.frequency.setValueAtTime(3200, now);
-      vePresenceBoostRef.current.gain.setValueAtTime(voiceEnhanceEnabled ? 2.2 : 0, now);
-    }
-    if (veHighShelfRef.current) {
-      veHighShelfRef.current.frequency.setValueAtTime(7500, now);
-      veHighShelfRef.current.gain.setValueAtTime(voiceEnhanceEnabled ? -1.5 : 0, now);
+      vePresenceBoostRef.current.gain.setValueAtTime(voiceEnhanceEnabled ? 4.5 : 0, now);
     }
     if (veCompressorRef.current) {
-      veCompressorRef.current.ratio.setValueAtTime(voiceEnhanceEnabled ? 1.8 : 1, now);
-      veCompressorRef.current.threshold.setValueAtTime(voiceEnhanceEnabled ? -10 : 0, now);
-      veCompressorRef.current.knee.setValueAtTime(18, now);
-      veCompressorRef.current.attack.setValueAtTime(0.015, now);
-      veCompressorRef.current.release.setValueAtTime(0.12, now);
+      veCompressorRef.current.threshold.setValueAtTime(voiceEnhanceEnabled ? -18 : 0, now);
+      veCompressorRef.current.ratio.setValueAtTime(voiceEnhanceEnabled ? 3.5 : 1, now);
     }
     if (veMakeupGainRef.current) {
-      veMakeupGainRef.current.gain.setValueAtTime(voiceEnhanceEnabled ? 1.08 : 1.0, now);
+      veMakeupGainRef.current.gain.setValueAtTime(voiceEnhanceEnabled ? 1.25 : 1.0, now);
     }
-  }, [voiceEnhanceEnabled, noiseRemovalEnabled, denoisedAudioUrl]);
-
-  // Generate denoised audio when noiseRemovalEnabled is turned on and not yet cached
-  useEffect(() => {
-    if (noiseRemovalEnabled && !denoisedAudioBlob && !isDenoising && project?.sourceVideoUrl) {
-      setIsDenoising(true);
-      setDenoiseProgress('Profiling audio noise...');
-      generateDenoisedAudio(project.sourceVideoUrl, (stage, ratio) => {
-        setDenoiseProgress(`${stage} (${Math.round(ratio * 100)}%)`);
-      }).then(({ blob, url }) => {
-        setDenoisedAudio(blob, url);
-      }).catch((err) => {
-        console.error('Audio denoising failed:', err);
-        setIsDenoising(false);
-        setDenoiseProgress('');
-      });
-    }
-  }, [noiseRemovalEnabled, denoisedAudioBlob, isDenoising, project?.sourceVideoUrl, setIsDenoising, setDenoiseProgress, setDenoisedAudio]);
-
-  // When denoisedAudioUrl becomes available, attach its audio element to Web Audio
-  useEffect(() => {
-    if (denoisedAudioUrl && denoisedAudioRef.current) {
-      connectDenoisedSource();
-    }
-  }, [denoisedAudioUrl, connectDenoisedSource]);
+  }, [voiceEnhanceEnabled, noiseRemovalEnabled]);
 
   // Reset secondary video state whenever project changes
   useEffect(() => {
@@ -537,10 +452,6 @@ export const Screen2Workspace: React.FC = () => {
       memeVideoRef.current.playbackRate = speed;
       memeVideoRef.current.preservesPitch = true;
     }
-    if (denoisedAudioRef.current) {
-      denoisedAudioRef.current.playbackRate = speed;
-      denoisedAudioRef.current.preservesPitch = true;
-    }
     if (bgMusicRef.current) {
       bgMusicRef.current.playbackRate = speed;
       bgMusicRef.current.preservesPitch = true;
@@ -574,7 +485,6 @@ export const Screen2Workspace: React.FC = () => {
           if (mainVideoRef.current && !mainVideoRef.current.paused) mainVideoRef.current.pause();
           if (memeVideoRef.current && !memeVideoRef.current.paused) memeVideoRef.current.pause();
           if (memeVideoRef.current) memeVideoRef.current.muted = true;
-          if (denoisedAudioRef.current && !denoisedAudioRef.current.paused) denoisedAudioRef.current.pause();
           if (bgMusicRef.current && !bgMusicRef.current.paused) bgMusicRef.current.pause();
           return;
         }
@@ -597,7 +507,6 @@ export const Screen2Workspace: React.FC = () => {
             if (mainVideoRef.current && !mainVideoRef.current.paused) mainVideoRef.current.pause();
             if (memeVideoRef.current && !memeVideoRef.current.paused) memeVideoRef.current.pause();
             if (memeVideoRef.current) memeVideoRef.current.muted = true;
-            if (denoisedAudioRef.current && !denoisedAudioRef.current.paused) denoisedAudioRef.current.pause();
             if (bgMusicRef.current && !bgMusicRef.current.paused) bgMusicRef.current.pause();
             return;
           }
@@ -642,7 +551,6 @@ export const Screen2Workspace: React.FC = () => {
                   setCurrentProjectMs(totalDuration);
                   currentProjectMsRef.current = totalDuration;
                   video.pause();
-                  if (denoisedAudioRef.current && !denoisedAudioRef.current.paused) denoisedAudioRef.current.pause();
                   if (bgMusicRef.current && !bgMusicRef.current.paused) bgMusicRef.current.pause();
                   return;
                 }
@@ -670,7 +578,6 @@ export const Screen2Workspace: React.FC = () => {
                   // Next item is a MEME_CLIP: switch cleanly and lock handoff
                   video.pause();
                   video.muted = true;
-                  if (denoisedAudioRef.current && !denoisedAudioRef.current.paused) denoisedAudioRef.current.pause();
                   setActiveMemePlaying(true);
                   currentProjectMsRef.current = nextItem.projectStartMs;
                   setCurrentProjectMs(nextItem.projectStartMs);
@@ -710,28 +617,6 @@ export const Screen2Workspace: React.FC = () => {
                 setCurrentProjectMs(nextProj);
               }
 
-              // Audio synchronization (denoisedAudioRef follows mainVideoRef, NEVER reverse)
-              if (denoisedAudioRef.current) {
-                const shouldUseDenoised = noiseRemovalEnabled && !!denoisedAudioUrl;
-                if (video.muted !== shouldUseDenoised) video.muted = shouldUseDenoised;
-                if (denoisedAudioRef.current.muted === shouldUseDenoised) denoisedAudioRef.current.muted = !shouldUseDenoised;
-
-                if (shouldUseDenoised) {
-                  const audioDrift = Math.abs(denoisedAudioRef.current.currentTime - video.currentTime);
-                  if (audioDrift > 0.15 && !denoisedAudioRef.current.seeking) {
-                    denoisedAudioRef.current.currentTime = video.currentTime;
-                  }
-                  if (denoisedAudioRef.current.playbackRate !== previewSpeed) {
-                    denoisedAudioRef.current.playbackRate = previewSpeed;
-                    denoisedAudioRef.current.preservesPitch = true;
-                  }
-                  if (denoisedAudioRef.current.paused && !video.paused) {
-                    denoisedAudioRef.current.play().catch(() => {});
-                  }
-                } else if (!denoisedAudioRef.current.paused) {
-                  denoisedAudioRef.current.pause();
-                }
-              }
             }
           }
         } else {
@@ -742,9 +627,6 @@ export const Screen2Workspace: React.FC = () => {
           if (mainVideoRef.current) {
             if (!mainVideoRef.current.paused) mainVideoRef.current.pause();
             mainVideoRef.current.muted = true;
-          }
-          if (denoisedAudioRef.current && !denoisedAudioRef.current.paused) {
-            denoisedAudioRef.current.pause();
           }
 
           const memeVideo = memeVideoRef.current;
@@ -819,8 +701,7 @@ export const Screen2Workspace: React.FC = () => {
                   setCurrentProjectMs(nextItem.projectStartMs);
 
                   if (mainVideoRef.current) {
-                    const shouldUseDenoised = noiseRemovalEnabled && !!denoisedAudioUrl;
-                    mainVideoRef.current.muted = shouldUseDenoised;
+                    mainVideoRef.current.muted = false;
                     if (!mainVideoRef.current.seeking && lastSeekTargetRef.current !== nextItem.sourceStartMs) {
                       lastSeekTargetRef.current = nextItem.sourceStartMs;
                       mainVideoRef.current.currentTime = nextItem.sourceStartMs / 1000;
@@ -870,7 +751,6 @@ export const Screen2Workspace: React.FC = () => {
         if (mainVideoRef.current && !mainVideoRef.current.paused) mainVideoRef.current.pause();
         if (memeVideoRef.current && !memeVideoRef.current.paused) memeVideoRef.current.pause();
         if (memeVideoRef.current) memeVideoRef.current.muted = true;
-        if (denoisedAudioRef.current && !denoisedAudioRef.current.paused) denoisedAudioRef.current.pause();
         if (bgMusicRef.current && !bgMusicRef.current.paused) bgMusicRef.current.pause();
         if (project) {
           updateTransitionFrame(currentProjectMsRef.current, project.items);
@@ -885,7 +765,7 @@ export const Screen2Workspace: React.FC = () => {
     return () => {
       if (rafIdRef.current) cancelAnimationFrame(rafIdRef.current);
     };
-  }, [isPlaying, project, previewSpeed, denoisedAudioUrl, noiseRemovalEnabled, bgMusic, updateTransitionFrame, setIsPlaying, setCurrentProjectMs, activeMemePlaying, isSecondaryReady]);
+  }, [isPlaying, project, previewSpeed, bgMusic, updateTransitionFrame, setIsPlaying, setCurrentProjectMs, activeMemePlaying, isSecondaryReady]);
 
   // Synchronize transition frame immediately whenever playhead position changes (scrubbing, seeking, or playing)
   useEffect(() => {
@@ -939,12 +819,6 @@ export const Screen2Workspace: React.FC = () => {
         mainVideoRef.current.playbackRate = previewSpeed;
         mainVideoRef.current.preservesPitch = true;
         mainVideoRef.current.play().catch(() => {});
-        if (denoisedAudioRef.current && noiseRemovalEnabled && denoisedAudioUrl) {
-          denoisedAudioRef.current.currentTime = mainVideoRef.current.currentTime;
-          denoisedAudioRef.current.playbackRate = previewSpeed;
-          denoisedAudioRef.current.preservesPitch = true;
-          denoisedAudioRef.current.play().catch(() => {});
-        }
       } else if (item && item.kind === 'MEME_CLIP' && memeVideoRef.current) {
         setActiveMemePlaying(true);
         if (loadedSecondaryUrlRef.current !== item.blobUrl) {
@@ -991,20 +865,12 @@ export const Screen2Workspace: React.FC = () => {
           memeVideoRef.current.muted = true;
         }
         const sec = sourceMs / 1000;
-        const shouldUseDenoised = noiseRemovalEnabled && !!denoisedAudioUrl;
         if (mainVideoRef.current) {
-          mainVideoRef.current.muted = shouldUseDenoised;
+          mainVideoRef.current.muted = false;
           mainVideoRef.current.currentTime = sec;
           lastSeekTargetRef.current = sourceMs;
           if (isPlayingRef.current && mainVideoRef.current.paused) {
             mainVideoRef.current.play().catch(() => {});
-          }
-        }
-        if (denoisedAudioRef.current) {
-          denoisedAudioRef.current.muted = !shouldUseDenoised;
-          denoisedAudioRef.current.currentTime = sec;
-          if (shouldUseDenoised && isPlayingRef.current && denoisedAudioRef.current.paused) {
-            denoisedAudioRef.current.play().catch(() => {});
           }
         }
       } else if (item && item.kind === 'MEME_CLIP') {
@@ -1013,7 +879,6 @@ export const Screen2Workspace: React.FC = () => {
           if (!mainVideoRef.current.paused) mainVideoRef.current.pause();
           mainVideoRef.current.muted = true;
         }
-        if (denoisedAudioRef.current && !denoisedAudioRef.current.paused) denoisedAudioRef.current.pause();
         if (memeVideoRef.current) {
           memeVideoRef.current.muted = false;
           if (loadedSecondaryUrlRef.current !== item.blobUrl) {
@@ -1157,25 +1022,25 @@ export const Screen2Workspace: React.FC = () => {
     }
   };
 
-  // Upload Custom Meme with 100 MB and 180s (3 min) validation (Step 1.2)
-  const handleCustomMemeUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  // Process and validate custom meme file (MIME, extension, size, duration)
+  const processCustomMemeFile = async (file: File) => {
     setMemeUploadError(null);
+
+    // Validate MIME and extension (MP4, WebM, and MOV only)
+    const validMimes = ['video/mp4', 'video/webm', 'video/quicktime'];
+    const validExts = ['.mp4', '.webm', '.mov'];
+    const lowerName = file.name.toLowerCase();
+    const hasValidExt = validExts.some(ext => lowerName.endsWith(ext));
+    const hasValidMime = validMimes.includes(file.type);
+
+    if (!hasValidExt && !hasValidMime) {
+      setMemeUploadError('Unsupported file format. Only MP4, WebM, and MOV video clips are accepted.');
+      return;
+    }
 
     // Validate size (max 100 MB)
     if (file.size > 100 * 1024 * 1024) {
       setMemeUploadError('File exceeds 100 MB limit. Please select a clip up to 100 MB.');
-      e.target.value = '';
-      return;
-    }
-
-    // Validate extension / MIME
-    const validExts = ['.mp4', '.webm', '.mov'];
-    const hasValidExt = validExts.some(ext => file.name.toLowerCase().endsWith(ext));
-    if (!hasValidExt && !file.type.startsWith('video/')) {
-      setMemeUploadError('Please select a valid .mp4, .webm, or .mov video file.');
-      e.target.value = '';
       return;
     }
 
@@ -1200,11 +1065,23 @@ export const Screen2Workspace: React.FC = () => {
         status: 'SUCCESS',
         appliedMessage: `Uploaded "${meme.name}" (${(meme.durationMs / 1000).toFixed(1)}s). Ready to insert!`
       });
+
+      // Auto-scroll newly uploaded clip into view
+      setTimeout(() => {
+        if (customClipsListRef.current) {
+          customClipsListRef.current.scrollTop = customClipsListRef.current.scrollHeight;
+        }
+      }, 60);
     } catch {
       setMemeUploadError('Failed to read video metadata. Ensure it is a valid video file.');
-    } finally {
-      e.target.value = '';
     }
+  };
+
+  const handleCustomMemeUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    await processCustomMemeFile(file);
+    e.target.value = '';
   };
 
   // Dedicated + Add Clip handler for toolbar file input (Step 3.1)
@@ -1362,21 +1239,17 @@ export const Screen2Workspace: React.FC = () => {
               }
               toggleNoiseRemoval();
             }}
-            title={isDenoising ? `Background Noise Removal: ${denoiseProgress || 'Cleaning audio...'}` : "Background Noise Removal: Adaptive STFT Wiener Spectral Denoiser removing ceiling fan noise and room hiss"}
+            title="Background Noise Removal: Real-time highpass (120Hz), lowpass (7200Hz), and highshelf filter removing fan hum, hiss, and room rumble"
             className={`px-2.5 py-1 rounded-lg text-xs font-medium flex items-center space-x-1.5 border transition-all ${
               noiseRemovalEnabled
                 ? 'bg-[#14B8A6]/15 border-[#2DD4BF]/50 text-[#5EEAD4]'
                 : 'bg-[#23221F] border-[#35332F] text-[#8A8780] hover:text-[#E6E3DC]'
             }`}
           >
-            {isDenoising ? (
-              <Loader2 className="w-3.5 h-3.5 animate-spin text-[#5EEAD4]" />
-            ) : (
-              <Wand2 className={`w-3.5 h-3.5 ${noiseRemovalEnabled ? 'text-[#5EEAD4]' : 'text-[#8A8780]'}`} />
-            )}
+            <Wand2 className={`w-3.5 h-3.5 ${noiseRemovalEnabled ? 'text-[#5EEAD4]' : 'text-[#8A8780]'}`} />
             <span>Noise Removal</span>
             <span className={`text-[10px] px-1 py-0.2 rounded font-mono tabular-nums font-bold ${noiseRemovalEnabled ? 'bg-[#14B8A6]/25 text-[#5EEAD4]' : 'bg-[#1F1E1C] text-[#8A8780]'}`}>
-              {isDenoising ? 'CLEANING...' : noiseRemovalEnabled ? 'ON' : 'OFF'}
+              {noiseRemovalEnabled ? 'ON' : 'OFF'}
             </span>
           </button>
 
@@ -1394,7 +1267,7 @@ export const Screen2Workspace: React.FC = () => {
 
       {/* Main Workspace Body */}
       <div className="flex-1 flex overflow-hidden relative">
-        {/* Left Collapsible Panel: Transcript & Chapters */}
+        {/* Left Collapsible Panel: Transcript */}
         <div
           className={`border-r border-[#2C2B28] bg-[#161614] flex flex-col transition-all duration-200 z-10 ${
             isLeftOpen ? 'w-80' : 'w-10'
@@ -1402,24 +1275,9 @@ export const Screen2Workspace: React.FC = () => {
         >
           <div className="h-10 border-b border-[#2C2B28] flex items-center justify-between px-3">
             {isLeftOpen ? (
-              <div className="flex items-center space-x-2 text-xs">
-                <button
-                  onClick={() => setLeftTab('transcript')}
-                  className={`font-medium pb-0.5 border-b-2 transition-all ${
-                    leftTab === 'transcript' ? 'border-[#E8872A] text-[#F4F2EE]' : 'border-transparent text-[#A19E97] hover:text-[#F4F2EE]'
-                  }`}
-                >
-                  Transcript
-                </button>
-                <button
-                  onClick={() => setLeftTab('chapters')}
-                  className={`font-medium pb-0.5 border-b-2 transition-all ${
-                    leftTab === 'chapters' ? 'border-[#E8872A] text-[#F4F2EE]' : 'border-transparent text-[#A19E97] hover:text-[#F4F2EE]'
-                  }`}
-                >
-                  Chapters
-                </button>
-              </div>
+              <span className="text-xs font-semibold text-[#F4F2EE] tracking-wide">
+                Transcript
+              </span>
             ) : null}
             <button
               onClick={() => setIsLeftOpen(!isLeftOpen)}
@@ -1431,85 +1289,96 @@ export const Screen2Workspace: React.FC = () => {
 
           {isLeftOpen && (
             <div className="flex-1 overflow-y-auto p-3 space-y-3 text-xs">
-              {leftTab === 'transcript' ? (
-                <div className="space-y-3">
-                  {/* Quality & Mode Controls Bar */}
-                  <div className="p-2.5 rounded-lg bg-[#1F1E1C] border border-[#2C2B28] space-y-2">
-                    {/* Quality Selector */}
-                    <div className="flex items-center justify-between text-[11px]">
-                      <span className="text-[#A19E97] font-medium">Quality:</span>
-                      <select
-                        value={transcriptQuality}
-                        onChange={(e) => setTranscriptQuality(e.target.value as any)}
-                        disabled={transcriptionStatus === 'downloading_model' || transcriptionStatus === 'transcribing' || transcriptMode === 'transcribe_hinglish'}
-                        className="bg-[#161614] border border-[#2C2B28] text-[#F4F2EE] text-[11px] rounded px-2 py-1 focus:outline-none focus:border-[#E8872A] cursor-pointer disabled:opacity-50"
-                      >
-                        <option value="accurate">Accurate (Small, ~285 MB)</option>
-                        <option value="fast">Fast (Base, ~75 MB)</option>
-                      </select>
-                    </div>
+              <div className="space-y-3">
+                {/* Quality & Mode Controls Bar */}
+                <div className="p-2.5 rounded-lg bg-[#1F1E1C] border border-[#2C2B28] space-y-2">
+                  {/* Quality Selector */}
+                  <div className="flex items-center justify-between text-[11px]">
+                    <span className="text-[#A19E97] font-medium">Quality:</span>
+                    <select
+                      value={transcriptQuality}
+                      onChange={(e) => setTranscriptQuality(e.target.value as any)}
+                      disabled={transcriptionStatus === 'downloading_model' || transcriptionStatus === 'transcribing' || transcriptMode === 'transcribe_hinglish'}
+                      className="bg-[#161614] border border-[#2C2B28] text-[#F4F2EE] text-[11px] rounded px-2 py-1 focus:outline-none focus:border-[#E8872A] cursor-pointer disabled:opacity-50"
+                    >
+                      <option value="accurate">Accurate (Small, ~285 MB)</option>
+                      <option value="fast">Fast (Base, ~75 MB)</option>
+                    </select>
+                  </div>
 
-                    {/* Mode Selector */}
-                    <div className="flex items-center justify-between text-[11px]">
-                      <span className="text-[#A19E97] font-medium">Mode:</span>
-                      <select
-                        value={transcriptMode}
-                        onChange={(e) => setTranscriptMode(e.target.value as any)}
-                        disabled={transcriptionStatus === 'downloading_model' || transcriptionStatus === 'transcribing'}
-                        className="bg-[#161614] border border-[#2C2B28] text-[#F4F2EE] text-[11px] rounded px-2 py-1 max-w-[175px] truncate focus:outline-none focus:border-[#E8872A] cursor-pointer"
-                      >
-                        <option value="transcribe_hinglish">Hinglish (Hindi + English)</option>
-                        <option value="translate_en">English (translated)</option>
-                        <option value="transcribe_en">English (as spoken)</option>
-                      </select>
-                    </div>
+                  {/* Mode Selector */}
+                  <div className="flex items-center justify-between text-[11px]">
+                    <span className="text-[#A19E97] font-medium">Mode:</span>
+                    <select
+                      value={transcriptMode}
+                      onChange={(e) => setTranscriptMode(e.target.value as any)}
+                      disabled={transcriptionStatus === 'downloading_model' || transcriptionStatus === 'transcribing'}
+                      className="bg-[#161614] border border-[#2C2B28] text-[#F4F2EE] text-[11px] rounded px-2 py-1 max-w-[175px] truncate focus:outline-none focus:border-[#E8872A] cursor-pointer disabled:opacity-50"
+                    >
+                      <option value="transcribe_hinglish">Hinglish (Hindi + English)</option>
+                      <option value="translate_en">English (translated)</option>
+                      <option value="transcribe_en">English (as spoken)</option>
+                    </select>
+                  </div>
 
-                    <p className="text-[10px] text-[#6E6B64]">
-                      First use downloads the model ({transcriptMode === 'transcribe_hinglish' ? 'about 72 MB' : transcriptQuality === 'accurate' ? 'about 285 MB' : 'about 75 MB'}), only once.
-                    </p>
+                  <p className="text-[10px] text-[#6E6B64]">
+                    First use downloads the model ({transcriptMode === 'transcribe_hinglish' ? 'about 72 MB' : transcriptQuality === 'accurate' ? 'about 285 MB' : 'about 75 MB'}), only once.
+                  </p>
 
-                    <div className="flex items-center space-x-2 pt-1">
+                  <div className="flex items-center space-x-2 pt-1">
+                    <button
+                      type="button"
+                      onClick={() => generateTranscript(transcriptQuality, transcriptMode)}
+                      disabled={transcriptionStatus === 'downloading_model' || transcriptionStatus === 'transcribing'}
+                      className="flex-1 bg-[#E8872A] hover:bg-[#F59A3D] disabled:opacity-50 text-[#11100E] font-semibold py-1.5 px-3 rounded-lg text-xs flex items-center justify-center space-x-1.5 shadow-none transition-all"
+                    >
+                      {transcriptionStatus === 'downloading_model' ? (
+                        <>
+                          <Loader2 className="w-3.5 h-3.5 animate-spin text-[#11100E]" />
+                          <span>Loading model... {transcriptionDownloadPercent}%</span>
+                        </>
+                      ) : transcriptionStatus === 'transcribing' ? (
+                        <>
+                          <Loader2 className="w-3.5 h-3.5 animate-spin text-[#11100E]" />
+                          <span>Transcribing...</span>
+                        </>
+                      ) : project.transcript.length > 0 && !project.isDemoSample ? (
+                        <>
+                          <RefreshCw className="w-3.5 h-3.5" />
+                          <span>Regenerate</span>
+                        </>
+                      ) : (
+                        <>
+                          <Sparkles className="w-3.5 h-3.5" />
+                          <span>Generate Transcript</span>
+                        </>
+                      )}
+                    </button>
+
+                    {(transcriptionStatus === 'downloading_model' || transcriptionStatus === 'transcribing') && (
                       <button
                         type="button"
-                        onClick={() => generateTranscript(transcriptQuality, transcriptMode)}
-                        disabled={transcriptionStatus === 'downloading_model' || transcriptionStatus === 'transcribing'}
-                        className="flex-1 bg-[#E8872A] hover:bg-[#F59A3D] disabled:opacity-50 text-[#11100E] font-semibold py-1.5 px-3 rounded-lg text-xs flex items-center justify-center space-x-1.5 shadow-none transition-all"
+                        onClick={cancelTranscription}
+                        title="Cancel transcription"
+                        className="bg-[#23221F] hover:bg-[#DC2626]/80 text-[#E6E3DC] hover:text-white px-2.5 py-1.5 rounded-lg text-xs font-medium border border-[#35332F] transition-colors flex items-center space-x-1"
                       >
-                        {transcriptionStatus === 'downloading_model' ? (
-                          <>
-                            <Loader2 className="w-3.5 h-3.5 animate-spin text-[#11100E]" />
-                            <span>Loading model... {transcriptionDownloadPercent}%</span>
-                          </>
-                        ) : transcriptionStatus === 'transcribing' ? (
-                          <>
-                            <Loader2 className="w-3.5 h-3.5 animate-spin text-[#11100E]" />
-                            <span>Transcribing...</span>
-                          </>
-                        ) : project.transcript.length > 0 && !project.isDemoSample ? (
-                          <>
-                            <RefreshCw className="w-3.5 h-3.5" />
-                            <span>Regenerate</span>
-                          </>
-                        ) : (
-                          <>
-                            <Sparkles className="w-3.5 h-3.5" />
-                            <span>Generate Transcript</span>
-                          </>
-                        )}
+                        <X className="w-3.5 h-3.5" />
+                        <span>Cancel</span>
                       </button>
+                    )}
 
-                      {project.transcript.length > 0 && (
-                        <button
-                          type="button"
-                          onClick={() => downloadTranscriptAsTxt(project.transcript, `${project.title.replace(/\.[^/.]+$/, '')}_transcript.txt`)}
-                          title="Download transcript as .txt"
-                          className="bg-[#23221F] hover:bg-[#2E2C28] text-[#E6E3DC] p-1.5 rounded-lg border border-[#35332F] transition-colors"
-                        >
-                          <Download className="w-3.5 h-3.5" />
-                        </button>
-                      )}
-                    </div>
+                    {project.transcript.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => downloadTranscriptAsTxt(project.transcript, `${project.title.replace(/\.[^/.]+$/, '')}_transcript.txt`)}
+                        title="Download transcript as .txt"
+                        className="bg-[#23221F] hover:bg-[#2E2C28] text-[#E6E3DC] p-1.5 rounded-lg border border-[#35332F] transition-colors"
+                      >
+                        <Download className="w-3.5 h-3.5" />
+                      </button>
+                    )}
                   </div>
+                </div>
 
                   {/* Fallback Notice if Small model fell back to Base */}
                   {transcriptionFallbackNotice && (
@@ -1535,7 +1404,16 @@ export const Screen2Workspace: React.FC = () => {
                           <Loader2 className="w-3.5 h-3.5 animate-spin text-[#E8872A]" />
                           <span>Downloading Whisper Model</span>
                         </span>
-                        <span className="tabular-nums font-mono">{transcriptionDownloadPercent}%</span>
+                        <div className="flex items-center space-x-2">
+                          <span className="tabular-nums font-mono">{transcriptionDownloadPercent}%</span>
+                          <button
+                            type="button"
+                            onClick={cancelTranscription}
+                            className="text-[10px] text-[#A19E97] hover:text-[#EF4444] px-1.5 py-0.5 rounded bg-[#161614] border border-[#2C2B28] transition-colors"
+                          >
+                            Cancel
+                          </button>
+                        </div>
                       </div>
                       <div className="w-full bg-[#161614] rounded-full h-1.5 overflow-hidden">
                         <div
@@ -1551,12 +1429,21 @@ export const Screen2Workspace: React.FC = () => {
 
                   {/* Status Banner: Transcribing */}
                   {transcriptionStatus === 'transcribing' && (
-                    <div className="p-3 rounded-lg bg-[#1F1E1C] border border-[#2C2B28] flex items-center space-x-2.5">
-                      <Loader2 className="w-4 h-4 animate-spin text-[#E8872A] flex-shrink-0" />
-                      <div>
-                        <p className="text-xs font-medium text-[#F4F2EE]">Transcribing speech...</p>
-                        <p className="text-[10px] text-[#A19E97]">Running Whisper AI in background Web Worker</p>
+                    <div className="p-3 rounded-lg bg-[#1F1E1C] border border-[#2C2B28] flex items-center justify-between">
+                      <div className="flex items-center space-x-2.5">
+                        <Loader2 className="w-4 h-4 animate-spin text-[#E8872A] flex-shrink-0" />
+                        <div>
+                          <p className="text-xs font-medium text-[#F4F2EE]">Transcribing speech...</p>
+                          <p className="text-[10px] text-[#A19E97]">Running Whisper AI in background Web Worker</p>
+                        </div>
                       </div>
+                      <button
+                        type="button"
+                        onClick={cancelTranscription}
+                        className="text-[10px] text-[#A19E97] hover:text-[#EF4444] px-2 py-1 rounded bg-[#161614] border border-[#2C2B28] transition-colors"
+                      >
+                        Cancel
+                      </button>
                     </div>
                   )}
 
@@ -1718,53 +1605,6 @@ export const Screen2Workspace: React.FC = () => {
                     </div>
                   ) : null}
                 </div>
-              ) : (
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between text-[11px] text-[#A19E97] pb-1 border-b border-[#2C2B28]">
-                    <span className="font-medium text-[#F4F2EE]">Chapters (Auto-generated, approximate)</span>
-                    <span className="text-[10px] text-[#6E6B64] tabular-nums">{project.chapters.length} markers</span>
-                  </div>
-
-                  {project.chapters.length === 0 ? (
-                    <div className="p-4 rounded-xl bg-[#1F1E1C] border border-[#2C2B28] text-center space-y-2">
-                      <Bookmark className="w-5 h-5 text-[#6E6B64] mx-auto" />
-                      <p className="text-[#F4F2EE] text-xs">No chapters yet.</p>
-                      <p className="text-[11px] text-[#6E6B64] leading-relaxed">
-                        Generate a transcript to automatically build chapter timestamps from natural speech pauses and 20s intervals.
-                      </p>
-                    </div>
-                  ) : (
-                    project.chapters.map((ch) => {
-                      const projMs = mapSourceToProjectMs(ch.sourceMs, project.items);
-                      return (
-                        <div
-                          key={ch.id}
-                          onClick={() => {
-                            if (projMs !== null) {
-                              handleSeek(projMs);
-                            } else {
-                              const activeItems = project.items.filter(
-                                (it) => it.status === 'ACTIVE' || it.status === 'SUGGESTED_MEME'
-                              );
-                              const nextActive = activeItems.find((it) => it.sourceStartMs >= ch.sourceMs);
-                              if (nextActive) handleSeek(nextActive.projectStartMs);
-                            }
-                          }}
-                          className="p-2 rounded-lg bg-[#1F1E1C] hover:bg-[#292825] border border-[#2C2B28] cursor-pointer flex items-center justify-between transition-colors"
-                        >
-                          <div className="flex items-center space-x-2 truncate mr-2">
-                            <Bookmark className="w-3.5 h-3.5 text-[#E8872A] flex-shrink-0" />
-                            <span className="font-medium text-[#F4F2EE] truncate">{ch.title}</span>
-                          </div>
-                          <span className="text-[10px] text-[#A19E97] font-mono tabular-nums flex-shrink-0">
-                            {projMs !== null ? `${(projMs / 1000).toFixed(1)}s` : 'Cut'}
-                          </span>
-                        </div>
-                      );
-                    })
-                  )}
-                </div>
-              )}
             </div>
           )}
         </div>
@@ -1772,28 +1612,39 @@ export const Screen2Workspace: React.FC = () => {
         {/* Center: Dual-Video Preview Player (Spec 3) */}
         <div className="flex-1 flex flex-col bg-[#0E0E0D] items-center justify-center p-4 relative overflow-hidden">
           {/* Silence Alert Banner if pauses present */}
-          {project.items.some(it => it.status === 'SUGGESTED_SILENCE_CUT') && (
-            <div className="absolute top-4 left-6 right-6 bg-[#D97706]/15 border border-[#F59E0B]/50 rounded-xl px-4 py-2 flex items-center justify-between text-xs z-20 backdrop-blur">
-              <div className="flex items-center space-x-2 text-[#FCD34D]">
-                <ShieldAlert className="w-4 h-4 flex-shrink-0 text-[#F59E0B]" />
-                <span>
-                  <strong>Awkward Pauses Detected:</strong> Review amber intervals on timeline or click to clean up <span className="text-[#A19E97] font-normal text-[11px]">(Experimental — review before accepting; best on low-noise audio)</span>:
-                </span>
+          {project.items.some(it => it.status === 'SUGGESTED_SILENCE_CUT') && (() => {
+            const silenceItems = project.items.filter(it => it.status === 'SUGGESTED_SILENCE_CUT');
+            const totalSilences = silenceItems.length;
+            const selectedSilences = silenceItems.filter(it => it.meta?.silenceSelected !== false).length;
+
+            return (
+              <div className="absolute top-4 left-6 right-6 bg-[#D97706]/15 border border-[#F59E0B]/50 rounded-xl px-4 py-2 flex items-center justify-between text-xs z-20 backdrop-blur">
+                <div className="flex items-center space-x-2 text-[#FCD34D]">
+                  <ShieldAlert className="w-4 h-4 flex-shrink-0 text-[#F59E0B]" />
+                  <span>
+                    <strong>Awkward Pauses Detected:</strong> Review amber intervals on timeline or click to clean up <span className="text-[#A19E97] font-normal text-[11px]">(Experimental — review before accepting; best on low-noise audio)</span>:
+                  </span>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <button
+                    type="button"
+                    onClick={clearAllSilences}
+                    className="bg-[#23221F] hover:bg-[#2E2C28] text-[#E6E3DC] hover:text-[#F4F2EE] border border-[#35332F] px-3 py-1 rounded-lg text-xs font-medium transition-colors"
+                  >
+                    Cancel / Clear Silences
+                  </button>
+                  <button
+                    type="button"
+                    onClick={applySelectedSilenceCuts}
+                    disabled={selectedSilences === 0}
+                    className="bg-[#E8872A] hover:bg-[#F59A3D] disabled:opacity-40 disabled:cursor-not-allowed text-[#11100E] font-semibold px-3 py-1 rounded-lg text-xs transition-colors shadow-none"
+                  >
+                    Apply Selected Cuts ({selectedSilences}/{totalSilences})
+                  </button>
+                </div>
               </div>
-              <div className="flex items-center space-x-2">
-                <button
-                  onClick={() => applyAICommand({
-                    action: 'REMOVE_SILENCE',
-                    payload: { minDurationMs: 1200, paddingPreMs: 150, paddingPostMs: 200 },
-                    explanation: 'Removing all detected silence intervals.'
-                  })}
-                  className="bg-[#E8872A] hover:bg-[#F59A3D] text-[#11100E] font-semibold px-3 py-1 rounded-lg text-xs transition-colors shadow-none"
-                >
-                  Accept All Cuts
-                </button>
-              </div>
-            </div>
-          )}
+            );
+          })()}
 
           {/* Dual-Video Canvas Frame */}
           <div className="relative w-full max-w-3xl aspect-video bg-black rounded-xl overflow-hidden border border-[#2C2B28] flex items-center justify-center">
@@ -1827,15 +1678,6 @@ export const Screen2Workspace: React.FC = () => {
                     ? 'opacity-100 z-10'
                     : 'opacity-0 pointer-events-none z-0'
                 }`}
-              />
-
-              {/* Denoised Audio Element for Spectral Noise Removal */}
-              <audio
-                ref={denoisedAudioRef}
-                src={denoisedAudioUrl || undefined}
-                preload="auto"
-                playsInline
-                className="hidden"
               />
 
               {/* Background Music Audio Element (Looping, Live Synced) */}
@@ -1961,7 +1803,6 @@ export const Screen2Workspace: React.FC = () => {
                   <div className="flex flex-wrap gap-1.5">
                     {[
                       'Remove silence',
-                      'Insert fail meme at 0:05',
                       'Enhance voice',
                       'Add fade transition',
                       'Cut 0:10 to 0:15'
@@ -2184,15 +2025,22 @@ export const Screen2Workspace: React.FC = () => {
                             <span className="text-[#5EEAD4]">3. Click Insert</span>
                           </div>
 
-                          {/* Upload Box */}
-                          <label className="border border-dashed border-[#2C2B28] hover:border-[#45423C] bg-[#1F1E1C] hover:bg-[#292825] rounded-lg p-3 flex flex-col items-center justify-center text-center cursor-pointer transition-colors group">
-                            <Upload className="w-4 h-4 text-[#E8872A] group-hover:scale-110 transition-transform mb-1" />
-                            <span className="text-[11px] font-medium text-[#F4F2EE]">
-                              Upload custom .mp4 / .webm clip
-                            </span>
-                            <span className="text-[9px] text-[#6E6B64] mt-0.5">
-                              Max 100 MB • Up to 3 minutes
-                            </span>
+                          {/* Compact Slim Upload Bar */}
+                          <label
+                            onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); }}
+                            onDrop={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              const droppedFile = e.dataTransfer.files?.[0];
+                              if (droppedFile) processCustomMemeFile(droppedFile);
+                            }}
+                            className="border border-dashed border-[#2C2B28] hover:border-[#E8872A] bg-[#1F1E1C] hover:bg-[#292825] rounded-lg py-2.5 px-3 flex items-center justify-center space-x-2 text-center cursor-pointer transition-colors group"
+                          >
+                            <Upload className="w-4 h-4 text-[#E8872A] group-hover:scale-110 transition-transform flex-shrink-0" />
+                            <div className="flex items-center space-x-1.5 text-xs min-w-0">
+                              <span className="font-medium text-[#F4F2EE] truncate">Drop or browse .mp4, .webm, or .mov clip</span>
+                              <span className="text-[10px] text-[#6E6B64] flex-shrink-0">(Max 100 MB • 3 min)</span>
+                            </div>
                             <input
                               type="file"
                               accept="video/mp4,video/webm,video/quicktime"
@@ -2202,14 +2050,24 @@ export const Screen2Workspace: React.FC = () => {
                           </label>
 
                           {memeUploadError && (
-                            <div className="p-1.5 rounded bg-[#DC2626]/12 border border-[#EF4444]/40 text-[#F87171] text-[10px] flex items-center space-x-1">
-                              <AlertCircle className="w-3 h-3 flex-shrink-0" />
-                              <span>{memeUploadError}</span>
+                            <div className="p-2 rounded-lg bg-[#DC2626]/15 border border-[#EF4444]/50 text-[#F87171] text-xs flex items-center justify-between space-x-1.5">
+                              <div className="flex items-center space-x-1.5 min-w-0">
+                                <AlertCircle className="w-3.5 h-3.5 flex-shrink-0" />
+                                <span className="leading-snug">{memeUploadError}</span>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => setMemeUploadError(null)}
+                                className="text-[#F87171] hover:text-white p-0.5 flex-shrink-0"
+                                title="Dismiss"
+                              >
+                                <X className="w-3.5 h-3.5" />
+                              </button>
                             </div>
                           )}
 
-                          {/* Uploaded clips list */}
-                          <div className="max-h-[190px] overflow-y-auto space-y-1.5 pr-1">
+                          {/* Uploaded clips list with immediate visibility and auto-scroll */}
+                          <div ref={customClipsListRef} className="max-h-[220px] overflow-y-auto space-y-1.5 pr-1">
                             {userUploadedClips.length === 0 ? (
                               <div className="text-[10px] text-[#6E6B64] italic text-center py-4 bg-[#1F1E1C] rounded-lg border border-[#2C2B28] p-2">
                                 No custom clips yet. Upload an .mp4 clip to insert it into your video!
@@ -2453,27 +2311,15 @@ export const Screen2Workspace: React.FC = () => {
               </button>
             </div>
 
-            {/* Silence Detection Sensitivity (Item 2) */}
+            {/* Silence Detection (Normal Preset internally) */}
             <div className="flex items-center space-x-1.5 pl-3 border-l border-[#2C2B28]">
-              <span className="text-[#A19E97] text-[11px] font-medium">Sensitivity:</span>
-              <select
-                value={silenceSensitivity === 'Tight' ? 'Sensitive' : silenceSensitivity === 'Gentle' ? 'Strict' : silenceSensitivity}
-                onChange={(e) => setSilenceSensitivity(e.target.value as SilenceSensitivity)}
-                className="bg-[#1F1E1C] text-[#F4F2EE] border border-[#2C2B28] rounded px-1.5 py-0.5 text-[11px]"
-                title="Sensitive: >=350ms (base drop 5.0dB) | Normal: >=500ms (base drop 7.0dB) | Strict: >=900ms (base drop 9.5dB)"
-              >
-                <option value="Sensitive">Sensitive (350ms)</option>
-                <option value="Normal">Normal (500ms)</option>
-                <option value="Strict">Strict (900ms)</option>
-              </select>
               <button
                 onClick={async () => {
-                  const effectiveSens = silenceSensitivity === 'Tight' ? 'Sensitive' : silenceSensitivity === 'Gentle' ? 'Strict' : silenceSensitivity;
-                  const res = await detectSilencesOnly(effectiveSens);
-                  const cfg = SILENCE_PRESETS[effectiveSens] || SILENCE_PRESETS.Normal;
+                  const res = await detectSilencesOnly('Normal');
+                  const cfg = SILENCE_PRESETS.Normal;
                   addCommandLog({
                     id: `cmd_${Date.now()}`,
-                    rawInput: `Detect pauses (${effectiveSens} mode)`,
+                    rawInput: 'Detect pauses (Normal mode)',
                     timestamp: Date.now(),
                     parsedCommand: {
                       action: 'REMOVE_SILENCE',
@@ -2648,6 +2494,7 @@ export const Screen2Workspace: React.FC = () => {
                   : 0;
 
                 const isSilence = item.status === 'SUGGESTED_SILENCE_CUT';
+                const isSilenceSelected = isSilence && item.meta?.silenceSelected !== false;
                 const isAddedVideoClip = !isSilence && (
                   (item.kind === 'MEME_CLIP' && (!!item.meta?.isAddedClip || (item.id.startsWith('clip_') && !item.meta?.memeCategory?.startsWith('meme_')))) ||
                   (item.kind === 'SOURCE_CLIP' && item.blobUrl !== project.sourceVideoUrl)
@@ -2711,7 +2558,9 @@ export const Screen2Workspace: React.FC = () => {
                         : 'border border-[#2C2B28]'
                     } ${
                       isSilence
-                        ? 'bg-[#D97706]/25 border border-[#F59E0B]/70 text-[#FCD34D] hover:bg-[#D97706]/35'
+                        ? isSilenceSelected
+                          ? 'bg-[#D97706]/25 border border-[#F59E0B]/70 text-[#FCD34D] hover:bg-[#D97706]/35'
+                          : 'border-dashed border-zinc-600 bg-zinc-800/40 text-zinc-500 hover:bg-zinc-800/60'
                         : isMeme
                         ? replacingMemeId === item.id
                           ? 'bg-[#E11D48]/35 text-[#FDA4AF] ring-2 ring-[#E8872A] animate-pulse shadow-lg border border-[#FB7185]/80'
@@ -2777,7 +2626,9 @@ export const Screen2Workspace: React.FC = () => {
                         <span className="text-[11px] font-semibold truncate drop-shadow-md">
                           {isMeme
                             ? isNarrow ? '🎬' : `🎬 ${item.title}`
-                            : isNarrow && !isSilence
+                            : isSilence
+                            ? isSilenceSelected ? item.title : `${item.title} (Keep)`
+                            : isNarrow
                             ? ''
                             : item.title}
                         </span>
@@ -2791,16 +2642,24 @@ export const Screen2Workspace: React.FC = () => {
                           onClick={(e) => e.stopPropagation()}
                         >
                           <button
-                            onClick={() => acceptSilenceCut(item.id)}
-                            className="p-1 bg-[#DC2626]/80 hover:bg-[#DC2626] rounded text-white"
-                            title="Accept Silence Cut"
+                            onClick={() => toggleSilenceSelected(item.id)}
+                            className={`p-1 rounded transition-colors ${
+                              isSilenceSelected
+                                ? 'bg-[#E8872A] text-[#11100E] hover:bg-[#F59A3D]'
+                                : 'bg-[#23221F] text-zinc-400 hover:text-zinc-200 border border-[#35332F]'
+                            }`}
+                            title={isSilenceSelected ? 'Checked for cut (click to uncheck and keep pause)' : 'Unchecked (click to check for cut)'}
                           >
-                            <Check className="w-3 h-3" />
+                            {isSilenceSelected ? (
+                              <Check className="w-3 h-3 stroke-[2.5]" />
+                            ) : (
+                              <span className="w-3 h-3 flex items-center justify-center text-[10px] font-bold leading-none">○</span>
+                            )}
                           </button>
                           <button
                             onClick={() => keepSilencePause(item.id)}
                             className="p-1 bg-[#23221F] hover:bg-[#2E2C28] text-[#E6E3DC] border border-[#35332F] rounded"
-                            title="Keep Pause"
+                            title="Remove from suggestions (Keep Pause)"
                           >
                             <X className="w-3 h-3" />
                           </button>

@@ -90,6 +90,7 @@ Specific Unsupported Categories:
 - Crop / zoom / rotate / flip / pan / aspect ratio: return UNSUPPORTED_OPERATION with message "Crop, zoom, rotate, and aspect-ratio transforms are currently not available in Fastcutz.ai."
 - Speed / slow motion / fast forward / reverse / freeze frame: return UNSUPPORTED_OPERATION with message "Exportable speed changes and reverse/freeze effects are currently not available in Fastcutz.ai (you can preview at 1x/2x/5x using the Speed toggle)."
 - Voiceover / TTS / AI voice / reverb: return UNSUPPORTED_OPERATION with message "Voiceover and advanced audio effects are currently not available in Fastcutz.ai. You can use Voice Enhance, Noise Removal, or '+ Add Music' instead."
+- Transcript phrase cutting (cutting words or phrases without timestamps): return UNSUPPORTED_OPERATION with message "Transcript phrase cutting is not available in Fastcutz.ai. Please use timestamps instead (for example: 'Cut from 0:10 to 0:25')."
 - Unknown/unsupported memes (e.g. "rickroll"): return UNSUPPORTED_OPERATION with message "Meme '<name>' is not in the built-in library. Choose one from 'Choose a Meme' or upload your own .mp4 under 'Insert Your Own'."
 - Any other unsupported editing effect: return UNSUPPORTED_OPERATION with message "That editing feature is currently not available in Fastcutz.ai. Supported commands: cutting/trimming timestamps, inserting memes, adding Fade/Wipe transitions, and Voice Enhance / Noise Removal."
 

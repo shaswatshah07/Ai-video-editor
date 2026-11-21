@@ -23,6 +23,7 @@ export interface TimelineItem {
   transitionOut: TransitionOut;
   meta?: {
     silenceRms?: number;
+    silenceSelected?: boolean;
     memeCategory?: string;
     isCustomUpload?: boolean;
     isAddedClip?: boolean;

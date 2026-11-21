@@ -109,6 +109,10 @@ interface EditorState {
   deleteSelected: () => void;
   acceptSilenceCut: (itemId: string) => void;
   keepSilencePause: (itemId: string) => void;
+  toggleSilenceSelected: (itemId: string) => void;
+  clearAllSilences: () => void;
+  applySelectedSilenceCuts: () => void;
+  cancelTranscription: () => void;
   acceptAllSilences: () => Promise<{ changed: boolean; message: string }>;
   detectSilencesOnly: (param?: SilenceSensitivity | number) => Promise<{ count: number; message: string }>;
   removeOrDetectSilences: (param?: SilenceSensitivity | number) => Promise<{ changed: boolean; message: string; count?: number; totalSilenceMs?: number; newDurationMs?: number }>;
@@ -137,6 +141,8 @@ interface EditorState {
   addCustomMeme: (file: File) => Promise<CustomMeme>;
   applyAICommand: (command: AICommand, rawInput?: string) => Promise<void>;
 }
+
+let transcriptionJobCounter = 0;
 
 export const useEditorStore = create<EditorState>((set, get) => ({
   screen: 'UPLOAD',
@@ -344,7 +350,19 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     });
   },
 
+  cancelTranscription: () => {
+    transcriptionJobCounter++;
+    set({
+      transcriptionStatus: 'idle',
+      transcriptionDownloadPercent: 0,
+      transcriptionCurrentFile: '',
+      transcriptionError: null,
+      transcriptionFallbackNotice: null
+    });
+  },
+
   generateTranscript: async (qual, m) => {
+    const currentJob = ++transcriptionJobCounter;
     const { project, transcriptQuality, transcriptMode } = get();
     if (!project) return;
 
@@ -367,16 +385,19 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         chosenQuality,
         chosenMode,
         (progress) => {
-          set({
+          if (currentJob !== transcriptionJobCounter) return;
+          set((s) => ({
             transcriptionStatus: progress.status,
-            transcriptionDownloadPercent: progress.downloadPercent,
+            transcriptionDownloadPercent: Math.max(s.transcriptionDownloadPercent, progress.downloadPercent),
             transcriptionCurrentFile: progress.currentDownloadFile,
             transcriptionError: progress.errorMessage,
             transcriptionFallbackNotice: progress.fallbackMessage || null
-          });
+          }));
         },
         true // bypassCache on explicit generate/regenerate request
       );
+
+      if (currentJob !== transcriptionJobCounter) return;
 
       const taggedPrimaryWords: TranscriptWord[] = words.map((w) => ({
         ...w,
@@ -391,6 +412,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       );
 
       for (let i = 0; i < addedClips.length; i++) {
+        if (currentJob !== transcriptionJobCounter) return;
         const clipItem = addedClips[i];
         set({
           transcriptionStatus: 'transcribing',
@@ -404,6 +426,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
             undefined,
             false
           );
+          if (currentJob !== transcriptionJobCounter) return;
           const taggedClipWords: TranscriptWord[] = clipRes.words.map((w) => ({
             ...w,
             id: `${clipItem.id}_${w.id}`,
@@ -414,6 +437,8 @@ export const useEditorStore = create<EditorState>((set, get) => ({
           console.warn(`Transcription for added clip ${clipItem.title} skipped or failed:`, clipErr);
         }
       }
+
+      if (currentJob !== transcriptionJobCounter) return;
 
       set((s) => ({
         transcriptionStatus: 'done',
@@ -636,6 +661,76 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     const recalculated = recalculateTimeline(updated);
     const totalProjMs = getTotalProjectDuration(recalculated);
 
+    set({
+      project: {
+        ...project,
+        items: recalculated,
+        totalProjectDurationMs: totalProjMs,
+        updatedAt: Date.now()
+      }
+    });
+  },
+
+  toggleSilenceSelected: (itemId: string) => {
+    const { project } = get();
+    if (!project) return;
+    const updated = project.items.map((it) => {
+      if (it.id === itemId && it.status === 'SUGGESTED_SILENCE_CUT') {
+        const currentlySelected = it.meta?.silenceSelected !== false;
+        return {
+          ...it,
+          meta: {
+            ...it.meta,
+            silenceSelected: !currentlySelected
+          }
+        };
+      }
+      return it;
+    });
+    set({
+      project: {
+        ...project,
+        items: updated,
+        updatedAt: Date.now()
+      }
+    });
+  },
+
+  clearAllSilences: () => {
+    const { project } = get();
+    if (!project) return;
+    get().pushHistory();
+    const updated = project.items.map((it) =>
+      it.status === 'SUGGESTED_SILENCE_CUT' ? { ...it, status: 'ACTIVE' as const } : it
+    );
+    const recalculated = recalculateTimeline(updated);
+    const totalProjMs = getTotalProjectDuration(recalculated);
+    set({
+      project: {
+        ...project,
+        items: recalculated,
+        totalProjectDurationMs: totalProjMs,
+        updatedAt: Date.now()
+      }
+    });
+  },
+
+  applySelectedSilenceCuts: () => {
+    const { project } = get();
+    if (!project) return;
+    get().pushHistory();
+    const updated = project.items.map((it) => {
+      if (it.status === 'SUGGESTED_SILENCE_CUT') {
+        const isSelected = it.meta?.silenceSelected !== false;
+        return {
+          ...it,
+          status: isSelected ? ('DELETED' as const) : ('ACTIVE' as const)
+        };
+      }
+      return it;
+    });
+    const recalculated = recalculateTimeline(updated);
+    const totalProjMs = getTotalProjectDuration(recalculated);
     set({
       project: {
         ...project,

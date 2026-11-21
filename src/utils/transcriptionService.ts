@@ -88,7 +88,7 @@ export async function transcribeVideoAudio(
   const worker = getWorker();
 
   return new Promise((resolve, reject) => {
-    let resolved = false;
+    let highestPercent = 0;
 
     const handleWorkerMessage = (e: MessageEvent) => {
       const msg = e.data;
@@ -103,7 +103,7 @@ export async function transcribeVideoAudio(
               : 'about 75 MB';
             onProgress({
               status: 'downloading_model',
-              downloadPercent: 0,
+              downloadPercent: highestPercent,
               currentDownloadFile: `Speech model (${sizeLabel}, downloads once)...`,
               errorMessage: null
             });
@@ -122,7 +122,7 @@ export async function transcribeVideoAudio(
         if (onProgress) {
           onProgress({
             status: 'downloading_model',
-            downloadPercent: 0,
+            downloadPercent: highestPercent,
             currentDownloadFile: msg.message || 'Whisper Small unavailable, falling back to Base...',
             errorMessage: null,
             fallbackMessage: msg.message
@@ -130,9 +130,10 @@ export async function transcribeVideoAudio(
         }
       } else if (msg.type === 'DOWNLOAD_PROGRESS') {
         if (onProgress) {
+          highestPercent = Math.max(highestPercent, msg.progress ?? 0);
           onProgress({
             status: 'downloading_model',
-            downloadPercent: msg.progress ?? 0,
+            downloadPercent: highestPercent,
             currentDownloadFile: msg.file || 'weights',
             errorMessage: null
           });
@@ -176,11 +177,9 @@ export async function transcribeVideoAudio(
             });
           }
 
-          resolved = true;
           resolve(resultPayload);
         } catch (err: any) {
           cleanup();
-          resolved = true;
           reject(err);
         }
       } else if (msg.type === 'ERROR') {
@@ -194,7 +193,6 @@ export async function transcribeVideoAudio(
             errorMessage: errText
           });
         }
-        resolved = true;
         reject(new Error(errText));
       }
     };
@@ -225,14 +223,6 @@ export async function transcribeVideoAudio(
         mode
       });
     }
-
-    // Safety timeout: 180 seconds
-    setTimeout(() => {
-      if (!resolved) {
-        cleanup();
-        reject(new Error('Transcription timed out after 3 minutes.'));
-      }
-    }, 180000);
   });
 }
 

@@ -1,7 +1,6 @@
 import { FFmpeg } from '@ffmpeg/ffmpeg';
 import { toBlobURL, fetchFile } from '@ffmpeg/util';
 import { ProjectEDL } from '../types/edl';
-import { generateDenoisedAudio } from './audioDenoiser';
 import { BgMusicTrack } from '../store/useEditorStore';
 
 export interface RenderProgress {
@@ -188,7 +187,7 @@ export async function verifyRenderedVideo(
 export async function exportProjectVideo(
   project: ProjectEDL,
   onProgress?: (p: RenderProgress) => void,
-  cachedDenoisedBlob?: Blob | null,
+  _cachedDenoisedBlob?: Blob | null,
   bgMusic?: BgMusicTrack | null
 ): Promise<ExportResult> {
   const startTime = performance.now();
@@ -273,42 +272,11 @@ export async function exportProjectVideo(
   const voiceEnhanceActive = !!project.audioSettings.voiceEnhanceEnabled;
   const noiseRemovalActive = !!(project.audioSettings.noiseRemovalEnabled ?? project.audioSettings.noiseReductionEnabled);
 
-  // If noise removal is active, get or generate the adaptive spectral denoised audio WAV
-  let hasDenoisedWavFile = false;
-  if (hasAudio && noiseRemovalActive) {
-    let denoisedBlob: Blob | null = cachedDenoisedBlob || null;
-    if (!denoisedBlob) {
-      if (onProgress) {
-        onProgress({ ratio: 0.15, stage: 'Generating adaptive spectral denoised audio...' });
-      }
-      try {
-        const res = await generateDenoisedAudio(project.sourceVideoUrl, (stage, ratio) => {
-          if (onProgress) {
-            onProgress({ ratio: 0.15 + ratio * 0.08, stage: `Denoising audio: ${stage}` });
-          }
-        });
-        denoisedBlob = res.blob;
-      } catch (err) {
-        console.warn('Adaptive spectral denoiser failed before export, falling back to filter:', err);
-      }
-    }
-
-    if (denoisedBlob) {
-      try {
-        const denoisedData = await fetchFile(denoisedBlob);
-        await ffmpeg.writeFile('denoised_source.wav', denoisedData);
-        hasDenoisedWavFile = true;
-      } catch (err) {
-        console.warn('Failed to write denoised_source.wav to FFmpeg FS:', err);
-      }
-    }
-  }
-
   // Deduplicate and write each used meme to FFmpeg FS
   const uniqueMemeUrls = Array.from(new Set(activeMemeClips.map((m) => m.blobUrl)));
   const memeInputMap = new Map<string, { inputIndex: number; fsName: string; hasAudio: boolean }>();
   const writtenMemeFiles: string[] = [];
-  const baseInputsCount = hasDenoisedWavFile ? 2 : 1;
+  const baseInputsCount = 1;
 
   for (let mIdx = 0; mIdx < uniqueMemeUrls.length; mIdx++) {
     const url = uniqueMemeUrls[mIdx];
@@ -361,30 +329,19 @@ export async function exportProjectVideo(
   // Helper to construct filtergraph & ffmpeg arguments
   const buildArgs = (useFallbackNoiseFilter: boolean, useFallbackAmix: boolean = false) => {
     const filterParts: string[] = [];
-    const sourceAudioInput = hasDenoisedWavFile ? 1 : 0;
 
     // Normalization video filter
     const normVideo = `fps=30,scale=${targetW}:${targetH}:force_original_aspect_ratio=decrease,pad=${targetW}:${targetH}:(ow-iw)/2:(oh-ih)/2:black,setsar=1,format=yuv420p`;
 
-    // Clean, dry vocal filter chain for source clips (zero reverb pumping, no loudnorm)
-    const voiceEnhanceFilter = 'highpass=f=100,equalizer=f=320:t=q:w=1.1:g=-3,equalizer=f=3200:t=q:w=1.0:g=2.2,treble=g=-1.5:f=7500,acompressor=threshold=-10dB:ratio=1.8:attack=15:release=120:makeup=1.15,alimiter=limit=0.95';
-
-    let extraAudioFilters = '';
-    if (hasDenoisedWavFile) {
-      if (voiceEnhanceActive) {
-        extraAudioFilters = `,${voiceEnhanceFilter}`;
-      }
-    } else if (noiseRemovalActive) {
-      const fallbackNoise = useFallbackNoiseFilter
-        ? 'agate=threshold=-35dB:ratio=3:attack=10:release=80'
-        : 'highpass=f=130,lowpass=f=7500,afftdn=nr=28:nf=-22:tn=1:gs=6';
-      if (voiceEnhanceActive) {
-        extraAudioFilters = `,${fallbackNoise},${voiceEnhanceFilter}`;
-      } else {
-        extraAudioFilters = `,${fallbackNoise}`;
-      }
-    } else if (voiceEnhanceActive) {
-      extraAudioFilters = `,${voiceEnhanceFilter}`;
+    // Native audible audio DSP filters applied directly to source stream [0:a]
+    let audioFilters = '';
+    if (noiseRemovalActive) {
+      audioFilters += useFallbackNoiseFilter
+        ? ',highpass=f=90,afftdn=nr=10:nf=-25:tn=1'
+        : ',highpass=f=90,afftdn=nr=14:nf=-25:tn=1';
+    }
+    if (voiceEnhanceActive) {
+      audioFilters += ',highpass=f=85,equalizer=f=260:t=q:w=1.2:g=-3.5,equalizer=f=2800:t=q:w=1.0:g=4.5,acompressor=threshold=-16dB:ratio=3:attack=10:release=100:makeup=3.5,alimiter=limit=0.95';
     }
 
     // Process each segment in chronological order
@@ -398,7 +355,7 @@ export async function exportProjectVideo(
         filterParts.push(`[0:v]trim=start=${startSec}:end=${endSec},setpts=PTS-STARTPTS,${normVideo}[v${i}]`);
 
         if (hasAudio) {
-          filterParts.push(`[${sourceAudioInput}:a]atrim=start=${startSec}:end=${endSec},asetpts=PTS-STARTPTS,aresample=44100:async=1,aformat=sample_fmts=fltp:channel_layouts=stereo${extraAudioFilters},apad,atrim=0:${durSec}[a${i}]`);
+          filterParts.push(`[0:a]atrim=start=${startSec}:end=${endSec},asetpts=PTS-STARTPTS,aresample=44100:async=1,aformat=sample_fmts=fltp:channel_layouts=stereo${audioFilters},apad,atrim=0:${durSec}[a${i}]`);
         } else {
           filterParts.push(`anullsrc=r=44100:cl=stereo:d=${durSec},atrim=0:${durSec}[a${i}]`);
         }
@@ -447,9 +404,6 @@ export async function exportProjectVideo(
     const filterComplexStr = filterParts.join(';');
 
     const args: string[] = ['-i', 'input.mp4'];
-    if (hasDenoisedWavFile) {
-      args.push('-i', 'denoised_source.wav');
-    }
     for (const fsName of writtenMemeFiles) {
       args.push('-i', fsName);
     }
@@ -542,9 +496,6 @@ export async function exportProjectVideo(
   } finally {
     // Clean up memory files
     await ffmpeg.deleteFile('input.mp4').catch(() => {});
-    if (hasDenoisedWavFile) {
-      await ffmpeg.deleteFile('denoised_source.wav').catch(() => {});
-    }
     for (const fsName of writtenMemeFiles) {
       await ffmpeg.deleteFile(fsName).catch(() => {});
     }

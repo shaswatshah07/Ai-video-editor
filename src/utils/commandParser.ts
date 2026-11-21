@@ -1,6 +1,5 @@
 import { AICommand, AICommandSchema } from '../types/commands';
 import { MEME_LIBRARY } from './memeLibrary';
-import { mapSourceToProjectMs } from './timelineMath';
 import { ProjectEDL } from '../types/edl';
 
 /**
@@ -33,34 +32,10 @@ function parseTimeStringToMs(raw: string): number | null {
 }
 
 /**
- * Extracts target timestamp from either an explicit time ("at 0:15", "at 10s", "at 3 s")
- * or a spoken transcript phrase ("when I say hello", "after I say congratulations").
+ * Extracts target timestamp from an explicit time ("at 0:15", "at 10s", "at 3 s", "around 10s").
  */
-function extractTargetTimestamp(lower: string, currentProjectMs: number, project?: ProjectEDL | null): number {
-  // 1. Spoken transcript phrase matching ("when I say [phrase]", "after I say [phrase]")
-  const phraseMatch = lower.match(/(?:when\s+(?:i\s+)?say(?:ing)?|after\s+(?:i\s+)?say(?:ing)?|on\s+saying)\s+["']?([^"']+)["']?/i);
-  if (phraseMatch && project?.transcript && project.transcript.length > 0) {
-    const rawPhrase = phraseMatch[1].trim().toLowerCase();
-    const cleanTokens = rawPhrase.replace(/[^a-z0-9\s]/g, '').split(/\s+/).filter(Boolean);
-    if (cleanTokens.length > 0) {
-      for (let i = 0; i <= project.transcript.length - cleanTokens.length; i++) {
-        const slice = project.transcript.slice(i, i + cleanTokens.length);
-        const match = slice.every((w, idx) => {
-          const wText = (w.word || '').toLowerCase().replace(/[^a-z0-9]/g, '');
-          return wText === cleanTokens[idx] || wText.includes(cleanTokens[idx]);
-        });
-        if (match) {
-          const matchEndSrcMs = slice[slice.length - 1].sourceEndMs;
-          const mappedProj = mapSourceToProjectMs(matchEndSrcMs, project.items);
-          if (mappedProj !== null) {
-            return mappedProj;
-          }
-        }
-      }
-    }
-  }
-
-  // 2. Explicit timestamp ("at 0:15", "at 15s", "at 3 s", "around 10s")
+function extractTargetTimestamp(lower: string, currentProjectMs: number, _project?: ProjectEDL | null): number {
+  // Explicit timestamp ("at 0:15", "at 15s", "at 3 s", "around 10s")
   const atMatch = lower.match(/(?:at|around)\s+([0-9:.]+\s*s?)/i);
   if (atMatch) {
     const parsed = parseTimeStringToMs(atMatch[1]);
@@ -218,6 +193,25 @@ export function parseLocalCommand(
   // ====================================================================
   // STEP 2: SUPPORTED EDITING ACTIONS
   // ====================================================================
+
+  // Check for phrase-based cutting without timestamps: e.g. "cut from hello to world", "cut when I say...", "cut word ..."
+  const hasDigit = /\d/.test(lower);
+  const isCutWord = /\b(cut|trim|delete|remove|splice)\b/i.test(lower);
+  const hasPhraseCutMarkers =
+    /(?:cut|trim|delete|remove)\s+(?:from|between|when|where|after|the\s+part|the\s+words?|the\s+sentence|the\s+phrase|word|phrase)\b/i.test(lower) ||
+    (/(?:cut|trim|delete|remove)\b/i.test(lower) && /\b(?:saying|said|words?|phrase|sentence)\b/i.test(lower)) ||
+    (/(?:cut|trim|delete|remove)\s+["'][^"']+["']/i.test(lower));
+
+  if (isCutWord && !hasDigit && hasPhraseCutMarkers) {
+    return {
+      action: 'UNSUPPORTED_OPERATION',
+      payload: {
+        feature: 'transcript_phrase_cut',
+        message: 'Transcript phrase cutting is not available in Fastcutz.ai. Please use timestamps instead (for example: \'Cut from 0:10 to 0:25\').'
+      },
+      explanation: 'Transcript phrase cutting is not available in Fastcutz.ai. Please use timestamps instead (for example: \'Cut from 0:10 to 0:25\').'
+    };
+  }
 
   // 1. TRIM / CUT SECTION (Ranges: "cut from 0:10 to 0:15", "trim 5s to 12s", "delete from 10 to 20")
   const trimRegex = /(?:cut|trim|delete|remove)\s+(?:from|between)?\s*([0-9:.]+\s*s?)\s*(?:to|-|and)\s*([0-9:.]+\s*s?)/i;
