@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { ArrowLeft, Download, CheckCircle2, AlertTriangle, AlertCircle, Film, RefreshCw, ChevronDown, ChevronUp } from 'lucide-react';
 import { useEditorStore } from '../store/useEditorStore';
 import { exportProjectVideo, verifyRenderedVideo, RenderProgress, ExportResult } from '../utils/ffmpegExporter';
+import { isActualMemeClip } from '../utils/timelineMath';
 
 export const Screen3Export: React.FC = () => {
   const { project, setScreen, denoisedAudioBlob, bgMusic } = useEditorStore();
@@ -83,9 +84,13 @@ export const Screen3Export: React.FC = () => {
     document.body.removeChild(a);
   };
 
-  const activeClipsCount = project.items.filter(it => it.status === 'ACTIVE' && it.kind === 'SOURCE_CLIP').length;
-  const activeMemesCount = project.items.filter(it => (it.status === 'ACTIVE' || it.status === 'SUGGESTED_MEME') && it.kind === 'MEME_CLIP').length;
-  const cutsCount = project.items.filter(it => it.status === 'DELETED').length;
+  const activeClipsCount = project.items.filter(
+    (it) => it.status !== 'DELETED' && (it.kind === 'SOURCE_CLIP' || it.meta?.isAddedClip)
+  ).length;
+  const actualMemesCount = project.items.filter(
+    (it) => isActualMemeClip(it, project.sourceVideoUrl)
+  ).length;
+  const cutsCount = project.items.filter((it) => it.status === 'DELETED').length;
 
   return (
     <div className="min-h-screen bg-[#0E0E0D] text-[#F4F2EE] flex flex-col justify-between p-6">
@@ -213,7 +218,7 @@ export const Screen3Export: React.FC = () => {
             )}
 
             {/* Edit Summary Card */}
-            <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 pt-2">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-2">
               <div className="bg-[#1F1E1C] border border-[#2C2B28] p-3 rounded-xl text-center">
                 <span className="text-[10px] uppercase font-bold text-[#A19E97] tracking-wider">Cuts Applied</span>
                 <p className="text-base font-bold text-[#E8872A] tabular-nums">{cutsCount} Cuts</p>
@@ -226,13 +231,11 @@ export const Screen3Export: React.FC = () => {
 
               <div className="bg-[#1F1E1C] border border-[#2C2B28] p-3 rounded-xl text-center">
                 <span className="text-[10px] uppercase font-bold text-[#A19E97] tracking-wider">Memes Spliced</span>
-                <p className="text-base font-bold text-[#FDA4AF] tabular-nums">{exportResult?.memesSplicedCount ?? activeMemesCount} Memes</p>
-              </div>
-
-              <div className="bg-[#1F1E1C] border border-[#2C2B28] p-3 rounded-xl text-center">
-                <span className="text-[10px] uppercase font-bold text-[#A19E97] tracking-wider">Voice Enhance</span>
-                <p className={`text-base font-bold tabular-nums ${exportResult?.voiceEnhanceBaked ? 'text-[#5EEAD4]' : 'text-[#6E6B64]'}`}>
-                  {exportResult?.voiceEnhanceBaked ? 'Baked In' : 'Off'}
+                <p className="text-base font-bold text-[#FDA4AF] tabular-nums">
+                  {(() => {
+                    const count = exportResult?.memesSplicedCount !== undefined ? exportResult.memesSplicedCount : actualMemesCount;
+                    return `${count} ${count === 1 ? 'Meme' : 'Memes'}`;
+                  })()}
                 </p>
               </div>
 

@@ -274,6 +274,8 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       transcriptionDownloadPercent: 0,
       transcriptionCurrentFile: '',
       transcriptionError: null,
+      noiseRemovalEnabled: false,
+      isNoiseReductionActive: false,
       denoisedAudioUrl: null,
       denoisedAudioBlob: null,
       isDenoising: false,

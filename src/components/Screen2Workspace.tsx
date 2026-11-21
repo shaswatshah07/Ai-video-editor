@@ -144,6 +144,11 @@ export const Screen2Workspace: React.FC = () => {
     currentProjectMsRef.current = currentProjectMs;
   }, [currentProjectMs]);
 
+  // Ensure Noise Removal defaults to OFF on fresh workspace load
+  useEffect(() => {
+    toggleNoiseRemoval(false);
+  }, [toggleNoiseRemoval]);
+
   // Web Audio Context & Native Real-Time DSP Filter Refs (audible with zero echo)
   const audioContextRef = useRef<AudioContext | null>(null);
   const nrHighPass1Ref = useRef<BiquadFilterNode | null>(null);
@@ -1330,28 +1335,36 @@ export const Screen2Workspace: React.FC = () => {
             </span>
           </button>
 
-          {/* Background Noise Removal Toggle */}
-          <button
-            onClick={() => {
-              setupWebAudio();
-              if (audioContextRef.current && audioContextRef.current.state === 'suspended') {
-                audioContextRef.current.resume();
-              }
-              toggleNoiseRemoval();
-            }}
-            title="Background Noise Removal: Cascaded 180Hz HPF, 250Hz motor cut, 6.2kHz lowpass & adaptive noise gate"
-            className={`px-2.5 py-1 rounded-lg text-xs font-medium flex items-center space-x-1.5 border transition-all ${
-              noiseRemovalEnabled
-                ? 'bg-[#14B8A6]/15 border-[#2DD4BF]/50 text-[#5EEAD4]'
-                : 'bg-[#23221F] border-[#35332F] text-[#8A8780] hover:text-[#E6E3DC]'
-            }`}
-          >
-            <Wand2 className={`w-3.5 h-3.5 ${noiseRemovalEnabled ? 'text-[#5EEAD4]' : 'text-[#8A8780]'}`} />
-            <span>Noise Removal</span>
-            <span className={`text-[10px] px-1 py-0.2 rounded font-mono tabular-nums font-bold ${noiseRemovalEnabled ? 'bg-[#14B8A6]/25 text-[#5EEAD4]' : 'bg-[#1F1E1C] text-[#8A8780]'}`}>
-              {noiseRemovalEnabled ? 'ON' : 'OFF'}
+          {/* Background Noise Removal Toggle with Highly Experimental Badge */}
+          <div className="flex items-center space-x-1.5">
+            <button
+              onClick={() => {
+                setupWebAudio();
+                if (audioContextRef.current && audioContextRef.current.state === 'suspended') {
+                  audioContextRef.current.resume();
+                }
+                toggleNoiseRemoval();
+              }}
+              title="Background Noise Removal (Highly Experimental): Cascaded 180Hz HPF, 250Hz motor cut, 6.2kHz lowpass & adaptive noise gate"
+              className={`px-2.5 py-1 rounded-lg text-xs font-medium flex items-center space-x-1.5 border transition-all ${
+                noiseRemovalEnabled
+                  ? 'bg-[#14B8A6]/15 border-[#2DD4BF]/50 text-[#5EEAD4]'
+                  : 'bg-[#23221F] border-[#35332F] text-[#8A8780] hover:text-[#E6E3DC]'
+              }`}
+            >
+              <Wand2 className={`w-3.5 h-3.5 ${noiseRemovalEnabled ? 'text-[#5EEAD4]' : 'text-[#8A8780]'}`} />
+              <span>Noise Removal</span>
+              <span className={`text-[10px] px-1 py-0.2 rounded font-mono tabular-nums font-bold ${noiseRemovalEnabled ? 'bg-[#14B8A6]/25 text-[#5EEAD4]' : 'bg-[#1F1E1C] text-[#8A8780]'}`}>
+                {noiseRemovalEnabled ? 'ON' : 'OFF'}
+              </span>
+            </button>
+            <span
+              title="Highly Experimental: Best on steady background hum/fan noise. Review preview before export."
+              className="bg-[#D97706]/15 border border-[#F59E0B]/40 text-[#FCD34D] text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded font-medium select-none whitespace-nowrap"
+            >
+              Highly Experimental
             </span>
-          </button>
+          </div>
 
           <div className="h-4 w-[1px] bg-[#2C2B28] mx-1" />
 

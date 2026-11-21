@@ -2,6 +2,7 @@ import { FFmpeg } from '@ffmpeg/ffmpeg';
 import { toBlobURL, fetchFile } from '@ffmpeg/util';
 import { ProjectEDL } from '../types/edl';
 import { BgMusicTrack } from '../store/useEditorStore';
+import { isActualMemeClip } from './timelineMath';
 
 export interface RenderProgress {
   ratio: number; // 0 to 1
@@ -197,8 +198,8 @@ export async function exportProjectVideo(
     (it) => it.status !== 'DELETED'
   );
 
-  const activeSourceClips = activeItems.filter((it) => it.kind === 'SOURCE_CLIP');
-  const activeMemeClips = activeItems.filter((it) => it.kind === 'MEME_CLIP');
+  const activeSourceClips = activeItems.filter((it) => it.kind === 'SOURCE_CLIP' || it.meta?.isAddedClip);
+  const activeMemeClips = activeItems.filter((it) => isActualMemeClip(it, project.sourceVideoUrl));
 
   if (activeSourceClips.length === 0) {
     throw new Error('Cannot export: No active source clips remaining on timeline.');
@@ -272,8 +273,9 @@ export async function exportProjectVideo(
   const voiceEnhanceActive = !!project.audioSettings.voiceEnhanceEnabled;
   const noiseRemovalActive = !!(project.audioSettings.noiseRemovalEnabled ?? project.audioSettings.noiseReductionEnabled);
 
-  // Deduplicate and write each used meme to FFmpeg FS
-  const uniqueMemeUrls = Array.from(new Set(activeMemeClips.map((m) => m.blobUrl)));
+  // Deduplicate and write each used non-primary clip (memes + added clips) to FFmpeg FS
+  const nonPrimaryClips = activeItems.filter((it) => it.blobUrl !== project.sourceVideoUrl);
+  const uniqueMemeUrls = Array.from(new Set(nonPrimaryClips.map((m) => m.blobUrl)));
   const memeInputMap = new Map<string, { inputIndex: number; fsName: string; hasAudio: boolean }>();
   const writtenMemeFiles: string[] = [];
   const baseInputsCount = 1;

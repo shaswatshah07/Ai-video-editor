@@ -48,6 +48,19 @@ export function getTotalProjectDuration(items: TimelineItem[]): number {
 }
 
 /**
+ * Determines whether a timeline item is an actual meme reaction clip,
+ * explicitly excluding primary video, split primary segments, and added video clips.
+ */
+export function isActualMemeClip(item: TimelineItem, sourceVideoUrl?: string): boolean {
+  if (item.status === 'DELETED') return false;
+  if (item.kind !== 'MEME_CLIP') return false;
+  if (sourceVideoUrl && item.blobUrl === sourceVideoUrl) return false;
+  if (item.meta?.isAddedClip) return false;
+  if (item.id.startsWith('clip_') && !item.meta?.memeCategory?.startsWith('meme_')) return false;
+  return true;
+}
+
+/**
  * Given a project time (T_proj), locate which TimelineItem is playing,
  * along with its exact source timestamp (T_src).
  */
