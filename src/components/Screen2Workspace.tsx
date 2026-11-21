@@ -26,7 +26,7 @@ function findActiveTransition(
   items: TimelineItem[]
 ): ActiveTransitionMatch | null {
   const activeItems = items.filter(
-    (it) => it.status === 'ACTIVE' || it.status === 'SUGGESTED_MEME'
+    (it) => it.status !== 'DELETED'
   );
   if (activeItems.length < 2) return null;
 
@@ -138,6 +138,7 @@ export const Screen2Workspace: React.FC = () => {
   const activeMemeIdRef = useRef<string | null>(null);
   const isPlayingRef = useRef<boolean>(isPlaying);
   const currentProjectMsRef = useRef<number>(currentProjectMs);
+  const switchingClipRef = useRef<boolean>(false);
 
   useEffect(() => {
     isPlayingRef.current = isPlaying;
@@ -562,7 +563,7 @@ export const Screen2Workspace: React.FC = () => {
         lastTickTimeRef.current = timestamp;
 
         const totalDuration = project.totalProjectDurationMs;
-        const activeItems = project.items.filter(it => it.status === 'ACTIVE' || it.status === 'SUGGESTED_MEME');
+        const activeItems = project.items.filter(it => it.status !== 'DELETED');
 
         if (activeItems.length === 0 || currentProjectMsRef.current >= totalDuration) {
           setIsPlaying(false);
@@ -572,6 +573,7 @@ export const Screen2Workspace: React.FC = () => {
           currentProjectMsRef.current = totalDuration;
           if (mainVideoRef.current && !mainVideoRef.current.paused) mainVideoRef.current.pause();
           if (memeVideoRef.current && !memeVideoRef.current.paused) memeVideoRef.current.pause();
+          if (memeVideoRef.current) memeVideoRef.current.muted = true;
           if (denoisedAudioRef.current && !denoisedAudioRef.current.paused) denoisedAudioRef.current.pause();
           if (bgMusicRef.current && !bgMusicRef.current.paused) bgMusicRef.current.pause();
           return;
@@ -594,6 +596,7 @@ export const Screen2Workspace: React.FC = () => {
             currentProjectMsRef.current = totalDuration;
             if (mainVideoRef.current && !mainVideoRef.current.paused) mainVideoRef.current.pause();
             if (memeVideoRef.current && !memeVideoRef.current.paused) memeVideoRef.current.pause();
+            if (memeVideoRef.current) memeVideoRef.current.muted = true;
             if (denoisedAudioRef.current && !denoisedAudioRef.current.paused) denoisedAudioRef.current.pause();
             if (bgMusicRef.current && !bgMusicRef.current.paused) bgMusicRef.current.pause();
             return;
@@ -607,8 +610,9 @@ export const Screen2Workspace: React.FC = () => {
           if (activeMemePlaying) {
             setActiveMemePlaying(false);
           }
-          if (memeVideoRef.current && !memeVideoRef.current.paused) {
-            memeVideoRef.current.pause();
+          if (memeVideoRef.current) {
+            if (!memeVideoRef.current.paused) memeVideoRef.current.pause();
+            memeVideoRef.current.muted = true;
           }
 
           const video = mainVideoRef.current;
@@ -622,8 +626,8 @@ export const Screen2Workspace: React.FC = () => {
               video.play().catch(() => {});
             }
 
-            // Only update positions if not mid-seek
-            if (!video.seeking) {
+            // Only update positions if not mid-seek and not mid-switching lock
+            if (!video.seeking && !switchingClipRef.current) {
               const curVideoMs = Math.round(video.currentTime * 1000);
 
               // Check if video reached or passed current segment's sourceEndMs
@@ -643,6 +647,9 @@ export const Screen2Workspace: React.FC = () => {
                   return;
                 }
 
+                switchingClipRef.current = true;
+                setTimeout(() => { switchingClipRef.current = false; }, 80);
+
                 if (nextItem.kind === 'SOURCE_CLIP') {
                   // Contiguous Split Rule: if gap <= 80ms, let video play smoothly through with ZERO seek
                   const isContiguous = Math.abs(nextItem.sourceStartMs - item.sourceEndMs) <= 80;
@@ -660,14 +667,16 @@ export const Screen2Workspace: React.FC = () => {
                     setCurrentProjectMs(nextItem.projectStartMs);
                   }
                 } else {
-                  // Next item is a MEME_CLIP: switch cleanly
+                  // Next item is a MEME_CLIP: switch cleanly and lock handoff
                   video.pause();
+                  video.muted = true;
                   if (denoisedAudioRef.current && !denoisedAudioRef.current.paused) denoisedAudioRef.current.pause();
                   setActiveMemePlaying(true);
                   currentProjectMsRef.current = nextItem.projectStartMs;
                   setCurrentProjectMs(nextItem.projectStartMs);
 
                   if (memeVideoRef.current) {
+                    memeVideoRef.current.muted = false;
                     if (loadedSecondaryUrlRef.current !== nextItem.blobUrl) {
                       loadedSecondaryUrlRef.current = nextItem.blobUrl;
                       setIsSecondaryReady(false);
@@ -730,8 +739,9 @@ export const Screen2Workspace: React.FC = () => {
           if (!activeMemePlaying) {
             setActiveMemePlaying(true);
           }
-          if (mainVideoRef.current && !mainVideoRef.current.paused) {
-            mainVideoRef.current.pause();
+          if (mainVideoRef.current) {
+            if (!mainVideoRef.current.paused) mainVideoRef.current.pause();
+            mainVideoRef.current.muted = true;
           }
           if (denoisedAudioRef.current && !denoisedAudioRef.current.paused) {
             denoisedAudioRef.current.pause();
@@ -739,6 +749,7 @@ export const Screen2Workspace: React.FC = () => {
 
           const memeVideo = memeVideoRef.current;
           if (memeVideo) {
+            memeVideo.muted = false;
             if (loadedSecondaryUrlRef.current !== item.blobUrl) {
               loadedSecondaryUrlRef.current = item.blobUrl;
               setIsSecondaryReady(false);
@@ -763,7 +774,7 @@ export const Screen2Workspace: React.FC = () => {
               }
             }
 
-            if (!memeVideo.seeking) {
+            if (!memeVideo.seeking && !switchingClipRef.current) {
               const curMemeMs = Math.round(memeVideo.currentTime * 1000);
 
               if (curMemeMs >= item.sourceEndMs) {
@@ -776,9 +787,13 @@ export const Screen2Workspace: React.FC = () => {
                   setCurrentProjectMs(totalDuration);
                   currentProjectMsRef.current = totalDuration;
                   memeVideo.pause();
+                  memeVideo.muted = true;
                   if (bgMusicRef.current && !bgMusicRef.current.paused) bgMusicRef.current.pause();
                   return;
                 }
+
+                switchingClipRef.current = true;
+                setTimeout(() => { switchingClipRef.current = false; }, 80);
 
                 if (nextItem.kind === 'MEME_CLIP' && loadedSecondaryUrlRef.current === nextItem.blobUrl) {
                   // Contiguous split on same meme
@@ -798,11 +813,14 @@ export const Screen2Workspace: React.FC = () => {
                 } else if (nextItem.kind === 'SOURCE_CLIP') {
                   // Switch back to source clip
                   memeVideo.pause();
+                  memeVideo.muted = true;
                   setActiveMemePlaying(false);
                   currentProjectMsRef.current = nextItem.projectStartMs;
                   setCurrentProjectMs(nextItem.projectStartMs);
 
                   if (mainVideoRef.current) {
+                    const shouldUseDenoised = noiseRemovalEnabled && !!denoisedAudioUrl;
+                    mainVideoRef.current.muted = shouldUseDenoised;
                     if (!mainVideoRef.current.seeking && lastSeekTargetRef.current !== nextItem.sourceStartMs) {
                       lastSeekTargetRef.current = nextItem.sourceStartMs;
                       mainVideoRef.current.currentTime = nextItem.sourceStartMs / 1000;
@@ -851,6 +869,7 @@ export const Screen2Workspace: React.FC = () => {
         lastSeekTargetRef.current = null;
         if (mainVideoRef.current && !mainVideoRef.current.paused) mainVideoRef.current.pause();
         if (memeVideoRef.current && !memeVideoRef.current.paused) memeVideoRef.current.pause();
+        if (memeVideoRef.current) memeVideoRef.current.muted = true;
         if (denoisedAudioRef.current && !denoisedAudioRef.current.paused) denoisedAudioRef.current.pause();
         if (bgMusicRef.current && !bgMusicRef.current.paused) bgMusicRef.current.pause();
         if (project) {
@@ -967,8 +986,9 @@ export const Screen2Workspace: React.FC = () => {
       const { item, sourceMs } = mapProjectToSource(clamped, project.items);
       if (item && item.kind === 'SOURCE_CLIP') {
         setActiveMemePlaying(false);
-        if (memeVideoRef.current && !memeVideoRef.current.paused) {
-          memeVideoRef.current.pause();
+        if (memeVideoRef.current) {
+          if (!memeVideoRef.current.paused) memeVideoRef.current.pause();
+          memeVideoRef.current.muted = true;
         }
         const sec = sourceMs / 1000;
         const shouldUseDenoised = noiseRemovalEnabled && !!denoisedAudioUrl;
@@ -989,9 +1009,13 @@ export const Screen2Workspace: React.FC = () => {
         }
       } else if (item && item.kind === 'MEME_CLIP') {
         setActiveMemePlaying(true);
-        if (mainVideoRef.current && !mainVideoRef.current.paused) mainVideoRef.current.pause();
+        if (mainVideoRef.current) {
+          if (!mainVideoRef.current.paused) mainVideoRef.current.pause();
+          mainVideoRef.current.muted = true;
+        }
         if (denoisedAudioRef.current && !denoisedAudioRef.current.paused) denoisedAudioRef.current.pause();
         if (memeVideoRef.current) {
+          memeVideoRef.current.muted = false;
           if (loadedSecondaryUrlRef.current !== item.blobUrl) {
             loadedSecondaryUrlRef.current = item.blobUrl;
             setIsSecondaryReady(false);
@@ -2611,7 +2635,7 @@ export const Screen2Workspace: React.FC = () => {
             </div>
 
             {/* Timeline Items Track */}
-            <div className="w-full h-12 flex items-center space-x-1 relative mt-1">
+            <div className="w-full h-12 flex items-center gap-0 flex-nowrap relative mt-1">
               {project.items.map((item) => {
                 const isSelected = selectedItemId === item.id;
 
@@ -2620,8 +2644,8 @@ export const Screen2Workspace: React.FC = () => {
                 }
 
                 const durPct = project.totalProjectDurationMs > 0
-                  ? Math.max(1, (item.durationMs / project.totalProjectDurationMs) * 100)
-                  : 10;
+                  ? (item.durationMs / project.totalProjectDurationMs) * 100
+                  : 0;
 
                 const isSilence = item.status === 'SUGGESTED_SILENCE_CUT';
                 const isAddedVideoClip = !isSilence && (
@@ -2632,7 +2656,7 @@ export const Screen2Workspace: React.FC = () => {
                 const isDraggable = item.status === 'ACTIVE';
                 const clipThumbs = clipFilmstrips[item.blobUrl] || (item.kind === 'SOURCE_CLIP' ? thumbnails : null);
                 const hasClipThumbnails = !!clipThumbs && Object.keys(clipThumbs).length > 0;
-                const isNarrow = item.durationMs < 2000;
+                const isNarrow = item.durationMs < 2000 || durPct < 6;
                 const isHighZoom = timelineZoom >= 3;
                 const frameIntervalMs = isHighZoom ? 500 : 1000;
                 const tileCount = Math.max(1, Math.round(item.durationMs / frameIntervalMs));
@@ -2677,9 +2701,9 @@ export const Screen2Workspace: React.FC = () => {
                       e.stopPropagation();
                       setSelectedItemId(item.id);
                     }}
-                    style={{ width: `${durPct}%`, minWidth: '38px' }}
+                    style={{ width: `${durPct}%` }}
                     title={`${item.title} (${(item.durationMs / 1000).toFixed(1)}s)${isDraggable ? ' • Drag to reorder' : ''}`}
-                    className={`h-11 rounded-lg px-2 py-1 flex flex-col justify-between transition-all relative select-none cursor-pointer ${
+                    className={`h-11 rounded-lg px-2 py-1 flex flex-col justify-between transition-all relative select-none cursor-pointer box-border overflow-hidden flex-shrink-0 ${
                       draggedItemId === item.id ? 'opacity-50' : 'opacity-100'
                     } ${
                       isSelected
@@ -2701,6 +2725,20 @@ export const Screen2Workspace: React.FC = () => {
                     )}
                     {dropTarget?.id === item.id && dropTarget.position === 'after' && (
                       <div className="absolute right-0 top-0 bottom-0 w-[3px] bg-[#E8872A] z-40 shadow-[0_0_8px_rgba(232,135,42,0.9)] pointer-events-none rounded-r" />
+                    )}
+
+                    {/* Meme Thumbnail Frame */}
+                    {isMeme && (
+                      <div className="absolute inset-0 overflow-hidden pointer-events-none rounded-lg opacity-80">
+                        <video
+                          src={`${item.blobUrl}#t=0.3`}
+                          preload="metadata"
+                          muted
+                          playsInline
+                          className="w-full h-full object-cover"
+                        />
+                        <div className="absolute inset-0 bg-gradient-to-b from-black/50 via-transparent to-black/75 pointer-events-none" />
+                      </div>
                     )}
 
                     {/* Filmstrip Frame Thumbnails (Item 1) */}
@@ -2738,7 +2776,7 @@ export const Screen2Workspace: React.FC = () => {
                         )}
                         <span className="text-[11px] font-semibold truncate drop-shadow-md">
                           {isMeme
-                            ? `🎬 ${item.title}`
+                            ? isNarrow ? '🎬' : `🎬 ${item.title}`
                             : isNarrow && !isSilence
                             ? ''
                             : item.title}

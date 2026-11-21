@@ -8,31 +8,26 @@ import { TimelineItem } from '../types/edl';
 export function recalculateTimeline(items: TimelineItem[]): TimelineItem[] {
   let currentProjMs = 0;
 
-  return items.map((item, index) => {
-    // Only ACTIVE items and inserted MEME clips contribute to the played project time
-    const isPlayed = item.status === 'ACTIVE' || item.status === 'SUGGESTED_MEME';
+  return items.map((item) => {
+    // Non-deleted items (ACTIVE, SUGGESTED_MEME, SUGGESTED_SILENCE_CUT) contribute to the played project time
+    // Only DELETED items have zero project duration
+    const isPlayed = item.status !== 'DELETED';
 
     if (!isPlayed) {
       return {
         ...item,
         projectStartMs: currentProjMs,
-        projectEndMs: currentProjMs // Zero project duration when skipped/deleted
+        projectEndMs: currentProjMs // Zero project duration when deleted
       };
     }
 
     const startMs = currentProjMs;
     // Base item duration in integer milliseconds
     const durMs = Math.max(0, Math.round(item.sourceEndMs - item.sourceStartMs));
-    let endMs = startMs + durMs;
+    const endMs = startMs + durMs;
 
-    // Check if next item has an overlap transition from this item
-    let overlapMs = 0;
-    if (item.transitionOut && item.transitionOut.type !== 'none' && index < items.length - 1) {
-      // Overlap duration cannot exceed half the clip duration or the next clip duration
-      overlapMs = Math.min(item.transitionOut.durationMs, Math.floor(durMs / 2));
-    }
-
-    currentProjMs = endMs - overlapMs;
+    // Transitions are pure visual overlays at the boundary, NEVER subtract overlapMs
+    currentProjMs = endMs;
 
     return {
       ...item,
@@ -47,7 +42,7 @@ export function recalculateTimeline(items: TimelineItem[]): TimelineItem[] {
  * Total active project duration in milliseconds
  */
 export function getTotalProjectDuration(items: TimelineItem[]): number {
-  const activeItems = items.filter(it => it.status === 'ACTIVE' || it.status === 'SUGGESTED_MEME');
+  const activeItems = items.filter(it => it.status !== 'DELETED');
   if (activeItems.length === 0) return 0;
   return Math.max(...activeItems.map(it => it.projectEndMs));
 }
@@ -60,7 +55,7 @@ export function mapProjectToSource(
   projectMs: number,
   items: TimelineItem[]
 ): { item: TimelineItem | null; sourceMs: number; itemOffsetMs: number } {
-  const activeItems = items.filter(it => it.status === 'ACTIVE' || it.status === 'SUGGESTED_MEME');
+  const activeItems = items.filter(it => it.status !== 'DELETED');
   
   if (activeItems.length === 0) {
     return { item: null, sourceMs: 0, itemOffsetMs: 0 };
@@ -114,7 +109,9 @@ export function splitAndTrimProjectRange(
   cutStartProjMs: number,
   cutEndProjMs: number
 ): TimelineItem[] {
-  if (cutStartProjMs >= cutEndProjMs) return items;
+  const start = Math.max(0, cutStartProjMs);
+  const end = cutEndProjMs;
+  if (start >= end || (end - start) < 50) return items;
 
   const result: TimelineItem[] = [];
 
@@ -129,13 +126,13 @@ export function splitAndTrimProjectRange(
     const itemEnd = item.projectEndMs;
 
     // Case 1: Cut range is completely outside this item
-    if (cutEndProjMs <= itemStart || cutStartProjMs >= itemEnd) {
+    if (end <= itemStart || start >= itemEnd) {
       result.push(item);
       continue;
     }
 
     // Case 2: Cut range completely covers this item
-    if (cutStartProjMs <= itemStart && cutEndProjMs >= itemEnd) {
+    if (start <= itemStart && end >= itemEnd) {
       result.push({
         ...item,
         status: 'DELETED'
@@ -144,8 +141,8 @@ export function splitAndTrimProjectRange(
     }
 
     // Case 3: Cut range starts inside this item and ends after this item
-    if (cutStartProjMs > itemStart && cutEndProjMs >= itemEnd) {
-      const splitOffsetMs = cutStartProjMs - itemStart;
+    if (start > itemStart && end >= itemEnd) {
+      const splitOffsetMs = start - itemStart;
       const splitSourceMs = item.sourceStartMs + splitOffsetMs;
 
       // Left kept part
@@ -169,8 +166,8 @@ export function splitAndTrimProjectRange(
     }
 
     // Case 4: Cut range starts before this item and ends inside this item
-    if (cutStartProjMs <= itemStart && cutEndProjMs < itemEnd) {
-      const splitOffsetMs = cutEndProjMs - itemStart;
+    if (start <= itemStart && end < itemEnd) {
+      const splitOffsetMs = end - itemStart;
       const splitSourceMs = item.sourceStartMs + splitOffsetMs;
 
       // Left cut part
@@ -194,9 +191,9 @@ export function splitAndTrimProjectRange(
     }
 
     // Case 5: Cut range is strictly inside this single item (splits into 3 pieces: left, cut, right)
-    if (cutStartProjMs > itemStart && cutEndProjMs < itemEnd) {
-      const leftOffset = cutStartProjMs - itemStart;
-      const rightOffset = cutEndProjMs - itemStart;
+    if (start > itemStart && end < itemEnd) {
+      const leftOffset = start - itemStart;
+      const rightOffset = end - itemStart;
 
       const leftSourceEnd = item.sourceStartMs + leftOffset;
       const rightSourceStart = item.sourceStartMs + rightOffset;

@@ -785,15 +785,27 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   trimProjectRange: (startMs: number, endMs: number) => {
     const { project } = get();
     if (!project) return;
+    const totalDuration = project.totalProjectDurationMs;
+    const totalDurSec = totalDuration / 1000;
+    const startSec = startMs / 1000;
+    const endSec = endMs / 1000;
+
+    if (startMs >= totalDuration || endMs <= startMs || (endMs - startMs) < 50) {
+      console.warn(`Nothing trimmed — ${startSec.toFixed(1)}s to ${endSec.toFixed(1)}s is outside the current video length (0s to ${totalDurSec.toFixed(1)}s).`);
+      return;
+    }
+
+    const clampedEndMs = Math.min(totalDuration, Math.max(startMs, endMs));
     get().pushHistory();
 
-    const updated = splitAndTrimProjectRange(project.items, startMs, endMs);
-    const totalProjMs = getTotalProjectDuration(updated);
+    const updated = splitAndTrimProjectRange(project.items, Math.max(0, startMs), clampedEndMs);
+    const recalculated = recalculateTimeline(updated);
+    const totalProjMs = getTotalProjectDuration(recalculated);
 
     set({
       project: {
         ...project,
-        items: updated,
+        items: recalculated,
         totalProjectDurationMs: totalProjMs,
         updatedAt: Date.now()
       }
@@ -1286,14 +1298,38 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     const store = get();
 
     if (action === 'TRIM_SECTION') {
-      store.trimProjectRange(payload.startMs, payload.endMs);
+      const totalDurMs = store.project?.totalProjectDurationMs || 0;
+      const totalDurSec = totalDurMs / 1000;
+      const startSec = payload.startMs / 1000;
+      const endSec = payload.endMs / 1000;
+
+      if (payload.startMs >= totalDurMs || payload.endMs <= payload.startMs || (payload.endMs - payload.startMs) < 50) {
+        store.addCommandLog({
+          id: `cmd_${Date.now()}`,
+          rawInput,
+          timestamp: Date.now(),
+          parsedCommand: command,
+          status: 'WARNING',
+          appliedMessage: `Nothing trimmed — ${startSec.toFixed(1)}s to ${endSec.toFixed(1)}s is outside the current video length (0s to ${totalDurSec.toFixed(1)}s).`
+        });
+        return;
+      }
+
+      const clampedEndMs = Math.min(totalDurMs, payload.endMs);
+      const wasClamped = payload.endMs > totalDurMs;
+
+      store.trimProjectRange(payload.startMs, clampedEndMs);
+      const appliedMsg = wasClamped
+        ? `Trimmed section from ${startSec.toFixed(1)}s to ${(clampedEndMs / 1000).toFixed(1)}s (clamped to end of video).`
+        : `Trimmed section from ${startSec.toFixed(1)}s to ${endSec.toFixed(1)}s.`;
+
       store.addCommandLog({
         id: `cmd_${Date.now()}`,
         rawInput,
         timestamp: Date.now(),
         parsedCommand: command,
         status: 'SUCCESS',
-        appliedMessage: `Trimmed section from ${(payload.startMs / 1000).toFixed(1)}s to ${(payload.endMs / 1000).toFixed(1)}s.`
+        appliedMessage: appliedMsg
       });
     } else if (action === 'REMOVE_SILENCE') {
       if (rawInput.toLowerCase().includes('non-speech') || rawInput.toLowerCase().includes('breath') || rawInput.toLowerCase().includes('ambient')) {

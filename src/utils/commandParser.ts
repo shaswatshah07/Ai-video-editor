@@ -225,7 +225,7 @@ export function parseLocalCommand(
   if (trimMatch) {
     const startMs = parseTimeStringToMs(trimMatch[1]);
     const endMs = parseTimeStringToMs(trimMatch[2]);
-    if (startMs !== null && endMs !== null && startMs < endMs) {
+    if (startMs !== null && endMs !== null) {
       return {
         action: 'TRIM_SECTION',
         payload: { startMs, endMs },
