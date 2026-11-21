@@ -11,9 +11,6 @@ type BotPhase = 'idle' | 'to-cupboard' | 'searching' | 'to-computer' | 'insertin
 type FrameSlotType = 'slotA' | 'welcome' | 'to' | 'fastcutz' | 'slotB';
 const SEQUENCE_ORDER: FrameSlotType[] = ['slotA', 'welcome', 'to', 'fastcutz', 'slotB'];
 
-// Exact duration matching .animate-filmstrip-marquee (28s in src/index.css) for 1-full-roll restoration
-const FULL_ROLL_MS = 28000;
-
 /**
  * Stationary Docking Cradle
  * Anchored permanently flush on the top edge of the left-hand Upload Dropbox
@@ -629,20 +626,69 @@ export const Screen1Upload: React.FC = () => {
 
   // Interactive Scissor-Cut state
   const filmstripRef = useRef<HTMLDivElement>(null);
+  const frameRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const [isHoveringStrip, setIsHoveringStrip] = useState(false);
   const [cursorPos, setCursorPos] = useState({ x: -100, y: -100 });
   const [isSnipping, setIsSnipping] = useState(false);
   const [cutFrames, setCutFrames] = useState<Record<string, 'cutting' | 'cut'>>({});
 
-  const animTimersRef = useRef<NodeJS.Timeout[]>([]);
+  const cutTimersRef = useRef<NodeJS.Timeout[]>([]);
+  const botTimersRef = useRef<NodeJS.Timeout[]>([]);
 
-  // Cleanup timers on unmount
+  // Cleanup all timers on unmount only
   useEffect(() => {
     return () => {
-      animTimersRef.current.forEach(clearTimeout);
-      animTimersRef.current = [];
+      cutTimersRef.current.forEach(clearTimeout);
+      cutTimersRef.current = [];
+      botTimersRef.current.forEach(clearTimeout);
+      botTimersRef.current = [];
     };
   }, []);
+
+  // Off-screen left-exit watcher for cut frames:
+  // Active only when there is at least one frame in 'cut' state
+  useEffect(() => {
+    const cutKeys = Object.entries(cutFrames)
+      .filter(([_, state]) => state === 'cut')
+      .map(([key]) => key);
+
+    if (cutKeys.length === 0) return;
+
+    let animId: number;
+    const checkOffscreen = () => {
+      const stripLeft = filmstripRef.current
+        ? filmstripRef.current.getBoundingClientRect().left
+        : 0;
+
+      const keysToClear: string[] = [];
+
+      for (const key of cutKeys) {
+        const el = frameRefs.current[key];
+        if (el) {
+          const rect = el.getBoundingClientRect();
+          // As soon as the cut slot has scrolled completely off the left edge of the filmstrip
+          if (rect.right < stripLeft - 10) {
+            keysToClear.push(key);
+          }
+        }
+      }
+
+      if (keysToClear.length > 0) {
+        setCutFrames(prev => {
+          const next = { ...prev };
+          keysToClear.forEach(k => delete next[k]);
+          return next;
+        });
+      } else {
+        animId = requestAnimationFrame(checkOffscreen);
+      }
+    };
+
+    animId = requestAnimationFrame(checkOffscreen);
+    return () => {
+      cancelAnimationFrame(animId);
+    };
+  }, [cutFrames]);
 
   // Track cursor position inside filmstrip for custom scissors
   const handleStripMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
@@ -655,40 +701,55 @@ export const Screen1Upload: React.FC = () => {
   };
 
   // Trigger Interactive Scissor Cut on a frame
-  const handleCutFrame = (instanceKey: string) => {
+  const handleCutFrame = (instanceKey: string, frameType: FrameSlotType) => {
     if (cutFrames[instanceKey]) return;
 
     // 1. Physically snap scissor blades shut
     setIsSnipping(true);
     const snipTimer = setTimeout(() => setIsSnipping(false), 260);
-    animTimersRef.current.push(snipTimer);
+    cutTimersRef.current.push(snipTimer);
 
-    // 2. Set state to 'cutting' (triggers amber flash line, CUT badge, left/right physics drop)
+    // Identify if this is a meme slot and whether it currently holds a meme
+    const slotIdx = frameType === 'slotA' ? 0 : frameType === 'slotB' ? 1 : null;
+    const isMemeSlotFilled = slotIdx !== null && slotMemes[slotIdx] !== null;
+
+    // 2. Set state to 'cutting' (0–560ms): slotMemes[slotIdx] remains intact during 0–560ms
+    // so renderFrameVisual displays the active meme video splitting cleanly in half!
     setCutFrames(prev => ({ ...prev, [instanceKey]: 'cutting' }));
 
-    // 3. After 560ms (split animation finishes), transition to 'cut' (recessed splice gap)
+    // 3. At 560ms (split animation finishes): transition to 'cut' (recessed splice gap)
+    // AND if a meme was cut, clear that specific meme slot so it returns as an empty frame!
     const dropTimer = setTimeout(() => {
       setCutFrames(prev => ({ ...prev, [instanceKey]: 'cut' }));
-    }, 560);
-    animTimersRef.current.push(dropTimer);
 
-    // 4. Restore frame after exactly 1 full rolling cycle (28s)
-    const restoreTimer = setTimeout(() => {
+      if (isMemeSlotFilled && slotIdx !== null) {
+        setSlotMemes(prev => {
+          const next: [MemeLibraryItem | null, MemeLibraryItem | null] = [...prev];
+          next[slotIdx] = null;
+          return next;
+        });
+      }
+    }, 560);
+    cutTimersRef.current.push(dropTimer);
+
+    // 4. Safety fallback (15s) in case watcher loop is paused by tab backgrounding
+    const fallbackTimer = setTimeout(() => {
       setCutFrames(prev => {
+        if (!prev[instanceKey]) return prev;
         const next = { ...prev };
         delete next[instanceKey];
         return next;
       });
-    }, FULL_ROLL_MS);
-    animTimersRef.current.push(restoreTimer);
+    }, 15000);
+    cutTimersRef.current.push(fallbackTimer);
   };
 
   // Trigger Interactive Meme Fetch Sequence
   const handleFetchMeme = () => {
     if (botPhase !== 'idle') return;
 
-    animTimersRef.current.forEach(clearTimeout);
-    animTimersRef.current = [];
+    botTimersRef.current.forEach(clearTimeout);
+    botTimersRef.current = [];
     setShowEasyBubble(false);
 
     // 1. Glide to cupboard (700ms)
@@ -735,17 +796,17 @@ export const Screen1Upload: React.FC = () => {
               const t6 = setTimeout(() => {
                 setShowEasyBubble(false);
               }, 1400);
-              animTimersRef.current.push(t6);
+              botTimersRef.current.push(t6);
             }, 850);
-            animTimersRef.current.push(t5);
+            botTimersRef.current.push(t5);
           }, 650);
-          animTimersRef.current.push(t4);
+          botTimersRef.current.push(t4);
         }, 1050);
-        animTimersRef.current.push(t3);
+        botTimersRef.current.push(t3);
       }, 850);
-      animTimersRef.current.push(t2);
+      botTimersRef.current.push(t2);
     }, 700);
-    animTimersRef.current.push(t1);
+    botTimersRef.current.push(t1);
   };
 
   const handleFileDrop = (e: React.DragEvent<HTMLDivElement>) => {
@@ -991,12 +1052,13 @@ export const Screen1Upload: React.FC = () => {
     return (
       <div
         key={instanceKey}
+        ref={(el) => { frameRefs.current[instanceKey] = el; }}
         className="w-[220px] md:w-[250px] h-[82px] md:h-[92px] shrink-0 relative select-none"
       >
         {/* State 1: Normal Interactive Frame (Scissors hover & click) */}
         {!state && (
           <div
-            onClick={() => handleCutFrame(instanceKey)}
+            onClick={() => handleCutFrame(instanceKey, frameType)}
             className="w-full h-full cursor-pointer group rounded-lg transition-all hover:border-[#FF6B35]/80 hover:shadow-[0_0_14px_rgba(255,107,53,0.3)]"
           >
             {renderFrameVisual(frameType)}
