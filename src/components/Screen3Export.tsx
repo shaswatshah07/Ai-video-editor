@@ -5,7 +5,7 @@ import { exportProjectVideo, verifyRenderedVideo, RenderProgress, ExportResult }
 import { isActualMemeClip } from '../utils/timelineMath';
 
 export const Screen3Export: React.FC = () => {
-  const { project, setScreen, denoisedAudioBlob, bgMusic } = useEditorStore();
+  const { project, setScreen, bgMusic } = useEditorStore();
 
   const [isExporting, setIsExporting] = useState<boolean>(true);
   const [progress, setProgress] = useState<RenderProgress>({ ratio: 0, stage: 'Preparing media files...' });
@@ -16,9 +16,18 @@ export const Screen3Export: React.FC = () => {
   const [showDetails, setShowDetails] = useState<boolean>(false);
 
   const previewVideoRef = useRef<HTMLVideoElement | null>(null);
+  const activeBlobUrlRef = useRef<string | null>(null);
+  const isMountedRef = useRef<boolean>(true);
+  const runIdRef = useRef<number>(0);
 
   const startExport = async () => {
     if (!project) return;
+    const currentRunId = ++runIdRef.current;
+    if (activeBlobUrlRef.current) {
+      URL.revokeObjectURL(activeBlobUrlRef.current);
+      activeBlobUrlRef.current = null;
+    }
+
     setIsExporting(true);
     setRenderError(null);
     setVerificationPassed(false);
@@ -30,7 +39,6 @@ export const Screen3Export: React.FC = () => {
         (p) => {
           setProgress(p);
         },
-        denoisedAudioBlob,
         bgMusic
       );
 
@@ -43,20 +51,27 @@ export const Screen3Export: React.FC = () => {
         res.hasAudio
       );
 
-      const resolvedDuration = verification.duration > 0 ? verification.duration : res.expectedDurationSec;
-      setActualDuration(resolvedDuration);
-      setExportResult({ ...res, actualDurationSec: resolvedDuration });
+      if (!isMountedRef.current || currentRunId !== runIdRef.current) {
+        URL.revokeObjectURL(res.blobUrl);
+        return;
+      }
 
-      if (res.exitCode === 0 && res.fileSizeBytes > 10000) {
+      setActualDuration(verification.duration);
+      setExportResult({ ...res, actualDurationSec: verification.duration });
+
+      if (res.exitCode === 0 && res.fileSizeBytes > 10000 && verification.valid) {
+        activeBlobUrlRef.current = res.blobUrl;
         setVerificationPassed(true);
         setIsExporting(false);
         setProgress({ ratio: 1, stage: 'Export Complete & Verified!' });
       } else {
+        URL.revokeObjectURL(res.blobUrl);
         setVerificationPassed(false);
         setIsExporting(false);
-        setRenderError(verification.error || 'Output video file could not be decoded or is empty.');
+        setRenderError(verification.error || 'Output MP4 failed integrity verification.');
       }
     } catch (err) {
+      if (!isMountedRef.current || currentRunId !== runIdRef.current) return;
       setRenderError((err as Error).message || 'Failed to re-encode video.');
       setIsExporting(false);
       setVerificationPassed(false);
@@ -64,10 +79,13 @@ export const Screen3Export: React.FC = () => {
   };
 
   useEffect(() => {
+    isMountedRef.current = true;
     startExport();
     return () => {
-      if (exportResult?.blobUrl) {
-        URL.revokeObjectURL(exportResult.blobUrl);
+      isMountedRef.current = false;
+      if (activeBlobUrlRef.current) {
+        URL.revokeObjectURL(activeBlobUrlRef.current);
+        activeBlobUrlRef.current = null;
       }
     };
   }, []);
@@ -90,7 +108,7 @@ export const Screen3Export: React.FC = () => {
   const actualMemesCount = project.items.filter(
     (it) => isActualMemeClip(it, project.sourceVideoUrl)
   ).length;
-  const cutsCount = project.items.filter((it) => it.status === 'DELETED').length;
+  const cutsCount = project.items.filter((it) => it.status === 'DELETED' && it.kind === 'SOURCE_CLIP').length;
 
   return (
     <div className="min-h-screen bg-[#0E0E0D] text-[#F4F2EE] flex flex-col justify-between p-6">
@@ -287,18 +305,18 @@ export const Screen3Export: React.FC = () => {
                   </div>
                   <div>
                     <span className="text-[#A19E97]">Audio Track: </span>
-                    <span className="text-[#F4F2EE]">{exportResult.hasAudio ? 'Present (AAC 192k)' : 'None'}</span>
+                    <span className="text-[#F4F2EE]">{exportResult.hasAudio ? 'Present (AAC 192k)' : 'Silent fallback (no source audio detected)'}</span>
                   </div>
                   <div>
                     <span className="text-[#A19E97]">Speaker Voice Enhance: </span>
                     <span className={exportResult.voiceEnhanceBaked ? 'text-[#5EEAD4] font-bold' : 'text-[#6E6B64]'}>
-                      {exportResult.voiceEnhanceBaked ? 'Baked into MP4 (90Hz HPF + 280Hz cut + 2.5kHz boost + 6.5kHz treble cut + Compressor + Loudnorm)' : 'Disabled'}
+                      {exportResult.voiceEnhanceBaked ? 'Baked into MP4 (85Hz HPF + 260Hz cut + 2.8kHz presence boost + Compressor + Limiter)' : 'Disabled'}
                     </span>
                   </div>
                   <div>
-                    <span className="text-[#A19E97]">Background Noise Removal: </span>
+                    <span className="text-[#A19E97]">Reduce Low Hum (Basic): </span>
                     <span className={exportResult.noiseRemovalBaked ? 'text-[#5EEAD4] font-bold' : 'text-[#6E6B64]'}>
-                      {exportResult.noiseRemovalBaked ? 'Baked into MP4 (Cascaded 180Hz HPF + 6.2kHz LPF + 40dB FFT Denoiser + Agate Gate)' : 'Disabled'}
+                      {exportResult.noiseRemovalBaked ? 'Baked into MP4 (Cascaded 180Hz HPF + 6.2kHz LPF + Noise Gate)' : 'Disabled'}
                     </span>
                   </div>
                   <div>

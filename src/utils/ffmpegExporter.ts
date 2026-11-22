@@ -38,8 +38,13 @@ export interface ExportResult {
 
 let ffmpegInstance: FFmpeg | null = null;
 const ffmpegLogs: string[] = [];
+let activeProgressCallback: ((p: RenderProgress) => void) | null = null;
+let lastReportedRatio = 0.30;
 
 async function getFFmpeg(onProgress?: (p: RenderProgress) => void): Promise<FFmpeg> {
+  if (onProgress) {
+    activeProgressCallback = onProgress;
+  }
   if (ffmpegInstance && ffmpegInstance.loaded) {
     return ffmpegInstance;
   }
@@ -53,10 +58,14 @@ async function getFFmpeg(onProgress?: (p: RenderProgress) => void): Promise<FFmp
   });
 
   ffmpeg.on('progress', ({ progress }) => {
-    if (onProgress) {
-      onProgress({
-        ratio: Math.max(0, Math.min(1, progress)),
-        stage: `Re-encoding MP4 (${Math.round(progress * 100)}%)...`
+    if (activeProgressCallback) {
+      const clamped = Math.max(0, Math.min(1, progress));
+      // Map 0..1 to 0.30..0.94 monotonically
+      const mapped = 0.30 + clamped * 0.64;
+      lastReportedRatio = Math.max(lastReportedRatio, mapped);
+      activeProgressCallback({
+        ratio: lastReportedRatio,
+        stage: `Re-encoding MP4 (${Math.round(clamped * 100)}%)...`
       });
     }
   });
@@ -95,58 +104,84 @@ export async function checkVideoHasAudio(videoUrl: string): Promise<boolean> {
 
 /**
  * Validates output video metadata against exact expected duration and decodability.
- * Passes ONLY if:
- * 1. |actual - expected| <= 300ms
- * 2. videoWidth > 0 and videoHeight > 0 (video decodes)
- * 3. If source had audio, output must contain audio.
  */
 export async function verifyRenderedVideo(
   blob: Blob,
   expectedDurationSec: number,
   expectedAudio: boolean
 ): Promise<{ valid: boolean; duration: number; hasAudio: boolean; driftMs: number; error?: string }> {
-  const blobUrl = URL.createObjectURL(blob);
+  if (blob.size <= 10000) {
+    return {
+      valid: false,
+      duration: 0,
+      hasAudio: false,
+      driftMs: 0,
+      error: 'Exported MP4 is empty or corrupted.'
+    };
+  }
+
+  const tempUrl = URL.createObjectURL(blob);
 
   return new Promise((resolve) => {
     const video = document.createElement('video');
     video.preload = 'metadata';
-    video.src = blobUrl;
+    video.muted = true;
+
+    let isCleanedUp = false;
+    const cleanup = () => {
+      if (isCleanedUp) return;
+      isCleanedUp = true;
+      clearTimeout(timeout);
+      video.onloadedmetadata = null;
+      video.onerror = null;
+      video.pause();
+      video.removeAttribute('src');
+      video.load();
+      URL.revokeObjectURL(tempUrl);
+    };
 
     const timeout = setTimeout(() => {
-      if (blob.size > 10000) {
-        resolve({ valid: true, duration: expectedDurationSec, hasAudio: expectedAudio, driftMs: 0 });
-      } else {
-        resolve({ valid: false, duration: 0, hasAudio: false, driftMs: 0, error: 'Video file size is too small or empty' });
-      }
-    }, 5000);
+      cleanup();
+      resolve({
+        valid: false,
+        duration: 0,
+        hasAudio: false,
+        driftMs: 0,
+        error: 'Export verification timed out while decoding the output MP4.'
+      });
+    }, 15000);
 
     video.onloadedmetadata = async () => {
-      clearTimeout(timeout);
       const actualDuration = video.duration;
       const decodes = video.videoWidth > 0 && video.videoHeight > 0;
 
-      if (!decodes || isNaN(actualDuration) || actualDuration <= 0) {
-        if (blob.size > 10000) {
-          return resolve({
-            valid: true,
-            duration: expectedDurationSec,
-            hasAudio: expectedAudio,
-            driftMs: 0
-          });
-        }
+      if (!decodes || !Number.isFinite(actualDuration) || actualDuration <= 0) {
+        cleanup();
         return resolve({
           valid: false,
-          duration: actualDuration || 0,
+          duration: Number.isFinite(actualDuration) ? actualDuration : 0,
           hasAudio: false,
           driftMs: 0,
-          error: `Output video failed to decode valid visual dimensions or duration (${actualDuration}s)`
+          error: 'Exported MP4 has invalid or zero duration.'
         });
       }
 
-      // Drift is strictly informational: record drift, but never block valid exports
       const diffMs = Math.round(Math.abs(actualDuration - expectedDurationSec) * 1000);
 
-      // Check audio presence if source had audio
+      if (expectedDurationSec > 0) {
+        const toleranceSec = Math.max(1.0, expectedDurationSec * 0.05);
+        if (Math.abs(actualDuration - expectedDurationSec) > toleranceSec) {
+          cleanup();
+          return resolve({
+            valid: false,
+            duration: actualDuration,
+            hasAudio: false,
+            driftMs: diffMs,
+            error: `Duration mismatch: expected ${expectedDurationSec.toFixed(2)}s, got ${actualDuration.toFixed(2)}s.`
+          });
+        }
+      }
+
       let outputAudioOk = true;
       if (expectedAudio) {
         try {
@@ -157,11 +192,11 @@ export async function verifyRenderedVideo(
           outputAudioOk = decoded.numberOfChannels > 0;
           await ctx.close();
         } catch {
-          // If partial slice decode fails, consider audio valid if file has size > 10KB
           outputAudioOk = blob.size > 10000;
         }
       }
 
+      cleanup();
       resolve({
         valid: true,
         duration: actualDuration,
@@ -171,13 +206,18 @@ export async function verifyRenderedVideo(
     };
 
     video.onerror = () => {
-      clearTimeout(timeout);
-      if (blob.size > 10000) {
-        resolve({ valid: true, duration: expectedDurationSec, hasAudio: expectedAudio, driftMs: 0 });
-      } else {
-        resolve({ valid: false, duration: 0, hasAudio: false, driftMs: 0, error: 'Browser video element could not decode rendered MP4 file' });
-      }
+      cleanup();
+      resolve({
+        valid: false,
+        duration: 0,
+        hasAudio: false,
+        driftMs: 0,
+        error: 'Browser could not decode the exported MP4.'
+      });
     };
+
+    video.src = tempUrl;
+    video.load();
   });
 }
 
@@ -188,10 +228,12 @@ export async function verifyRenderedVideo(
 export async function exportProjectVideo(
   project: ProjectEDL,
   onProgress?: (p: RenderProgress) => void,
-  _cachedDenoisedBlob?: Blob | null,
   bgMusic?: BgMusicTrack | null
 ): Promise<ExportResult> {
   const startTime = performance.now();
+  ffmpegLogs.length = 0; // Fresh log buffer for this export run
+  activeProgressCallback = onProgress || null;
+  lastReportedRatio = 0.30;
 
   // Active items (both SOURCE_CLIP and MEME_CLIP in chronological order)
   const activeItems = project.items.filter(
@@ -233,17 +275,40 @@ export async function exportProjectVideo(
     onProgress({ ratio: 0.05, stage: 'Checking audio tracks & loading FFmpeg...' });
   }
 
-  const hasAudio = await checkVideoHasAudio(project.sourceVideoUrl);
+  const sourceHasAudio = await checkVideoHasAudio(project.sourceVideoUrl);
+  if (!sourceHasAudio) {
+    warnings.push('Source video audio could not be decoded; exported with a silent audio track.');
+  }
+
   const ffmpeg = await getFFmpeg(onProgress);
 
   // Measure source video dimensions to compute safe even-aligned target resolution
   const targetDims = await new Promise<{ targetW: number; targetH: number }>((resolve) => {
     const video = document.createElement('video');
     video.preload = 'metadata';
-    video.src = project.sourceVideoUrl;
+    let isProbeDone = false;
+
+    const cleanupProbe = () => {
+      if (isProbeDone) return;
+      isProbeDone = true;
+      clearTimeout(probeTimeout);
+      video.onloadedmetadata = null;
+      video.onerror = null;
+      video.pause();
+      video.removeAttribute('src');
+      video.load();
+    };
+
+    const probeTimeout = setTimeout(() => {
+      console.warn('Source dimension probe timed out after 10s; falling back to 1280x720.');
+      cleanupProbe();
+      resolve({ targetW: 1280, targetH: 720 });
+    }, 10000);
+
     video.onloadedmetadata = () => {
       let w = video.videoWidth || 1280;
       let h = video.videoHeight || 720;
+      cleanupProbe();
       const maxDim = Math.max(w, h);
       if (maxDim > 1280) {
         const scale = 1280 / maxDim;
@@ -255,9 +320,14 @@ export async function exportProjectVideo(
       }
       resolve({ targetW: Math.max(2, w), targetH: Math.max(2, h) });
     };
+
     video.onerror = () => {
+      cleanupProbe();
       resolve({ targetW: 1280, targetH: 720 });
     };
+
+    video.src = project.sourceVideoUrl;
+    video.load();
   });
 
   const { targetW, targetH } = targetDims;
@@ -272,32 +342,36 @@ export async function exportProjectVideo(
   // Active Audio Enhancement Settings
   const voiceEnhanceActive = !!project.audioSettings.voiceEnhanceEnabled;
   const noiseRemovalActive = !!(project.audioSettings.noiseRemovalEnabled ?? project.audioSettings.noiseReductionEnabled);
+  let noiseFilterActuallyApplied = noiseRemovalActive;
 
   // Deduplicate and write each used non-primary clip (memes + added clips) to FFmpeg FS
   const nonPrimaryClips = activeItems.filter((it) => it.blobUrl !== project.sourceVideoUrl);
-  const uniqueMemeUrls = Array.from(new Set(nonPrimaryClips.map((m) => m.blobUrl)));
-  const memeInputMap = new Map<string, { inputIndex: number; fsName: string; hasAudio: boolean }>();
+  const uniqueNonPrimaryUrls = Array.from(new Set(nonPrimaryClips.map((m) => m.blobUrl)));
+  const writtenInputIndexMap = new Map<string, { inputIndex: number; fsName: string; hasAudio: boolean }>();
   const writtenMemeFiles: string[] = [];
-  const baseInputsCount = 1;
+  let nextInputIdx = 1;
 
-  for (let mIdx = 0; mIdx < uniqueMemeUrls.length; mIdx++) {
-    const url = uniqueMemeUrls[mIdx];
-    const fsName = `meme_${mIdx}.mp4`;
-    const inputIndex = baseInputsCount + mIdx;
+  for (let mIdx = 0; mIdx < uniqueNonPrimaryUrls.length; mIdx++) {
+    const url = uniqueNonPrimaryUrls[mIdx];
+    const fsName = `clip_${mIdx}.mp4`;
+    const firstItem = nonPrimaryClips.find((it) => it.blobUrl === url);
+    const clipTitle = firstItem?.title || `Clip ${mIdx + 1}`;
+
     if (onProgress) {
       onProgress({
-        ratio: 0.23 + (mIdx / Math.max(1, uniqueMemeUrls.length)) * 0.05,
-        stage: `Loading meme ${mIdx + 1}/${uniqueMemeUrls.length} into memory...`
+        ratio: 0.23 + (mIdx / Math.max(1, uniqueNonPrimaryUrls.length)) * 0.05,
+        stage: `Loading clip "${clipTitle}" (${mIdx + 1}/${uniqueNonPrimaryUrls.length}) into memory...`
       });
     }
     try {
-      const memeData = await fetchFile(url);
-      await ffmpeg.writeFile(fsName, memeData);
+      const clipData = await fetchFile(url);
+      await ffmpeg.writeFile(fsName, clipData);
       writtenMemeFiles.push(fsName);
-      const memeHasAudio = await checkVideoHasAudio(url);
-      memeInputMap.set(url, { inputIndex, fsName, hasAudio: memeHasAudio });
-    } catch (memeLoadErr) {
-      console.warn(`Failed to write ${fsName} to FFmpeg FS:`, memeLoadErr);
+      const clipHasAudio = await checkVideoHasAudio(url);
+      writtenInputIndexMap.set(url, { inputIndex: nextInputIdx, fsName, hasAudio: clipHasAudio });
+      nextInputIdx++;
+    } catch {
+      throw new Error(`Failed to load clip "${clipTitle}" for export. Remove or replace it in the workspace and try again.`);
     }
   }
 
@@ -309,18 +383,21 @@ export async function exportProjectVideo(
   if (hasActiveBgMusic && bgMusic) {
     const extMatch = bgMusic.file.name.match(/\.[a-zA-Z0-9]+$/);
     const musicExt = extMatch ? extMatch[0].toLowerCase() : '.mp3';
-    bgMusicFsName = `bg_music${musicExt}`;
-    musicInputIdx = baseInputsCount + writtenMemeFiles.length;
+    const candidateFsName = `bg_music${musicExt}`;
 
     if (onProgress) {
       onProgress({ ratio: 0.28, stage: 'Loading background music track into memory...' });
     }
     try {
       const musicData = await fetchFile(bgMusic.file);
-      await ffmpeg.writeFile(bgMusicFsName, musicData);
+      await ffmpeg.writeFile(candidateFsName, musicData);
+      bgMusicFsName = candidateFsName;
+      musicInputIdx = nextInputIdx++;
     } catch (musicLoadErr) {
       console.warn('Failed to write background music to FFmpeg FS:', musicLoadErr);
+      warnings.push('Background music track could not be loaded and was omitted from the exported video.');
       bgMusicFsName = null;
+      musicInputIdx = -1;
     }
   }
 
@@ -357,7 +434,7 @@ export async function exportProjectVideo(
       if (item.kind === 'SOURCE_CLIP') {
         filterParts.push(`[0:v]trim=start=${startSec}:end=${endSec},setpts=PTS-STARTPTS,${normVideo}[v${i}]`);
 
-        if (hasAudio) {
+        if (sourceHasAudio) {
           filterParts.push(`[0:a]atrim=start=${startSec}:end=${endSec},asetpts=PTS-STARTPTS,aresample=44100:async=1,aformat=sample_fmts=fltp:channel_layouts=stereo${audioFilters},apad,atrim=0:${durSec}[a${i}]`);
         } else {
           filterParts.push(`anullsrc=r=44100:cl=stereo:d=${durSec},atrim=0:${durSec}[a${i}]`);
@@ -365,12 +442,15 @@ export async function exportProjectVideo(
       } else {
         // MEME_CLIP or added user clip
         const isUserClip = !!item.meta?.isAddedClip || (item.id.startsWith('clip_') && !item.meta?.memeCategory?.startsWith('meme_'));
-        const memeInfo = memeInputMap.get(item.blobUrl);
-        const inputIdx = memeInfo ? memeInfo.inputIndex : 0;
+        const clipInfo = writtenInputIndexMap.get(item.blobUrl);
+        if (!clipInfo) {
+          throw new Error(`Export error: missing input stream mapping for "${item.title || 'clip'}".`);
+        }
+        const inputIdx = clipInfo.inputIndex;
 
         filterParts.push(`[${inputIdx}:v]trim=start=${startSec}:end=${endSec},setpts=PTS-STARTPTS,${normVideo}[v${i}]`);
 
-        if (memeInfo && memeInfo.hasAudio) {
+        if (clipInfo.hasAudio) {
           const segAudioFilters = isUserClip ? audioFilters : '';
           filterParts.push(`[${inputIdx}:a]atrim=start=${startSec}:end=${endSec},asetpts=PTS-STARTPTS,aresample=44100:async=1,aformat=sample_fmts=fltp:channel_layouts=stereo${segAudioFilters},apad,atrim=0:${durSec}[a${i}]`);
         } else {
@@ -453,6 +533,8 @@ export async function exportProjectVideo(
       if (noiseRemovalActive && (logs.includes('afftdn') || logs.includes('filter') || logs.includes('error'))) {
         retryNeeded = true;
         useFallbackNoise = true;
+        noiseFilterActuallyApplied = false;
+        warnings.push('Advanced noise filter was bypassed during export fallback; basic audio pass was used instead.');
       }
       if (effectiveBgMusicActive && (logs.includes('amix') || logs.includes('normalize') || logs.includes('alimiter'))) {
         retryNeeded = true;
@@ -489,16 +571,17 @@ export async function exportProjectVideo(
       exitCode,
       fileSizeBytes: blob.size,
       elapsedTimeMs,
-      hasAudio: true,
+      hasAudio: sourceHasAudio,
       warnings,
-      voiceEnhanceBaked: voiceEnhanceActive && hasAudio,
-      noiseRemovalBaked: noiseRemovalActive && hasAudio,
+      voiceEnhanceBaked: voiceEnhanceActive && sourceHasAudio,
+      noiseRemovalBaked: noiseFilterActuallyApplied && sourceHasAudio,
       memesSplicedCount: activeMemeClips.length,
       bgMusicBaked: effectiveBgMusicActive,
       bgMusicName: effectiveBgMusicActive ? bgMusic?.name : undefined,
       bgMusicVolume: effectiveBgMusicActive ? bgMusic?.volume : undefined
     };
   } finally {
+    activeProgressCallback = null;
     // Clean up memory files
     await ffmpeg.deleteFile('input.mp4').catch(() => {});
     for (const fsName of writtenMemeFiles) {

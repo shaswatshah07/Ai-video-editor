@@ -658,9 +658,46 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     get().pushHistory();
 
     const updated = project.items.map((it) =>
-      it.id === itemId ? { ...it, status: 'ACTIVE' as const } : it
+      it.id === itemId
+        ? {
+            ...it,
+            status: 'ACTIVE' as const,
+            title: project.sourceFileName || it.title
+          }
+        : it
     );
-    const recalculated = recalculateTimeline(updated);
+
+    // Coalesce adjacent active source clips that share the same origin
+    const coalesced: TimelineItem[] = [];
+    for (const it of updated) {
+      if (coalesced.length === 0) {
+        coalesced.push({ ...it });
+        continue;
+      }
+      const prev = coalesced[coalesced.length - 1];
+      if (
+        prev.status === 'ACTIVE' &&
+        it.status === 'ACTIVE' &&
+        prev.kind === 'SOURCE_CLIP' &&
+        it.kind === 'SOURCE_CLIP' &&
+        prev.blobUrl === it.blobUrl &&
+        Math.abs(prev.sourceEndMs - it.sourceStartMs) <= 5
+      ) {
+        prev.sourceEndMs = it.sourceEndMs;
+        prev.durationMs = prev.sourceEndMs - prev.sourceStartMs;
+        prev.projectEndMs = prev.projectStartMs + prev.durationMs;
+        if (it.transitionOut && it.transitionOut.type !== 'none') {
+          prev.transitionOut = it.transitionOut;
+        }
+        if (project.sourceFileName) {
+          prev.title = project.sourceFileName;
+        }
+      } else {
+        coalesced.push({ ...it });
+      }
+    }
+
+    const recalculated = recalculateTimeline(coalesced);
     const totalProjMs = getTotalProjectDuration(recalculated);
 
     set({
@@ -703,9 +740,46 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     if (!project) return;
     get().pushHistory();
     const updated = project.items.map((it) =>
-      it.status === 'SUGGESTED_SILENCE_CUT' ? { ...it, status: 'ACTIVE' as const } : it
+      it.status === 'SUGGESTED_SILENCE_CUT'
+        ? {
+            ...it,
+            status: 'ACTIVE' as const,
+            title: project.sourceFileName || it.title
+          }
+        : it
     );
-    const recalculated = recalculateTimeline(updated);
+
+    // Coalesce adjacent active source clips that share the same origin
+    const coalesced: TimelineItem[] = [];
+    for (const it of updated) {
+      if (coalesced.length === 0) {
+        coalesced.push({ ...it });
+        continue;
+      }
+      const prev = coalesced[coalesced.length - 1];
+      if (
+        prev.status === 'ACTIVE' &&
+        it.status === 'ACTIVE' &&
+        prev.kind === 'SOURCE_CLIP' &&
+        it.kind === 'SOURCE_CLIP' &&
+        prev.blobUrl === it.blobUrl &&
+        Math.abs(prev.sourceEndMs - it.sourceStartMs) <= 5
+      ) {
+        prev.sourceEndMs = it.sourceEndMs;
+        prev.durationMs = prev.sourceEndMs - prev.sourceStartMs;
+        prev.projectEndMs = prev.projectStartMs + prev.durationMs;
+        if (it.transitionOut && it.transitionOut.type !== 'none') {
+          prev.transitionOut = it.transitionOut;
+        }
+        if (project.sourceFileName) {
+          prev.title = project.sourceFileName;
+        }
+      } else {
+        coalesced.push({ ...it });
+      }
+    }
+
+    const recalculated = recalculateTimeline(coalesced);
     const totalProjMs = getTotalProjectDuration(recalculated);
     set({
       project: {
