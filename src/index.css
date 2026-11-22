@@ -4,8 +4,14 @@
 
 @layer base {
   body {
-    background-color: #0E0E0D;
-    color: #F4F2EE;
+    background-color: #F7F6F2;
+    color: #181715;
+  }
+
+  /* iOS Safari typing safety */
+  input, textarea, select {
+    -webkit-user-select: text;
+    user-select: text;
   }
 
   /* Universal Tabular Figures for Timecodes & Duration Readouts */
@@ -15,26 +21,26 @@
 
   /* Subtle Warm Amber Focus Rings */
   *:focus-visible {
-    outline: 2px solid rgba(232, 135, 42, 0.6);
+    outline: 2px solid rgba(217, 107, 39, 0.6);
     outline-offset: 1px;
   }
 }
 
 @layer utilities {
-  /* Matte Warm Studio Custom Scrollbars */
+  /* Warm Light Studio Custom Scrollbars */
   ::-webkit-scrollbar {
     width: 6px;
     height: 6px;
   }
   ::-webkit-scrollbar-track {
-    background: #161614;
+    background: #E5E2DC;
   }
   ::-webkit-scrollbar-thumb {
-    background: #2C2B28;
+    background: #C4BFB6;
     border-radius: 3px;
   }
   ::-webkit-scrollbar-thumb:hover {
-    background: #45423C;
+    background: #A8A297;
   }
 }
 

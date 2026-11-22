@@ -264,6 +264,12 @@ export const Screen2Workspace: React.FC = () => {
   const [editingWordId, setEditingWordId] = useState<string | null>(null);
   const [editingWordText, setEditingWordText] = useState<string>('');
 
+  // Workspace inline banner error
+  const [workspaceBannerError, setWorkspaceBannerError] = useState<string | null>(null);
+
+  // Mobile Drawer tab state
+  const [mobileDrawerTab, setMobileDrawerTab] = useState<'ai' | 'clips' | 'audio' | 'transcript'>('ai');
+
   const timelineContainerRef = useRef<HTMLDivElement | null>(null);
   const trackContainerRef = useRef<HTMLDivElement | null>(null);
 
@@ -1047,7 +1053,12 @@ export const Screen2Workspace: React.FC = () => {
     return { pct: pct * 100, timeMs };
   }, [project]);
 
-  const handleTrackMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
+  const handleTrackPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    try {
+      e.currentTarget.setPointerCapture(e.pointerId);
+    } catch {
+      // Ignore if not supported
+    }
     const res = calcTrackTimeAndPct(e.clientX);
     if (!res) return;
     setIsScrubbing(true);
@@ -1056,7 +1067,7 @@ export const Screen2Workspace: React.FC = () => {
     setHoverPct(res.pct);
   };
 
-  const handleTrackMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
+  const handleTrackPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
     const res = calcTrackTimeAndPct(e.clientX);
     if (!res) return;
     setHoverTimeMs(res.timeMs);
@@ -1064,6 +1075,32 @@ export const Screen2Workspace: React.FC = () => {
     if (isScrubbing) {
       handleSeek(res.timeMs);
     }
+  };
+
+  const handleTrackPointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
+    try {
+      if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+        e.currentTarget.releasePointerCapture(e.pointerId);
+      }
+    } catch {
+      // Ignore
+    }
+    setIsScrubbing(false);
+    setHoverTimeMs(null);
+    setHoverPct(null);
+  };
+
+  const handleTrackPointerCancel = (e: React.PointerEvent<HTMLDivElement>) => {
+    try {
+      if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+        e.currentTarget.releasePointerCapture(e.pointerId);
+      }
+    } catch {
+      // Ignore
+    }
+    setIsScrubbing(false);
+    setHoverTimeMs(null);
+    setHoverPct(null);
   };
 
   const handleTrackMouseLeave = () => {
@@ -1077,7 +1114,7 @@ export const Screen2Workspace: React.FC = () => {
   useEffect(() => {
     if (!isScrubbing) return;
 
-    const handleWindowMouseMove = (e: MouseEvent) => {
+    const handleWindowPointerMove = (e: PointerEvent) => {
       const res = calcTrackTimeAndPct(e.clientX);
       if (!res) return;
       handleSeek(res.timeMs);
@@ -1085,18 +1122,20 @@ export const Screen2Workspace: React.FC = () => {
       setHoverPct(res.pct);
     };
 
-    const handleWindowMouseUp = () => {
+    const handleWindowPointerUp = () => {
       setIsScrubbing(false);
       setHoverTimeMs(null);
       setHoverPct(null);
     };
 
-    window.addEventListener('mousemove', handleWindowMouseMove);
-    window.addEventListener('mouseup', handleWindowMouseUp);
+    window.addEventListener('pointermove', handleWindowPointerMove);
+    window.addEventListener('pointerup', handleWindowPointerUp);
+    window.addEventListener('pointercancel', handleWindowPointerUp);
 
     return () => {
-      window.removeEventListener('mousemove', handleWindowMouseMove);
-      window.removeEventListener('mouseup', handleWindowMouseUp);
+      window.removeEventListener('pointermove', handleWindowPointerMove);
+      window.removeEventListener('pointerup', handleWindowPointerUp);
+      window.removeEventListener('pointercancel', handleWindowPointerUp);
     };
   }, [isScrubbing, calcTrackTimeAndPct]);
 
@@ -1221,7 +1260,7 @@ export const Screen2Workspace: React.FC = () => {
     if (!file) return;
 
     if (file.size > 100 * 1024 * 1024) {
-      alert('File exceeds 100 MB limit. Please select a clip up to 100 MB.');
+      setWorkspaceBannerError('File exceeds 100 MB limit. Please select a clip up to 100 MB.');
       e.target.value = '';
       return;
     }
@@ -1229,7 +1268,7 @@ export const Screen2Workspace: React.FC = () => {
     const validExts = ['.mp4', '.webm', '.mov'];
     const hasValidExt = validExts.some(ext => file.name.toLowerCase().endsWith(ext));
     if (!hasValidExt && !file.type.startsWith('video/')) {
-      alert('Please select a valid .mp4, .webm, or .mov video file.');
+      setWorkspaceBannerError('Please select a valid .mp4, .webm, or .mov video file.');
       e.target.value = '';
       return;
     }
@@ -1238,7 +1277,7 @@ export const Screen2Workspace: React.FC = () => {
       const uploaded = await addUploadedMeme(file);
       if (uploaded.durationMs > 180500) {
         removeUploadedMeme(uploaded.id);
-        alert(`Clip duration (${(uploaded.durationMs / 1000).toFixed(1)}s) exceeds 3-minute limit.`);
+        setWorkspaceBannerError(`Clip duration (${(uploaded.durationMs / 1000).toFixed(1)}s) exceeds 3-minute limit.`);
         return;
       }
       await appendClipToEnd({
@@ -1249,7 +1288,7 @@ export const Screen2Workspace: React.FC = () => {
         isCustom: true
       });
     } catch {
-      alert('Failed to read video metadata for the uploaded clip.');
+      setWorkspaceBannerError('Failed to read video metadata for the uploaded clip.');
     } finally {
       e.target.value = '';
     }
@@ -1261,7 +1300,7 @@ export const Screen2Workspace: React.FC = () => {
     if (!file) return;
 
     if (file.size > 30 * 1024 * 1024) {
-      alert('Audio file exceeds 30 MB limit. Please select a track under 30 MB.');
+      setWorkspaceBannerError('Audio file exceeds 30 MB limit. Please select a track under 30 MB.');
       e.target.value = '';
       return;
     }
@@ -1293,7 +1332,7 @@ export const Screen2Workspace: React.FC = () => {
     tempAudio.onerror = () => {
       URL.revokeObjectURL(blobUrl);
       if (bgMusicInputRef.current) bgMusicInputRef.current.value = '';
-      alert('Could not decode audio file metadata. Please choose a valid MP3, WAV, or AAC audio file.');
+      setWorkspaceBannerError('Could not decode audio file metadata. Please choose a valid MP3, WAV, or AAC audio file.');
       addCommandLog({
         id: `cmd_${Date.now()}`,
         rawInput: `Add music: ${file.name}`,
@@ -1321,449 +1360,1105 @@ export const Screen2Workspace: React.FC = () => {
     return m.title.toLowerCase().includes(q) || m.keywords.some((k) => k.toLowerCase().includes(q));
   });
 
-  // InShot-style Adaptive Time Ruler (Item 2)
-  // Scaling tick density with timelineZoom:
-  // Zoom >= 3.5x: Major ticks every 1s (00:01, 00:02...) with 0.5s minor ticks
-  // Zoom >= 2x: Major ticks every 2s (00:02, 00:04...) with 1s minor ticks
-  // Zoom < 2x: Major ticks every 5s (00:05, 00:10...) with 1s minor ticks
   const rulerMajorStepSec = timelineZoom >= 3.5 ? 1 : timelineZoom >= 2 ? 2 : 5;
   const rulerMinorStepSec = rulerMajorStepSec === 1 ? 0.5 : 1;
   const totalDurationSec = project.totalProjectDurationMs / 1000;
   const majorTickCount = Math.floor(totalDurationSec / rulerMajorStepSec);
   const minorTickCount = Math.floor(totalDurationSec / rulerMinorStepSec);
 
-  return (
-    <div className="h-screen w-screen bg-[#0E0E0D] text-[#F4F2EE] flex flex-col overflow-hidden select-none">
-      {/* Top Header */}
-      <header className="h-14 border-b border-[#2C2B28] bg-[#161614] px-4 flex items-center justify-between z-20">
-        <div className="flex items-center space-x-3">
-          <div className="w-8 h-8 rounded-lg bg-[#1F1E1C] border border-[#2C2B28] text-[#E8872A] flex items-center justify-center font-bold text-sm">
-            AI
+  // Audio filter toggles
+  const handleToggleVoiceEnhance = () => {
+    setupWebAudio();
+    if (audioContextRef.current && audioContextRef.current.state === 'suspended') {
+      audioContextRef.current.resume();
+    }
+    toggleVoiceEnhance();
+  };
+
+  const handleToggleNoiseRemoval = () => {
+    setupWebAudio();
+    if (audioContextRef.current && audioContextRef.current.state === 'suspended') {
+      audioContextRef.current.resume();
+    }
+    toggleNoiseRemoval();
+  };
+
+  // Silence Detection runner
+  const handleDetectSilences = async () => {
+    if (isDetectingSilences) return;
+    setIsDetectingSilences(true);
+    const cfg = SILENCE_PRESETS.Normal;
+    try {
+      const res = await detectSilencesOnly('Normal');
+      addCommandLog({
+        id: `cmd_${Date.now()}`,
+        rawInput: 'Detect pauses (Normal mode)',
+        timestamp: Date.now(),
+        parsedCommand: {
+          action: 'REMOVE_SILENCE',
+          payload: { minDurationMs: cfg.minSilenceMs, paddingPreMs: cfg.prePaddingMs, paddingPostMs: cfg.postPaddingMs },
+          explanation: res.message
+        },
+        status: res.count > 0 ? 'SUCCESS' : 'WARNING',
+        appliedMessage: res.message
+      });
+    } catch (err: unknown) {
+      addCommandLog({
+        id: `cmd_${Date.now()}`,
+        rawInput: 'Detect pauses (Normal mode)',
+        timestamp: Date.now(),
+        parsedCommand: {
+          action: 'REMOVE_SILENCE',
+          payload: { minDurationMs: cfg.minSilenceMs, paddingPreMs: cfg.prePaddingMs, paddingPostMs: cfg.postPaddingMs },
+          explanation: 'Silence detection failed.'
+        },
+        status: 'WARNING',
+        appliedMessage: err instanceof Error ? err.message : 'Could not analyze audio for pauses on this device.'
+      });
+    } finally {
+      setIsDetectingSilences(false);
+    }
+  };
+
+  // Sub-render: Transcript Section (used in desktop left sidebar & mobile transcript tab)
+  const renderTranscriptSection = () => (
+    <div className="flex-1 overflow-y-auto p-3 space-y-3 text-xs">
+      <div className="space-y-3">
+        {/* Quality & Mode Controls Bar */}
+        <div className="p-2.5 rounded-xl bg-[#F7F6F2] border border-[#E5E2DC] space-y-2">
+          {/* Quality Selector */}
+          <div className="flex items-center justify-between text-[11px]">
+            <span className="text-[#66625B] font-medium">Quality:</span>
+            <select
+              value={transcriptQuality}
+              onChange={(e) => setTranscriptQuality(e.target.value as any)}
+              disabled={transcriptionStatus === 'downloading_model' || transcriptionStatus === 'transcribing' || transcriptMode === 'transcribe_hinglish'}
+              className="bg-white border border-[#E5E2DC] text-[#181715] text-[11px] rounded px-2 py-1 focus:outline-none focus:border-[#D96B27] cursor-pointer disabled:opacity-50"
+            >
+              <option value="accurate">Accurate (Small, ~285 MB)</option>
+              <option value="fast">Fast (Base, ~75 MB)</option>
+            </select>
           </div>
-          <div>
-            <h2 className="text-sm font-semibold tracking-wide text-[#F4F2EE]">{project.title}</h2>
-            <div className="flex items-center space-x-2 text-[11px] text-[#A19E97] tabular-nums">
+
+          {/* Mode Selector */}
+          <div className="flex items-center justify-between text-[11px]">
+            <span className="text-[#66625B] font-medium">Mode:</span>
+            <select
+              value={transcriptMode}
+              onChange={(e) => setTranscriptMode(e.target.value as any)}
+              disabled={transcriptionStatus === 'downloading_model' || transcriptionStatus === 'transcribing'}
+              className="bg-white border border-[#E5E2DC] text-[#181715] text-[11px] rounded px-2 py-1 max-w-[175px] truncate focus:outline-none focus:border-[#D96B27] cursor-pointer disabled:opacity-50"
+            >
+              <option value="transcribe_hinglish">Hinglish (Mixed Hindi + English)</option>
+              <option value="translate_en">English (translated)</option>
+              <option value="transcribe_en">English (as spoken)</option>
+            </select>
+          </div>
+
+          <p className="text-[10px] text-[#8E8A82]">
+            First use downloads the model ({transcriptMode === 'transcribe_hinglish' ? 'about 72 MB' : transcriptQuality === 'accurate' ? 'about 285 MB' : 'about 75 MB'}), only once.
+          </p>
+
+          <div className="flex items-center space-x-2 pt-1">
+            <button
+              type="button"
+              onClick={() => generateTranscript(transcriptQuality, transcriptMode)}
+              disabled={transcriptionStatus === 'downloading_model' || transcriptionStatus === 'transcribing'}
+              className="flex-1 bg-[#D96B27] hover:bg-[#C25E1F] disabled:opacity-50 text-white font-medium py-1.5 px-3 rounded-lg text-xs flex items-center justify-center space-x-1.5 shadow-sm transition-all cursor-pointer"
+            >
+              {transcriptionStatus === 'downloading_model' ? (
+                <>
+                  <Loader2 className="w-3.5 h-3.5 animate-spin text-white" />
+                  <span>Loading model... {transcriptionDownloadPercent}%</span>
+                </>
+              ) : transcriptionStatus === 'transcribing' ? (
+                <>
+                  <Loader2 className="w-3.5 h-3.5 animate-spin text-white" />
+                  <span>Transcribing...</span>
+                </>
+              ) : project.transcript.length > 0 && !project.isDemoSample ? (
+                <>
+                  <RefreshCw className="w-3.5 h-3.5" />
+                  <span>Regenerate</span>
+                </>
+              ) : (
+                <>
+                  <Sparkles className="w-3.5 h-3.5" />
+                  <span>Generate Transcript</span>
+                </>
+              )}
+            </button>
+
+            {(transcriptionStatus === 'downloading_model' || transcriptionStatus === 'transcribing') && (
+              <button
+                type="button"
+                onClick={cancelTranscription}
+                title="Cancel transcription"
+                className="bg-white hover:bg-[#FEF2F2] text-[#66625B] hover:text-[#DC2626] px-2.5 py-1.5 rounded-lg text-xs font-medium border border-[#E5E2DC] transition-colors flex items-center space-x-1 cursor-pointer"
+              >
+                <X className="w-3.5 h-3.5" />
+                <span>Cancel</span>
+              </button>
+            )}
+
+            {project.transcript.length > 0 && (
+              <button
+                type="button"
+                onClick={() => downloadTranscriptAsTxt(project.transcript, `${project.title.replace(/\.[^/.]+$/, '')}_transcript.txt`)}
+                title="Download transcript as .txt"
+                className="bg-white hover:bg-[#F7F6F2] text-[#66625B] p-1.5 rounded-lg border border-[#E5E2DC] transition-colors cursor-pointer"
+              >
+                <Download className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Fallback Notice if Small model fell back to Base */}
+        {transcriptionFallbackNotice && (
+          <div className="p-2.5 rounded-lg bg-[#FFFBEB] border border-[#FCD34D] text-[#92400E] text-[11px] flex items-start space-x-2">
+            <ShieldAlert className="w-4 h-4 flex-shrink-0 text-[#D97706] mt-0.5" />
+            <span>{transcriptionFallbackNotice}</span>
+          </div>
+        )}
+
+        {/* Urdu Script Warning Banner */}
+        {project.transcriptionMeta?.hasUrduWarning && (
+          <div className="p-2.5 rounded-lg bg-[#FFFBEB] border border-[#FCD34D] text-[#92400E] text-[11px] flex items-start space-x-2">
+            <AlertCircle className="w-4 h-4 flex-shrink-0 text-[#D97706] mt-0.5" />
+            <span>Output contains Urdu-script text. For a cleaner result use &apos;English (translated)&apos; mode.</span>
+          </div>
+        )}
+
+        {/* Status Banner: Downloading Model */}
+        {transcriptionStatus === 'downloading_model' && (
+          <div className="p-3 rounded-xl bg-white border border-[#E5E2DC] space-y-2 shadow-sm">
+            <div className="flex items-center justify-between text-xs text-[#181715] font-medium">
+              <span className="flex items-center space-x-1.5">
+                <Loader2 className="w-3.5 h-3.5 animate-spin text-[#D96B27]" />
+                <span>Downloading Whisper Model</span>
+              </span>
+              <div className="flex items-center space-x-2">
+                <span className="tabular-nums font-mono text-[#66625B]">{transcriptionDownloadPercent}%</span>
+                <button
+                  type="button"
+                  onClick={cancelTranscription}
+                  className="text-[10px] text-[#66625B] hover:text-[#DC2626] px-1.5 py-0.5 rounded bg-[#F7F6F2] border border-[#E5E2DC] transition-colors cursor-pointer"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+            <div className="w-full bg-[#E5E2DC] rounded-full h-1.5 overflow-hidden">
+              <div
+                className="bg-[#D96B27] h-1.5 rounded-full transition-all duration-200"
+                style={{ width: `${transcriptionDownloadPercent}%` }}
+              />
+            </div>
+            <p className="text-[10px] text-[#8E8A82]">
+              First use downloads the model ({transcriptMode === 'transcribe_hinglish' ? 'about 72 MB' : transcriptQuality === 'accurate' ? 'about 285 MB' : 'about 75 MB'}), only once.
+            </p>
+          </div>
+        )}
+
+        {/* Status Banner: Transcribing */}
+        {transcriptionStatus === 'transcribing' && (
+          <div className="p-3 rounded-xl bg-white border border-[#E5E2DC] flex items-center justify-between shadow-sm">
+            <div className="flex items-center space-x-2.5">
+              <Loader2 className="w-4 h-4 animate-spin text-[#D96B27] flex-shrink-0" />
+              <div>
+                <p className="text-xs font-medium text-[#181715]">Transcribing speech...</p>
+                <p className="text-[10px] text-[#66625B]">Running Whisper AI in background Web Worker</p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={cancelTranscription}
+              className="text-[10px] text-[#66625B] hover:text-[#DC2626] px-2 py-1 rounded bg-[#F7F6F2] border border-[#E5E2DC] transition-colors cursor-pointer"
+            >
+              Cancel
+            </button>
+          </div>
+        )}
+
+        {/* Status Banner: Error */}
+        {transcriptionStatus === 'error' && (
+          <div className="p-3 rounded-xl bg-[#FEF2F2] border border-[#FCA5A5] space-y-1.5">
+            <div className="flex items-center space-x-1.5 text-xs font-semibold text-[#B91C1C]">
+              <AlertCircle className="w-3.5 h-3.5 text-[#EF4444] flex-shrink-0" />
+              <span>Transcription Failed</span>
+            </div>
+            <p className="text-[11px] text-[#991B1B] leading-snug">{transcriptionError}</p>
+            <button
+              type="button"
+              onClick={() => generateTranscript(transcriptQuality, transcriptMode)}
+              className="text-[10px] text-[#DC2626] hover:underline mt-1 font-medium cursor-pointer"
+            >
+              Try Again
+            </button>
+          </div>
+        )}
+
+        {/* Transcript Content List */}
+        {project.transcript.length === 0 && transcriptionStatus === 'idle' ? (
+          <div className="p-4 rounded-xl bg-[#F7F6F2] border border-[#E5E2DC] text-center space-y-2">
+            <p className="text-[#181715] text-xs font-medium">No transcript generated yet.</p>
+            <p className="text-[11px] text-[#66625B] leading-relaxed">
+              Click &quot;Generate Transcript&quot; above to transcribe using in-browser Whisper AI. First use downloads the model once.
+            </p>
+          </div>
+        ) : project.transcript.length > 0 ? (
+          <div className="space-y-2">
+            {project.transcriptionMeta?.lowQualityWarning && (
+              <div className="p-2.5 rounded-lg bg-[#FFFBEB] border border-[#FCD34D] text-[#92400E] text-[11px] flex items-start space-x-2">
+                <AlertCircle className="w-3.5 h-3.5 flex-shrink-0 text-[#D97706] mt-0.5" />
+                <span>{project.transcriptionMeta.lowQualityWarning}</span>
+              </div>
+            )}
+
+            <div className="flex items-center justify-between text-[11px] text-[#66625B] pb-1 border-b border-[#E5E2DC]">
+              <span>Click to seek • Double-click to edit:</span>
+              {addedClipTranscribing ? (
+                <span className="text-[10px] bg-[#FFFBEB] text-[#D97706] border border-[#FCD34D] px-1.5 py-0.5 rounded font-mono flex items-center space-x-1">
+                  <Loader2 className="w-2.5 h-2.5 animate-spin" />
+                  <span>Transcribing added clip...</span>
+                </span>
+              ) : project.isDemoSample ? (
+                <span className="text-[10px] bg-[#FFFBEB] text-[#92400E] border border-[#FCD34D] px-1.5 py-0.5 rounded font-mono">
+                  Sample transcript
+                </span>
+              ) : (
+                <span className="text-[10px] bg-[#F7F6F2] text-[#66625B] border border-[#E5E2DC] px-1.5 py-0.5 rounded font-mono">
+                  {project.transcriptionMeta?.modelName || (transcriptQuality === 'accurate' ? 'Whisper Small' : 'Whisper Base')} ({project.transcript.length} words)
+                </span>
+              )}
+            </div>
+
+            <div className="leading-relaxed space-x-1 font-sans text-xs">
+              {mappedTranscriptWords.map(({ word: w, projMs }) => {
+                const isDeleted = projMs === null;
+                const isCurrent =
+                  projMs !== null &&
+                  currentProjectMs >= projMs &&
+                  currentProjectMs < projMs + (w.sourceEndMs - w.sourceStartMs);
+
+                if (editingWordId === w.id) {
+                  return (
+                    <input
+                      key={w.id}
+                      type="text"
+                      autoFocus
+                      value={editingWordText}
+                      onChange={(e) => setEditingWordText(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          updateTranscriptWord(w.id, editingWordText);
+                          setEditingWordId(null);
+                        } else if (e.key === 'Escape') {
+                          setEditingWordId(null);
+                        }
+                      }}
+                      onBlur={() => {
+                        updateTranscriptWord(w.id, editingWordText);
+                        setEditingWordId(null);
+                      }}
+                      onClick={(e) => e.stopPropagation()}
+                      className="bg-white text-[#181715] font-medium border border-[#D96B27] rounded px-1 py-0.5 text-xs outline-none w-20 inline-block shadow-sm"
+                    />
+                  );
+                }
+
+                return (
+                  <span
+                    key={w.id}
+                    onClick={() => {
+                      if (projMs !== null) {
+                        handleSeek(projMs);
+                      } else {
+                        const activeItems = project.items.filter(
+                          (it) => it.status === 'ACTIVE' || it.status === 'SUGGESTED_MEME'
+                        );
+                        const nextActive = activeItems.find((it) => it.sourceStartMs >= w.sourceStartMs);
+                        if (nextActive) {
+                          handleSeek(nextActive.projectStartMs);
+                        } else if (activeItems.length > 0) {
+                          handleSeek(activeItems[0].projectStartMs);
+                        }
+                      }
+                    }}
+                    onDoubleClick={(e) => {
+                      e.stopPropagation();
+                      setEditingWordId(w.id);
+                      setEditingWordText(w.word);
+                    }}
+                    title={
+                      isDeleted
+                        ? 'Word was cut. Click to seek to next active video. (Double-click to edit)'
+                        : `${w.edited ? '[Edited] ' : ''}Source: ${(w.sourceStartMs / 1000).toFixed(1)}s (Double-click to edit)`
+                    }
+                    className={`inline-block px-1 py-0.5 rounded cursor-pointer transition-colors ${
+                      isDeleted
+                        ? 'line-through text-[#8E8A82] bg-[#F2EFEB] hover:text-[#66625B]'
+                        : isCurrent
+                        ? 'bg-[#FEF3C7] text-[#92400E] font-bold border border-[#F59E0B]'
+                        : 'text-[#181715] hover:bg-[#F2EFEB]'
+                    } ${w.edited ? 'ring-1 ring-[#0D9488]/50 bg-[#F0FDFA]' : ''}`}
+                  >
+                    {w.word}
+                    {w.edited && <span className="text-[9px] text-[#0F766E] ml-0.5 font-bold">*</span>}
+                  </span>
+                );
+              })}
+            </div>
+
+            {/* Labels under the transcript */}
+            <div className="pt-2.5 mt-2 border-t border-[#E5E2DC] text-[11px] text-[#66625B] space-y-1">
+              <div className="flex items-center justify-between text-[10px] text-[#66625B] font-mono tabular-nums">
+                <span>
+                  {project.transcriptionMeta?.modelName || (transcriptQuality === 'accurate' ? 'Whisper Small' : 'Whisper Base')} ({project.transcriptionMeta?.device || 'WASM'})
+                </span>
+                <span>
+                  {project.transcriptionMeta?.durationMs ? `${(project.transcriptionMeta.durationMs / 1000).toFixed(1)}s` : ''}
+                </span>
+              </div>
+              <div className="text-[10px] text-[#66625B]">
+                Mode:{' '}
+                {
+                  (project.transcriptionMeta?.mode || transcriptMode) === 'transcribe_hinglish'
+                    ? 'Hinglish (Mixed Hindi + English)'
+                    : (project.transcriptionMeta?.mode || transcriptMode) === 'transcribe_en'
+                    ? 'English (as spoken)'
+                    : 'English (translated)'
+                }
+              </div>
+              <p className="text-[10px] text-[#8E8A82] italic">
+                Auto-generated, may contain errors. Double-click a word to fix it.
+              </p>
+            </div>
+          </div>
+        ) : null}
+      </div>
+    </div>
+  );
+
+  // Sub-render: Memes Section (used in desktop right sidebar & mobile clips tab)
+  const renderMemesSection = () => (
+    <div className="space-y-2 pt-1 border-t border-[#E5E2DC]">
+      {/* Section Header with Chevron Toggle & Replace Banner */}
+      <div className="flex items-center justify-between">
+        <button
+          type="button"
+          onClick={() => setIsMemeSectionOpen(!isMemeSectionOpen)}
+          className="flex items-center space-x-1.5 hover:text-[#181715] transition-colors group cursor-pointer text-[#66625B]"
+        >
+          <Film className="w-3.5 h-3.5 text-[#E11D48]" />
+          <span className="text-[10px] uppercase font-bold tracking-wider text-[#66625B] group-hover:text-[#181715]">
+            Meme Reactions
+          </span>
+          <ChevronDown
+            className={`w-3 h-3 text-[#66625B] group-hover:text-[#181715] transition-transform duration-150 ${
+              isMemeSectionOpen ? 'rotate-0' : '-rotate-90'
+            }`}
+          />
+        </button>
+        {replacingMemeId && (
+          <button
+            onClick={() => setReplacingMemeId(null)}
+            className="text-[10px] text-[#92400E] hover:text-[#78350F] font-medium flex items-center space-x-0.5 bg-[#FFFBEB] px-1.5 py-0.5 rounded border border-[#FCD34D] cursor-pointer"
+          >
+            <span>Cancel Replace</span>
+            <X className="w-2.5 h-2.5 ml-0.5" />
+          </button>
+        )}
+      </div>
+
+      {isMemeSectionOpen && (
+        <>
+          {replacingMemeId && (
+            <div className="p-1.5 rounded-lg bg-[#FFFBEB] border border-[#FCD34D] text-[#92400E] text-[10px]">
+              Select any meme below to replace the chosen clip
+            </div>
+          )}
+
+          {/* Segmented Two-Option Toggle */}
+          <div className="flex rounded-lg bg-[#F7F6F2] p-0.5 border border-[#E5E2DC] text-[11px]">
+            <button
+              onClick={() => setMemeTab('library')}
+              className={`flex-1 py-1 rounded-md font-medium transition-colors text-center cursor-pointer ${
+                memeTab === 'library'
+                  ? 'bg-white shadow-sm border border-[#E5E2DC] text-[#181715]'
+                  : 'text-[#66625B] hover:text-[#181715]'
+              }`}
+            >
+              Choose a Meme ({MEME_LIBRARY.length})
+            </button>
+            <button
+              onClick={() => setMemeTab('custom')}
+              className={`flex-1 py-1 rounded-md font-medium transition-colors text-center cursor-pointer ${
+                memeTab === 'custom'
+                  ? 'bg-white shadow-sm border border-[#E5E2DC] text-[#181715]'
+                  : 'text-[#66625B] hover:text-[#181715]'
+              }`}
+            >
+              Insert Your Own ({userUploadedClips.length})
+            </button>
+          </div>
+
+          {/* Tab 1: Meme Library */}
+          {memeTab === 'library' && (
+            <div className="space-y-2">
+              {/* Search Input */}
+              <div className="relative">
+                <Search className="w-3 h-3 absolute left-2 top-2 text-[#8E8A82]" />
+                <input
+                  type="text"
+                  value={memeSearch}
+                  onChange={(e) => setMemeSearch(e.target.value)}
+                  placeholder="Search memes (e.g. damn, rock, snoop)..."
+                  className="w-full bg-[#F7F6F2] border border-[#E5E2DC] rounded-lg pl-7 pr-7 py-1 text-[11px] text-[#181715] placeholder-[#8E8A82] focus:outline-none focus:border-[#D96B27]"
+                />
+                {memeSearch && (
+                  <button
+                    onClick={() => setMemeSearch('')}
+                    className="absolute right-2 top-1.5 text-[#8E8A82] hover:text-[#181715] cursor-pointer"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                )}
+              </div>
+
+              {/* Meme List */}
+              <div className="max-h-[165px] overflow-y-auto space-y-1.5 pr-1">
+                {filteredMemes.length === 0 ? (
+                  <div className="text-[11px] text-[#8E8A82] text-center py-4 italic">
+                    No memes match &quot;{memeSearch}&quot;
+                  </div>
+                ) : (
+                  filteredMemes.map((m) => (
+                    <div
+                      key={m.id}
+                      className="flex items-center justify-between p-1.5 rounded-lg bg-[#FAF9F5] hover:bg-[#F2EFEB] border border-[#E5E2DC] group transition-all"
+                    >
+                      <div className="flex items-center space-x-2 min-w-0 flex-1">
+                        {/* Hover Video Preview */}
+                        <div className="w-12 h-9 rounded bg-black overflow-hidden relative flex-shrink-0 border border-[#D8D4CC]">
+                          <video
+                            src={m.url}
+                            muted
+                            loop
+                            preload="metadata"
+                            onMouseEnter={(e) => {
+                              e.currentTarget.play().catch(() => {});
+                            }}
+                            onMouseLeave={(e) => {
+                              e.currentTarget.pause();
+                              e.currentTarget.currentTime = 0;
+                            }}
+                            className="w-full h-full object-cover"
+                          />
+                          <span className="absolute bottom-0.5 right-0.5 bg-black/80 px-0.5 py-0.5 text-[7.5px] font-mono tabular-nums text-white rounded leading-none">
+                            {(m.durationMs / 1000).toFixed(1)}s
+                          </span>
+                        </div>
+
+                        <div className="min-w-0 flex-1 pr-1">
+                          <div className="text-[11px] font-medium text-[#181715] truncate">
+                            {m.title}
+                          </div>
+                          <div className="text-[9px] text-[#66625B] truncate">
+                            {m.keywords.slice(0, 3).join(', ')}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Action Button */}
+                      {replacingMemeId ? (
+                        <button
+                          onClick={async () => {
+                            await replaceMemeClip(replacingMemeId, {
+                              id: m.id,
+                              name: m.title,
+                              url: m.url,
+                              durationMs: m.durationMs,
+                              isCustom: false
+                            });
+                            setReplacingMemeId(null);
+                            addCommandLog({
+                              id: `cmd_${Date.now()}`,
+                              rawInput: `Replace meme with ${m.title}`,
+                              timestamp: Date.now(),
+                              parsedCommand: {
+                                action: 'INSERT_LIBRARY_MEME',
+                                payload: { memeId: m.id as any, atProjectMs: currentProjectMs },
+                                explanation: `Replaced with ${m.title}`
+                              },
+                              status: 'SUCCESS',
+                              appliedMessage: `Replaced with "${m.title}".`
+                            });
+                          }}
+                          className="px-2 py-1 bg-[#D96B27] hover:bg-[#C25E1F] text-white rounded text-[10px] font-semibold transition-colors flex-shrink-0 shadow-sm cursor-pointer"
+                        >
+                          Replace
+                        </button>
+                      ) : (
+                        <button
+                          onClick={async () => {
+                            await insertMemeAtProjectMs({
+                              id: m.id,
+                              name: m.title,
+                              url: m.url,
+                              durationMs: m.durationMs,
+                              isCustom: false
+                            }, currentProjectMs);
+                            addCommandLog({
+                              id: `cmd_${Date.now()}`,
+                              rawInput: `Insert meme ${m.title}`,
+                              timestamp: Date.now(),
+                              parsedCommand: {
+                                action: 'INSERT_LIBRARY_MEME',
+                                payload: { memeId: m.id as any, atProjectMs: currentProjectMs },
+                                explanation: `Inserted ${m.title}`
+                              },
+                              status: 'SUCCESS',
+                              appliedMessage: `Inserted "${m.title}" at ${(currentProjectMs / 1000).toFixed(1)}s.`
+                            });
+                          }}
+                          className="px-2 py-1 bg-[#D96B27] hover:bg-[#C25E1F] text-white font-medium rounded text-[10px] flex items-center space-x-0.5 transition-colors flex-shrink-0 shadow-sm cursor-pointer"
+                          title={`Insert at ${(currentProjectMs / 1000).toFixed(1)}s`}
+                        >
+                          <Plus className="w-2.5 h-2.5" />
+                          <span>Insert</span>
+                        </button>
+                      )}
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Tab 2: Custom User Clips */}
+          {memeTab === 'custom' && (
+            <div className="space-y-2">
+              <div className="px-2 py-1.5 rounded-lg bg-[#F7F6F2] border border-[#E5E2DC] text-[10px] text-[#66625B] flex items-center justify-between font-mono">
+                <span>1. Upload MP4</span>
+                <span className="text-[#8E8A82]">→</span>
+                <span>2. Move playhead</span>
+                <span className="text-[#8E8A82]">→</span>
+                <span className="text-[#0F766E] font-semibold">3. Click Insert</span>
+              </div>
+
+              <label
+                onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); }}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  const droppedFile = e.dataTransfer.files?.[0];
+                  if (droppedFile) processCustomMemeFile(droppedFile);
+                }}
+                className="border border-dashed border-[#E5E2DC] hover:border-[#D96B27] bg-[#FAF9F5] hover:bg-white rounded-lg py-2.5 px-3 flex items-center justify-center space-x-2 text-center cursor-pointer transition-colors group"
+              >
+                <Upload className="w-4 h-4 text-[#D96B27] group-hover:scale-110 transition-transform flex-shrink-0" />
+                <div className="flex items-center space-x-1.5 text-xs min-w-0">
+                  <span className="font-medium text-[#181715] truncate">Drop or browse .mp4, .webm, or .mov clip</span>
+                  <span className="text-[10px] text-[#8E8A82] flex-shrink-0">(Max 100 MB • 3 min)</span>
+                </div>
+                <input
+                  type="file"
+                  accept="video/mp4,video/webm,video/quicktime"
+                  onChange={handleCustomMemeUpload}
+                  className="hidden"
+                />
+              </label>
+
+              {memeUploadError && (
+                <div className="p-2 rounded-lg bg-[#FEF2F2] border border-[#FCA5A5] text-[#B91C1C] text-xs flex items-center justify-between space-x-1.5">
+                  <div className="flex items-center space-x-1.5 min-w-0">
+                    <AlertCircle className="w-3.5 h-3.5 flex-shrink-0 text-[#EF4444]" />
+                    <span className="leading-snug">{memeUploadError}</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setMemeUploadError(null)}
+                    className="text-[#B91C1C] hover:text-[#7F1D1D] p-0.5 flex-shrink-0 cursor-pointer"
+                    title="Dismiss"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              )}
+
+              <div ref={customClipsListRef} className="max-h-[165px] overflow-y-auto space-y-1.5 pr-1">
+                {userUploadedClips.length === 0 ? (
+                  <div className="text-[10px] text-[#8E8A82] italic text-center py-4 bg-[#F7F6F2] rounded-lg border border-[#E5E2DC] p-2">
+                    No custom clips yet. Upload an .mp4 clip to insert it into your video!
+                  </div>
+                ) : (
+                  userUploadedClips.map((clip) => (
+                    <div
+                      key={clip.id}
+                      className="flex items-center justify-between p-1.5 rounded-lg bg-[#FAF9F5] hover:bg-[#F2EFEB] border border-[#E5E2DC] group transition-all"
+                    >
+                      <div className="flex items-center space-x-2 min-w-0 flex-1">
+                        <div className="w-12 h-9 rounded bg-black overflow-hidden relative flex-shrink-0 border border-[#D8D4CC]">
+                          <video
+                            src={clip.blobUrl}
+                            muted
+                            loop
+                            preload="metadata"
+                            onMouseEnter={(e) => {
+                              e.currentTarget.play().catch(() => {});
+                            }}
+                            onMouseLeave={(e) => {
+                              e.currentTarget.pause();
+                              e.currentTarget.currentTime = 0;
+                            }}
+                            className="w-full h-full object-cover"
+                          />
+                          <span className="absolute bottom-0.5 right-0.5 bg-black/80 px-0.5 py-0.5 text-[7.5px] font-mono tabular-nums text-white rounded leading-none">
+                            {(clip.durationMs / 1000).toFixed(1)}s
+                          </span>
+                        </div>
+
+                        <div className="min-w-0 flex-1 pr-1">
+                          <div className="text-[11px] font-medium text-[#181715] truncate">
+                            {clip.name}
+                          </div>
+                          <div className="text-[9px] text-[#66625B] font-mono tabular-nums">
+                            {(clip.durationMs / 1000).toFixed(1)}s
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center space-x-1 flex-shrink-0">
+                        {replacingMemeId ? (
+                          <button
+                            onClick={async () => {
+                              await replaceMemeClip(replacingMemeId, {
+                                id: clip.id,
+                                name: clip.name,
+                                url: clip.blobUrl,
+                                durationMs: clip.durationMs,
+                                isCustom: true
+                              });
+                              setReplacingMemeId(null);
+                              addCommandLog({
+                                id: `cmd_${Date.now()}`,
+                                rawInput: `Replace meme with ${clip.name}`,
+                                timestamp: Date.now(),
+                                parsedCommand: {
+                                  action: 'INSERT_USER_CLIP',
+                                  payload: { clipId: clip.id, atProjectMs: currentProjectMs },
+                                  explanation: `Replaced with custom clip ${clip.name}`
+                                },
+                                status: 'SUCCESS',
+                                appliedMessage: `Replaced with custom clip "${clip.name}".`
+                              });
+                            }}
+                            className="px-2 py-1 bg-[#D96B27] hover:bg-[#C25E1F] text-white rounded text-[10px] font-semibold transition-colors shadow-sm cursor-pointer"
+                          >
+                            Replace
+                          </button>
+                        ) : (
+                          <>
+                            <button
+                              onClick={async () => {
+                                await insertMemeAtProjectMs({
+                                  id: clip.id,
+                                  name: clip.name,
+                                  url: clip.blobUrl,
+                                  durationMs: clip.durationMs,
+                                  isCustom: true
+                                }, currentProjectMs);
+                                addCommandLog({
+                                  id: `cmd_${Date.now()}`,
+                                  rawInput: `Insert custom clip ${clip.name}`,
+                                  timestamp: Date.now(),
+                                  parsedCommand: {
+                                    action: 'INSERT_USER_CLIP',
+                                    payload: { clipId: clip.id, atProjectMs: currentProjectMs },
+                                    explanation: `Inserted ${clip.name}`
+                                  },
+                                  status: 'SUCCESS',
+                                  appliedMessage: `Inserted "${clip.name}" at ${(currentProjectMs / 1000).toFixed(1)}s.`
+                                });
+                              }}
+                              className="px-1.5 py-1 bg-[#D96B27] hover:bg-[#C25E1F] text-white font-medium rounded text-[10px] flex items-center space-x-0.5 transition-colors shadow-sm cursor-pointer"
+                              title={`Insert at ${(currentProjectMs / 1000).toFixed(1)}s (splits clip at playhead)`}
+                            >
+                              <Plus className="w-2.5 h-2.5" />
+                              <span>At Playhead</span>
+                            </button>
+                            <button
+                              onClick={async () => {
+                                await appendClipToEnd({
+                                  id: clip.id,
+                                  name: clip.name,
+                                  url: clip.blobUrl,
+                                  durationMs: clip.durationMs,
+                                  isCustom: true
+                                });
+                              }}
+                              className="px-1.5 py-1 bg-white hover:bg-[#F7F6F2] text-[#181715] border border-[#E5E2DC] rounded text-[10px] font-medium transition-colors shadow-sm cursor-pointer"
+                              title="Append to end of timeline"
+                            >
+                              <span>+ End</span>
+                            </button>
+                          </>
+                        )}
+
+                        <button
+                          onClick={() => removeUploadedMeme(clip.id)}
+                          className="p-1 text-[#8E8A82] hover:text-[#DC2626] transition-colors rounded hover:bg-[#F2EFEB] cursor-pointer"
+                          title="Delete custom clip"
+                        >
+                          <Trash2 className="w-3 h-3" />
+                        </button>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+
+  // Sub-render: AI Commands Section (used in mobile AI tab)
+  const renderAiCommandsSection = () => (
+    <div className="flex-1 min-h-0 flex flex-col space-y-3">
+      {/* Quick Prompt Chips */}
+      <div className="space-y-1.5 shrink-0">
+        <span className="text-[10px] uppercase font-bold text-[#66625B] tracking-wider">Quick Prompts</span>
+        <div className="flex flex-wrap gap-1.5">
+          {[
+            'Remove silence',
+            'Enhance voice',
+            'Add fade transition',
+            'Cut 0:10 to 0:15'
+          ].map((chip) => (
+            <button
+              key={chip}
+              onClick={() => setPromptInput(chip)}
+              className="text-[11px] bg-[#F7F6F2] hover:bg-[#F2EFEB] hover:text-[#181715] text-[#66625B] px-2 py-1 rounded-md border border-[#E5E2DC] transition-colors cursor-pointer"
+            >
+              {chip}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Silence Detection Trigger Card */}
+      <div className="p-2.5 rounded-xl bg-[#FFFBEB] border border-[#FCD34D] flex items-center justify-between shrink-0">
+        <div>
+          <span className="text-xs font-semibold text-[#92400E] block">Awkward Pauses</span>
+          <span className="text-[10px] text-[#B45309]">Scans audio for speech gaps</span>
+        </div>
+        <button
+          disabled={isDetectingSilences}
+          onClick={handleDetectSilences}
+          className="px-2.5 py-1 bg-[#D97706] hover:bg-[#B45309] text-white rounded-lg text-xs font-medium transition-colors shadow-sm disabled:opacity-50 cursor-pointer"
+        >
+          {isDetectingSilences ? 'Scanning...' : 'Detect Silences'}
+        </button>
+      </div>
+
+      {/* Execution Log */}
+      <div className="flex-1 min-h-[130px] flex flex-col space-y-1.5 pt-1 border-t border-[#E5E2DC]">
+        <span className="text-[10px] uppercase font-bold text-[#66625B] tracking-wider shrink-0">Execution Log</span>
+        <div className="flex-1 overflow-y-auto space-y-1.5 pr-1">
+          {commandLogs.length === 0 ? (
+            <p className="text-[11px] text-[#8E8A82] italic">No AI commands executed yet.</p>
+          ) : (
+            commandLogs.map((log) => (
+              <div
+                key={log.id}
+                className={`p-2 rounded-lg border text-[11px] space-y-1 shadow-sm ${
+                  log.status === 'SUCCESS'
+                    ? 'bg-[#F0FDFA] border-[#99F6E4] text-[#0F766E]'
+                    : log.status === 'CLARIFICATION' || log.status === 'WARNING' || log.parsedCommand.action === 'UNSUPPORTED_OPERATION'
+                    ? 'bg-[#FFFBEB] border-[#FCD34D] text-[#92400E]'
+                    : 'bg-[#FEF2F2] border-[#FCA5A5] text-[#B91C1C]'
+                }`}
+              >
+                <div className="font-semibold">{log.rawInput}</div>
+                <div className="text-[10px] opacity-80">{log.appliedMessage}</div>
+              </div>
+            ))
+          )}
+        </div>
+      </div>
+
+      {/* Mobile-integrated AI Input */}
+      <div className="shrink-0 pt-2 border-t border-[#E5E2DC]">
+        <div className="relative">
+          <input
+            type="text"
+            value={promptInput}
+            onChange={(e) => setPromptInput(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && handleSendCommand()}
+            placeholder='e.g. "Cut from 0:10 to 0:25"'
+            disabled={isAiProcessing}
+            className="w-full bg-[#F7F6F2] border border-[#E5E2DC] rounded-lg pl-3 pr-9 py-2 text-xs text-[#181715] placeholder-[#8E8A82] focus:outline-none focus:border-[#D96B27]"
+          />
+          <button
+            onClick={handleSendCommand}
+            disabled={isAiProcessing || !promptInput.trim()}
+            className="absolute right-1.5 bottom-1.5 p-1.5 rounded-lg bg-[#D96B27] hover:bg-[#C25E1F] text-white disabled:opacity-40 transition-colors shadow-sm cursor-pointer"
+          >
+            <Send className="w-3 h-3" />
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+
+  // Sub-render: Audio Section (used in mobile audio tab)
+  const renderAudioSection = () => (
+    <div className="flex-1 min-h-0 overflow-y-auto space-y-3 text-xs">
+      {/* Speaker Voice Enhancement Card */}
+      <div className="p-3 rounded-xl bg-white border border-[#E5E2DC] shadow-sm space-y-2">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center space-x-2">
+            <Sparkles className={`w-4 h-4 ${voiceEnhanceEnabled ? 'text-[#0F766E]' : 'text-[#8E8A82]'}`} />
+            <span className="font-semibold text-[#181715]">Speaker Voice Enhancement</span>
+          </div>
+          <button
+            onClick={handleToggleVoiceEnhance}
+            className={`px-2.5 py-1 rounded-lg text-xs font-medium border transition-all cursor-pointer ${
+              voiceEnhanceEnabled
+                ? 'bg-[#F0FDFA] border-[#0D9488] text-[#0F766E]'
+                : 'bg-white border-[#E5E2DC] text-[#66625B] hover:text-[#181715]'
+            }`}
+          >
+            {voiceEnhanceEnabled ? 'ON' : 'OFF'}
+          </button>
+        </div>
+        <p className="text-[11px] text-[#66625B]">
+          100Hz HPF + 320Hz room-echo cut + 3.2kHz vocal clarity boost + anti-hiss shelf + light leveling.
+        </p>
+      </div>
+
+      {/* Reduce Low Hum (Basic) Card */}
+      <div className="p-3 rounded-xl bg-white border border-[#E5E2DC] shadow-sm space-y-2">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center space-x-2">
+            <Wand2 className={`w-4 h-4 ${noiseRemovalEnabled ? 'text-[#0F766E]' : 'text-[#8E8A82]'}`} />
+            <span className="font-semibold text-[#181715]">Reduce Low Hum (Basic)</span>
+          </div>
+          <button
+            onClick={handleToggleNoiseRemoval}
+            className={`px-2.5 py-1 rounded-lg text-xs font-medium border transition-all cursor-pointer ${
+              noiseRemovalEnabled
+                ? 'bg-[#F0FDFA] border-[#0D9488] text-[#0F766E]'
+                : 'bg-white border-[#E5E2DC] text-[#66625B] hover:text-[#181715]'
+            }`}
+          >
+            {noiseRemovalEnabled ? 'ON' : 'OFF'}
+          </button>
+        </div>
+        <p className="text-[11px] text-[#66625B]">
+          Cascaded 180Hz HPF, 250Hz motor cut, 6.2kHz lowpass & adaptive noise gate for steady background hum.
+        </p>
+      </div>
+
+      {/* Background Music Card */}
+      <div className="p-3 rounded-xl bg-white border border-[#E5E2DC] shadow-sm space-y-2.5">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center space-x-2">
+            <Music className="w-4 h-4 text-[#0F766E]" />
+            <span className="font-semibold text-[#181715]">Background Music</span>
+          </div>
+          {bgMusic && (
+            <button
+              onClick={() => removeBgMusic()}
+              className="p-1 text-[#8E8A82] hover:text-[#DC2626] transition-colors cursor-pointer"
+              title="Remove track"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+            </button>
+          )}
+        </div>
+
+        {bgMusic ? (
+          <div className="space-y-2">
+            <div className="flex items-center justify-between text-[11px]">
+              <span className="font-medium text-[#181715] truncate" title={bgMusic.name}>
+                {bgMusic.name}
+              </span>
+              <span className="text-[#66625B] font-mono shrink-0">
+                ({(bgMusic.durationMs / 1000).toFixed(1)}s loop)
+              </span>
+            </div>
+
+            <div className="flex items-center space-x-2">
+              <button
+                onClick={() => toggleBgMusicMute()}
+                className="text-[#66625B] hover:text-[#181715] p-1 cursor-pointer"
+                title={bgMusic.isMuted || bgMusic.volume === 0 ? "Unmute" : "Mute"}
+              >
+                {bgMusic.isMuted || bgMusic.volume === 0 ? (
+                  <VolumeX className="w-4 h-4 text-[#DC2626]" />
+                ) : (
+                  <Volume2 className="w-4 h-4 text-[#0F766E]" />
+                )}
+              </button>
+              <input
+                type="range"
+                min="0"
+                max="1"
+                step="0.05"
+                value={bgMusic.isMuted ? 0 : bgMusic.volume}
+                onChange={(e) => setBgMusicVolume(parseFloat(e.target.value))}
+                className="flex-1 h-1.5 bg-[#E5E2DC] accent-[#0F766E] rounded-lg cursor-pointer"
+              />
+              <span className="text-[11px] font-mono tabular-nums text-[#66625B] w-8 text-right">
+                {bgMusic.isMuted ? '0%' : `${Math.round(bgMusic.volume * 100)}%`}
+              </span>
+            </div>
+
+            <button
+              onClick={() => bgMusicInputRef.current?.click()}
+              className="w-full py-1.5 bg-[#F7F6F2] hover:bg-[#F2EFEB] border border-[#E5E2DC] text-[#181715] rounded-lg text-xs font-medium transition-colors cursor-pointer"
+            >
+              Replace Track (.mp3, .wav, .m4a)
+            </button>
+          </div>
+        ) : (
+          <button
+            onClick={() => bgMusicInputRef.current?.click()}
+            className="w-full py-3 border border-dashed border-[#E5E2DC] hover:border-[#0F766E] bg-[#FAF9F5] hover:bg-[#F0FDFA] rounded-xl flex items-center justify-center space-x-2 text-xs text-[#66625B] hover:text-[#0F766E] transition-all group cursor-pointer"
+          >
+            <Music className="w-4 h-4 text-[#8E8A82] group-hover:text-[#0F766E] transition-colors" />
+            <span>+ Add Background Music track (up to 30 MB)</span>
+          </button>
+        )}
+      </div>
+    </div>
+  );
+
+  return (
+    <div className="h-[100dvh] w-full bg-[#F7F6F2] text-[#181715] flex flex-col overflow-hidden select-none">
+      {/* Top Header */}
+      <header className="h-12 md:h-14 border-b border-[#E5E2DC] bg-white px-3 md:px-4 flex items-center justify-between z-20 shrink-0">
+        <div className="flex items-center space-x-2.5 md:space-x-3 min-w-0">
+          <div className="w-7 h-7 md:w-8 md:h-8 rounded-lg bg-[#D96B27] text-white flex items-center justify-center font-bold text-xs md:text-sm shrink-0 shadow-sm">
+            <Scissors className="w-4 h-4 text-white" />
+          </div>
+          <div className="min-w-0">
+            <h2 className="text-xs md:text-sm font-semibold tracking-wide text-[#181715] truncate max-w-[150px] sm:max-w-[240px] md:max-w-none">{project.title}</h2>
+            <div className="flex items-center space-x-2 text-[10px] md:text-[11px] text-[#66625B] tabular-nums font-mono">
               <span>{curProjSec}s / {totalProjSec}s</span>
-              <span>•</span>
-              <span className="text-[#E8872A]">Virtual InShot Playback</span>
             </div>
           </div>
         </div>
 
-        {/* Audio Filter Controls */}
-        <div className="flex items-center space-x-2">
+        {/* Desktop Audio Filter Controls & Export */}
+        <div className="hidden md:flex items-center space-x-2">
           {/* Speaker Voice Enhancement Toggle */}
           <button
-            onClick={() => {
-              setupWebAudio();
-              if (audioContextRef.current && audioContextRef.current.state === 'suspended') {
-                audioContextRef.current.resume();
-              }
-              toggleVoiceEnhance();
-            }}
+            onClick={handleToggleVoiceEnhance}
             title="Speaker Voice Enhancement: 100Hz HPF + 320Hz room-echo cut + 3.2kHz vocal clarity boost + anti-hiss shelf + light leveling"
-            className={`px-2.5 py-1 rounded-lg text-xs font-medium flex items-center space-x-1.5 border transition-all ${
+            className={`px-2.5 py-1 rounded-lg text-xs font-medium flex items-center space-x-1.5 border transition-all cursor-pointer ${
               voiceEnhanceEnabled
-                ? 'bg-[#14B8A6]/15 border-[#2DD4BF]/50 text-[#5EEAD4]'
-                : 'bg-[#23221F] border-[#35332F] text-[#8A8780] hover:text-[#E6E3DC]'
+                ? 'bg-[#F0FDFA] border-[#0D9488] text-[#0F766E]'
+                : 'bg-white border-[#E5E2DC] text-[#66625B] hover:text-[#181715] hover:bg-[#F7F6F2]'
             }`}
           >
-            <Sparkles className={`w-3.5 h-3.5 ${voiceEnhanceEnabled ? 'text-[#5EEAD4]' : 'text-[#8A8780]'}`} />
+            <Sparkles className={`w-3.5 h-3.5 ${voiceEnhanceEnabled ? 'text-[#0F766E]' : 'text-[#8E8A82]'}`} />
             <span>Voice Enhance</span>
-            <span className={`text-[10px] px-1 py-0.2 rounded font-mono tabular-nums font-bold ${voiceEnhanceEnabled ? 'bg-[#14B8A6]/25 text-[#5EEAD4]' : 'bg-[#1F1E1C] text-[#8A8780]'}`}>
+            <span className={`text-[10px] px-1 py-0.5 rounded font-mono tabular-nums font-bold ${voiceEnhanceEnabled ? 'bg-[#CCFBF1] text-[#0F766E]' : 'bg-[#F2EFEB] text-[#8E8A82]'}`}>
               {voiceEnhanceEnabled ? 'ON' : 'OFF'}
             </span>
           </button>
 
-          {/* Background Noise Removal Toggle with Highly Experimental Badge */}
-          <div className="flex items-center space-x-1.5">
-            <button
-              onClick={() => {
-                setupWebAudio();
-                if (audioContextRef.current && audioContextRef.current.state === 'suspended') {
-                  audioContextRef.current.resume();
-                }
-                toggleNoiseRemoval();
-              }}
-              title="Background Noise Removal (Highly Experimental): Cascaded 180Hz HPF, 250Hz motor cut, 6.2kHz lowpass & adaptive noise gate"
-              className={`px-2.5 py-1 rounded-lg text-xs font-medium flex items-center space-x-1.5 border transition-all ${
-                noiseRemovalEnabled
-                  ? 'bg-[#14B8A6]/15 border-[#2DD4BF]/50 text-[#5EEAD4]'
-                  : 'bg-[#23221F] border-[#35332F] text-[#8A8780] hover:text-[#E6E3DC]'
-              }`}
-            >
-              <Wand2 className={`w-3.5 h-3.5 ${noiseRemovalEnabled ? 'text-[#5EEAD4]' : 'text-[#8A8780]'}`} />
-              <span>Noise Removal</span>
-              <span className={`text-[10px] px-1 py-0.2 rounded font-mono tabular-nums font-bold ${noiseRemovalEnabled ? 'bg-[#14B8A6]/25 text-[#5EEAD4]' : 'bg-[#1F1E1C] text-[#8A8780]'}`}>
-                {noiseRemovalEnabled ? 'ON' : 'OFF'}
-              </span>
-            </button>
-            <span
-              title="Highly Experimental: Best on steady background hum/fan noise. Review preview before export."
-              className="bg-[#D97706]/15 border border-[#F59E0B]/40 text-[#FCD34D] text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded font-medium select-none whitespace-nowrap"
-            >
-              Highly Experimental
+          {/* Reduce Low Hum (Basic) Toggle */}
+          <button
+            onClick={handleToggleNoiseRemoval}
+            title="Reduce Low Hum (Basic): Cascaded 180Hz HPF, 250Hz motor cut, 6.2kHz lowpass & adaptive noise gate"
+            className={`px-2.5 py-1 rounded-lg text-xs font-medium flex items-center space-x-1.5 border transition-all cursor-pointer ${
+              noiseRemovalEnabled
+                ? 'bg-[#F0FDFA] border-[#0D9488] text-[#0F766E]'
+                : 'bg-white border-[#E5E2DC] text-[#66625B] hover:text-[#181715] hover:bg-[#F7F6F2]'
+            }`}
+          >
+            <Wand2 className={`w-3.5 h-3.5 ${noiseRemovalEnabled ? 'text-[#0F766E]' : 'text-[#8E8A82]'}`} />
+            <span>Reduce Low Hum (Basic)</span>
+            <span className={`text-[10px] px-1 py-0.5 rounded font-mono tabular-nums font-bold ${noiseRemovalEnabled ? 'bg-[#CCFBF1] text-[#0F766E]' : 'bg-[#F2EFEB] text-[#8E8A82]'}`}>
+              {noiseRemovalEnabled ? 'ON' : 'OFF'}
             </span>
-          </div>
+          </button>
 
-          <div className="h-4 w-[1px] bg-[#2C2B28] mx-1" />
+          <div className="h-4 w-[1px] bg-[#E5E2DC] mx-1" />
 
           <button
             onClick={() => setScreen('EXPORT')}
-            className="flex items-center space-x-1.5 bg-[#E8872A] hover:bg-[#F59A3D] text-[#11100E] font-semibold px-4 py-1.5 rounded-lg text-xs transition-colors shadow-none active:scale-95"
+            className="flex items-center space-x-1.5 bg-[#D96B27] hover:bg-[#C25E1F] text-white font-medium px-4 py-1.5 rounded-lg text-xs transition-colors shadow-sm active:scale-95 cursor-pointer"
           >
             <span>Export Video</span>
             <ArrowRight className="w-3.5 h-3.5" />
           </button>
         </div>
+
+        {/* Mobile Top Export Button */}
+        <div className="flex md:hidden items-center space-x-2">
+          <button
+            onClick={() => setScreen('EXPORT')}
+            className="flex items-center space-x-1 bg-[#D96B27] hover:bg-[#C25E1F] text-white font-medium px-3 py-1 rounded-md text-xs transition-colors shadow-sm active:scale-95 cursor-pointer"
+          >
+            <span>Export</span>
+            <ArrowRight className="w-3 h-3" />
+          </button>
+        </div>
       </header>
 
       {/* Main Workspace Body */}
-      <div className="flex-1 flex overflow-hidden relative">
-        {/* Left Collapsible Panel: Transcript */}
+      <div className="flex-1 min-h-0 flex flex-col md:flex-row overflow-hidden relative">
+        {/* Left Collapsible Panel: Transcript (Desktop) */}
         <div
-          className={`border-r border-[#2C2B28] bg-[#161614] flex flex-col transition-all duration-200 z-10 ${
-            isLeftOpen ? 'w-80' : 'w-10'
+          className={`hidden md:flex flex-col border-r border-[#E5E2DC] bg-white transition-all duration-200 z-10 ${
+            isLeftOpen ? 'w-72 lg:w-80' : 'w-10'
           }`}
         >
-          <div className="h-10 border-b border-[#2C2B28] flex items-center justify-between px-3">
+          <div className="h-10 shrink-0 border-b border-[#E5E2DC] flex items-center justify-between px-3">
             {isLeftOpen ? (
-              <span className="text-xs font-semibold text-[#F4F2EE] tracking-wide">
+              <span className="text-xs font-semibold text-[#181715] tracking-wide">
                 Transcript
               </span>
             ) : null}
             <button
               onClick={() => setIsLeftOpen(!isLeftOpen)}
-              className="text-[#A19E97] hover:text-[#F4F2EE] p-1"
+              className="text-[#66625B] hover:text-[#181715] p-1 cursor-pointer"
             >
               {isLeftOpen ? <ChevronLeft className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
             </button>
           </div>
 
-          {isLeftOpen && (
-            <div className="flex-1 overflow-y-auto p-3 space-y-3 text-xs">
-              <div className="space-y-3">
-                {/* Quality & Mode Controls Bar */}
-                <div className="p-2.5 rounded-lg bg-[#1F1E1C] border border-[#2C2B28] space-y-2">
-                  {/* Quality Selector */}
-                  <div className="flex items-center justify-between text-[11px]">
-                    <span className="text-[#A19E97] font-medium">Quality:</span>
-                    <select
-                      value={transcriptQuality}
-                      onChange={(e) => setTranscriptQuality(e.target.value as any)}
-                      disabled={transcriptionStatus === 'downloading_model' || transcriptionStatus === 'transcribing' || transcriptMode === 'transcribe_hinglish'}
-                      className="bg-[#161614] border border-[#2C2B28] text-[#F4F2EE] text-[11px] rounded px-2 py-1 focus:outline-none focus:border-[#E8872A] cursor-pointer disabled:opacity-50"
-                    >
-                      <option value="accurate">Accurate (Small, ~285 MB)</option>
-                      <option value="fast">Fast (Base, ~75 MB)</option>
-                    </select>
-                  </div>
-
-                  {/* Mode Selector */}
-                  <div className="flex items-center justify-between text-[11px]">
-                    <span className="text-[#A19E97] font-medium">Mode:</span>
-                    <select
-                      value={transcriptMode}
-                      onChange={(e) => setTranscriptMode(e.target.value as any)}
-                      disabled={transcriptionStatus === 'downloading_model' || transcriptionStatus === 'transcribing'}
-                      className="bg-[#161614] border border-[#2C2B28] text-[#F4F2EE] text-[11px] rounded px-2 py-1 max-w-[175px] truncate focus:outline-none focus:border-[#E8872A] cursor-pointer disabled:opacity-50"
-                    >
-                      <option value="transcribe_hinglish">Hinglish (Hindi + English)</option>
-                      <option value="translate_en">English (translated)</option>
-                      <option value="transcribe_en">English (as spoken)</option>
-                    </select>
-                  </div>
-
-                  <p className="text-[10px] text-[#6E6B64]">
-                    First use downloads the model ({transcriptMode === 'transcribe_hinglish' ? 'about 72 MB' : transcriptQuality === 'accurate' ? 'about 285 MB' : 'about 75 MB'}), only once.
-                  </p>
-
-                  <div className="flex items-center space-x-2 pt-1">
-                    <button
-                      type="button"
-                      onClick={() => generateTranscript(transcriptQuality, transcriptMode)}
-                      disabled={transcriptionStatus === 'downloading_model' || transcriptionStatus === 'transcribing'}
-                      className="flex-1 bg-[#E8872A] hover:bg-[#F59A3D] disabled:opacity-50 text-[#11100E] font-semibold py-1.5 px-3 rounded-lg text-xs flex items-center justify-center space-x-1.5 shadow-none transition-all"
-                    >
-                      {transcriptionStatus === 'downloading_model' ? (
-                        <>
-                          <Loader2 className="w-3.5 h-3.5 animate-spin text-[#11100E]" />
-                          <span>Loading model... {transcriptionDownloadPercent}%</span>
-                        </>
-                      ) : transcriptionStatus === 'transcribing' ? (
-                        <>
-                          <Loader2 className="w-3.5 h-3.5 animate-spin text-[#11100E]" />
-                          <span>Transcribing...</span>
-                        </>
-                      ) : project.transcript.length > 0 && !project.isDemoSample ? (
-                        <>
-                          <RefreshCw className="w-3.5 h-3.5" />
-                          <span>Regenerate</span>
-                        </>
-                      ) : (
-                        <>
-                          <Sparkles className="w-3.5 h-3.5" />
-                          <span>Generate Transcript</span>
-                        </>
-                      )}
-                    </button>
-
-                    {(transcriptionStatus === 'downloading_model' || transcriptionStatus === 'transcribing') && (
-                      <button
-                        type="button"
-                        onClick={cancelTranscription}
-                        title="Cancel transcription"
-                        className="bg-[#23221F] hover:bg-[#DC2626]/80 text-[#E6E3DC] hover:text-white px-2.5 py-1.5 rounded-lg text-xs font-medium border border-[#35332F] transition-colors flex items-center space-x-1"
-                      >
-                        <X className="w-3.5 h-3.5" />
-                        <span>Cancel</span>
-                      </button>
-                    )}
-
-                    {project.transcript.length > 0 && (
-                      <button
-                        type="button"
-                        onClick={() => downloadTranscriptAsTxt(project.transcript, `${project.title.replace(/\.[^/.]+$/, '')}_transcript.txt`)}
-                        title="Download transcript as .txt"
-                        className="bg-[#23221F] hover:bg-[#2E2C28] text-[#E6E3DC] p-1.5 rounded-lg border border-[#35332F] transition-colors"
-                      >
-                        <Download className="w-3.5 h-3.5" />
-                      </button>
-                    )}
-                  </div>
-                </div>
-
-                  {/* Fallback Notice if Small model fell back to Base */}
-                  {transcriptionFallbackNotice && (
-                    <div className="p-2.5 rounded-lg bg-[#D97706]/15 border border-[#F59E0B]/50 text-[#FCD34D] text-[11px] flex items-start space-x-2">
-                      <ShieldAlert className="w-4 h-4 flex-shrink-0 text-[#F59E0B] mt-0.5" />
-                      <span>{transcriptionFallbackNotice}</span>
-                    </div>
-                  )}
-
-                  {/* Urdu Script Warning Banner (Requirement 5) */}
-                  {project.transcriptionMeta?.hasUrduWarning && (
-                    <div className="p-2.5 rounded-lg bg-[#D97706]/15 border border-[#F59E0B]/50 text-[#FCD34D] text-[11px] flex items-start space-x-2">
-                      <AlertCircle className="w-4 h-4 flex-shrink-0 text-[#F59E0B] mt-0.5" />
-                      <span>Output contains Urdu-script text. For a cleaner result use &apos;English (translated)&apos; mode.</span>
-                    </div>
-                  )}
-
-                  {/* Status Banner: Downloading Model */}
-                  {transcriptionStatus === 'downloading_model' && (
-                    <div className="p-3 rounded-lg bg-[#1F1E1C] border border-[#2C2B28] space-y-2">
-                      <div className="flex items-center justify-between text-xs text-[#F4F2EE] font-medium">
-                        <span className="flex items-center space-x-1.5">
-                          <Loader2 className="w-3.5 h-3.5 animate-spin text-[#E8872A]" />
-                          <span>Downloading Whisper Model</span>
-                        </span>
-                        <div className="flex items-center space-x-2">
-                          <span className="tabular-nums font-mono">{transcriptionDownloadPercent}%</span>
-                          <button
-                            type="button"
-                            onClick={cancelTranscription}
-                            className="text-[10px] text-[#A19E97] hover:text-[#EF4444] px-1.5 py-0.5 rounded bg-[#161614] border border-[#2C2B28] transition-colors"
-                          >
-                            Cancel
-                          </button>
-                        </div>
-                      </div>
-                      <div className="w-full bg-[#161614] rounded-full h-1.5 overflow-hidden">
-                        <div
-                          className="bg-[#E8872A] h-1.5 rounded-full transition-all duration-200"
-                          style={{ width: `${transcriptionDownloadPercent}%` }}
-                        />
-                      </div>
-                      <p className="text-[10px] text-[#A19E97]">
-                        First use downloads the model ({transcriptMode === 'transcribe_hinglish' ? 'about 72 MB' : transcriptQuality === 'accurate' ? 'about 285 MB' : 'about 75 MB'}), only once.
-                      </p>
-                    </div>
-                  )}
-
-                  {/* Status Banner: Transcribing */}
-                  {transcriptionStatus === 'transcribing' && (
-                    <div className="p-3 rounded-lg bg-[#1F1E1C] border border-[#2C2B28] flex items-center justify-between">
-                      <div className="flex items-center space-x-2.5">
-                        <Loader2 className="w-4 h-4 animate-spin text-[#E8872A] flex-shrink-0" />
-                        <div>
-                          <p className="text-xs font-medium text-[#F4F2EE]">Transcribing speech...</p>
-                          <p className="text-[10px] text-[#A19E97]">Running Whisper AI in background Web Worker</p>
-                        </div>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={cancelTranscription}
-                        className="text-[10px] text-[#A19E97] hover:text-[#EF4444] px-2 py-1 rounded bg-[#161614] border border-[#2C2B28] transition-colors"
-                      >
-                        Cancel
-                      </button>
-                    </div>
-                  )}
-
-                  {/* Status Banner: Error */}
-                  {transcriptionStatus === 'error' && (
-                    <div className="p-3 rounded-lg bg-[#DC2626]/12 border border-[#EF4444]/40 space-y-1.5">
-                      <div className="flex items-center space-x-1.5 text-xs font-semibold text-[#F87171]">
-                        <AlertCircle className="w-3.5 h-3.5 text-[#F87171] flex-shrink-0" />
-                        <span>Transcription Failed</span>
-                      </div>
-                      <p className="text-[11px] text-[#FCA5A5] leading-snug">{transcriptionError}</p>
-                      <button
-                        type="button"
-                        onClick={() => generateTranscript(transcriptQuality, transcriptMode)}
-                        className="text-[10px] text-[#F87171] hover:underline mt-1 font-medium"
-                      >
-                        Try Again
-                      </button>
-                    </div>
-                  )}
-
-                  {/* Transcript Content List */}
-                  {project.transcript.length === 0 && transcriptionStatus === 'idle' ? (
-                    <div className="p-4 rounded-xl bg-[#1F1E1C] border border-[#2C2B28] text-center space-y-2">
-                      <p className="text-[#F4F2EE] text-xs">No transcript generated yet.</p>
-                      <p className="text-[11px] text-[#6E6B64] leading-relaxed">
-                        Click &quot;Generate Transcript&quot; above to transcribe using in-browser Whisper AI. First use downloads the model once.
-                      </p>
-                    </div>
-                  ) : project.transcript.length > 0 ? (
-                    <div className="space-y-2">
-                      {project.transcriptionMeta?.lowQualityWarning && (
-                        <div className="p-2.5 rounded-lg bg-[#D97706]/15 border border-[#F59E0B]/50 text-[#FCD34D] text-[11px] flex items-start space-x-2">
-                          <AlertCircle className="w-3.5 h-3.5 flex-shrink-0 text-[#F59E0B] mt-0.5" />
-                          <span>{project.transcriptionMeta.lowQualityWarning}</span>
-                        </div>
-                      )}
-
-                      <div className="flex items-center justify-between text-[11px] text-[#A19E97] pb-1 border-b border-[#2C2B28]">
-                        <span>Click to seek • Double-click to edit:</span>
-                        {addedClipTranscribing ? (
-                          <span className="text-[10px] bg-[#1F1E1C] text-[#E8872A] border border-[#E8872A]/40 px-1.5 py-0.5 rounded font-mono flex items-center space-x-1">
-                            <Loader2 className="w-2.5 h-2.5 animate-spin" />
-                            <span>Transcribing added clip...</span>
-                          </span>
-                        ) : project.isDemoSample ? (
-                          <span className="text-[10px] bg-[#1F1E1C] text-[#FCD34D] border border-[#2C2B28] px-1.5 py-0.2 rounded font-mono">
-                            Sample transcript
-                          </span>
-                        ) : (
-                          <span className="text-[10px] bg-[#1F1E1C] text-[#A19E97] border border-[#2C2B28] px-1.5 py-0.2 rounded font-mono">
-                            {project.transcriptionMeta?.modelName || (transcriptQuality === 'accurate' ? 'Whisper Small' : 'Whisper Base')} ({project.transcript.length} words)
-                          </span>
-                        )}
-                      </div>
-
-                      <div className="leading-relaxed space-x-1 font-sans text-xs">
-                        {mappedTranscriptWords.map(({ word: w, projMs }) => {
-                          const isDeleted = projMs === null;
-                          const isCurrent =
-                            projMs !== null &&
-                            currentProjectMs >= projMs &&
-                            currentProjectMs < projMs + (w.sourceEndMs - w.sourceStartMs);
-
-                          if (editingWordId === w.id) {
-                            return (
-                              <input
-                                key={w.id}
-                                type="text"
-                                autoFocus
-                                value={editingWordText}
-                                onChange={(e) => setEditingWordText(e.target.value)}
-                                onKeyDown={(e) => {
-                                  if (e.key === 'Enter') {
-                                    updateTranscriptWord(w.id, editingWordText);
-                                    setEditingWordId(null);
-                                  } else if (e.key === 'Escape') {
-                                    setEditingWordId(null);
-                                  }
-                                }}
-                                onBlur={() => {
-                                  updateTranscriptWord(w.id, editingWordText);
-                                  setEditingWordId(null);
-                                }}
-                                onClick={(e) => e.stopPropagation()}
-                                className="bg-[#0E0E0D] text-[#F4F2EE] font-medium border border-[#E8872A] rounded px-1 py-0.5 text-xs outline-none w-20 inline-block shadow-none"
-                              />
-                            );
-                          }
-
-                          return (
-                            <span
-                              key={w.id}
-                              onClick={() => {
-                                if (projMs !== null) {
-                                  handleSeek(projMs);
-                                } else {
-                                  // Jump to next active moment
-                                  const activeItems = project.items.filter(
-                                    (it) => it.status === 'ACTIVE' || it.status === 'SUGGESTED_MEME'
-                                  );
-                                  const nextActive = activeItems.find((it) => it.sourceStartMs >= w.sourceStartMs);
-                                  if (nextActive) {
-                                    handleSeek(nextActive.projectStartMs);
-                                  } else if (activeItems.length > 0) {
-                                    handleSeek(activeItems[0].projectStartMs);
-                                  }
-                                }
-                              }}
-                              onDoubleClick={(e) => {
-                                e.stopPropagation();
-                                setEditingWordId(w.id);
-                                setEditingWordText(w.word);
-                              }}
-                              title={
-                                isDeleted
-                                  ? 'Word was cut. Click to seek to next active video. (Double-click to edit)'
-                                  : `${w.edited ? '[Edited] ' : ''}Source: ${(w.sourceStartMs / 1000).toFixed(1)}s (Double-click to edit)`
-                              }
-                              className={`inline-block px-1 py-0.5 rounded cursor-pointer transition-colors ${
-                                isDeleted
-                                  ? 'line-through text-[#6E6B64] bg-[#161614]/50 hover:text-[#A19E97]'
-                                  : isCurrent
-                                  ? 'bg-[#E8872A]/20 text-[#E8872A] font-bold border border-[#E8872A]/50'
-                                  : 'text-[#E6E3DC] hover:bg-[#292825] hover:text-[#F4F2EE]'
-                              } ${w.edited ? 'ring-1 ring-[#5EEAD4]/50 bg-[#14B8A6]/10' : ''}`}
-                            >
-                              {w.word}
-                              {w.edited && <span className="text-[9px] text-[#5EEAD4] ml-0.5 font-bold">*</span>}
-                            </span>
-                          );
-                        })}
-                      </div>
-
-                      {/* Labels under the transcript (Requirement 7) */}
-                      <div className="pt-2.5 mt-2 border-t border-[#2C2B28] text-[11px] text-[#A19E97] space-y-1">
-                        <div className="flex items-center justify-between text-[10px] text-[#A19E97] font-mono tabular-nums">
-                          <span>
-                            {project.transcriptionMeta?.modelName || (transcriptQuality === 'accurate' ? 'Whisper Small' : 'Whisper Base')} ({project.transcriptionMeta?.device || 'WASM'})
-                          </span>
-                          <span>
-                            {project.transcriptionMeta?.durationMs ? `${(project.transcriptionMeta.durationMs / 1000).toFixed(1)}s` : ''}
-                          </span>
-                        </div>
-                        <div className="text-[10px] text-[#A19E97]">
-                          Mode:{' '}
-                          {
-                            (project.transcriptionMeta?.mode || transcriptMode) === 'transcribe_hinglish'
-                              ? 'Hinglish (Hindi + English)'
-                              : (project.transcriptionMeta?.mode || transcriptMode) === 'transcribe_en'
-                              ? 'English (as spoken)'
-                              : 'English (translated)'
-                          }
-                        </div>
-                        <p className="text-[10px] text-[#6E6B64] italic">
-                          Auto-generated, may contain errors. Double-click a word to fix it.
-                        </p>
-                      </div>
-                    </div>
-                  ) : null}
-                </div>
-            </div>
-          )}
+          {isLeftOpen && renderTranscriptSection()}
         </div>
 
-        {/* Center: Dual-Video Preview Player (Spec 3) */}
-        <div className="flex-1 flex flex-col bg-[#0E0E0D] items-center justify-center p-4 relative overflow-hidden">
+        {/* Center: Dual-Video Preview Player (Desktop & Mobile) */}
+        <div className="flex flex-col md:flex-1 items-center justify-center p-2 md:p-4 bg-[#F7F6F2] overflow-y-auto md:overflow-hidden shrink-0 md:shrink w-full">
+          {/* Inline Workspace Error Banner */}
+          {workspaceBannerError && (
+            <div className="w-full max-w-3xl mb-2 px-3 py-2 rounded-xl bg-[#FEF2F2] border border-[#FCA5A5] text-[#991B1B] text-xs flex items-center justify-between gap-2 shadow-sm animate-in fade-in">
+              <div className="flex items-center gap-2 min-w-0">
+                <AlertCircle className="w-4 h-4 flex-shrink-0 text-[#EF4444]" />
+                <span className="truncate">{workspaceBannerError}</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setWorkspaceBannerError(null)}
+                className="text-[#991B1B] hover:text-[#7F1D1D] p-0.5 rounded transition-colors cursor-pointer"
+                title="Dismiss"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          )}
+
           {/* Silence Alert Banner if pauses present */}
           {project.items.some(it => it.status === 'SUGGESTED_SILENCE_CUT') && (() => {
             const silenceItems = project.items.filter(it => it.status === 'SUGGESTED_SILENCE_CUT');
@@ -1771,23 +2466,23 @@ export const Screen2Workspace: React.FC = () => {
             const selectedSilences = silenceItems.filter(it => it.meta?.silenceSelected !== false).length;
 
             return (
-              <div className="absolute top-4 left-6 right-6 bg-[#D97706]/15 border border-[#F59E0B]/50 rounded-xl px-4 py-2 flex flex-wrap md:flex-nowrap items-center justify-between text-xs z-40 pointer-events-auto backdrop-blur gap-2 shadow-lg">
-                <div className="flex items-center space-x-2 text-[#FCD34D] pr-4">
-                  <ShieldAlert className="w-4 h-4 flex-shrink-0 text-[#F59E0B]" />
-                  <span>
-                    <strong>Awkward Pauses Detected:</strong> Review amber intervals on timeline or click to clean up <span className="text-[#A19E97] font-normal text-[11px]">(Experimental — review before accepting; best on low-noise audio)</span>:
+              <div className="w-full max-w-3xl mb-2 bg-[#FFFBEB] border border-[#FCD34D] rounded-xl px-3.5 py-2 flex flex-wrap sm:flex-nowrap items-center justify-between text-xs gap-2 shadow-sm">
+                <div className="flex items-center space-x-2 text-[#92400E] min-w-0">
+                  <ShieldAlert className="w-4 h-4 flex-shrink-0 text-[#D97706]" />
+                  <span className="truncate sm:whitespace-normal">
+                    <strong>Awkward Pauses Detected:</strong> Review amber intervals on timeline or click to clean up:
                   </span>
                 </div>
-                <div className="flex items-center space-x-2 flex-shrink-0">
+                <div className="flex items-center space-x-2 flex-shrink-0 ml-auto">
                   <button
                     type="button"
                     onClick={(e) => {
                       e.stopPropagation();
                       clearAllSilences();
                     }}
-                    className="bg-[#23221F] hover:bg-[#2E2C28] text-[#E6E3DC] hover:text-[#F4F2EE] border border-[#35332F] px-3 py-1 rounded-lg text-xs font-medium transition-colors cursor-pointer"
+                    className="bg-white hover:bg-[#F7F6F2] text-[#66625B] hover:text-[#181715] border border-[#E5E2DC] px-2.5 py-1 rounded-lg text-xs font-medium transition-colors cursor-pointer"
                   >
-                    Cancel / Clear Silences
+                    Cancel / Clear
                   </button>
                   <button
                     type="button"
@@ -1796,9 +2491,9 @@ export const Screen2Workspace: React.FC = () => {
                       applySelectedSilenceCuts();
                     }}
                     disabled={selectedSilences === 0}
-                    className="bg-[#E8872A] hover:bg-[#F59A3D] disabled:opacity-40 disabled:cursor-not-allowed text-[#11100E] font-semibold px-3 py-1 rounded-lg text-xs transition-colors shadow-none cursor-pointer"
+                    className="bg-[#D96B27] hover:bg-[#C25E1F] disabled:opacity-40 disabled:cursor-not-allowed text-white font-semibold px-3 py-1 rounded-lg text-xs transition-colors shadow-sm cursor-pointer"
                   >
-                    Apply Selected Cuts ({selectedSilences}/{totalSilences})
+                    Apply Cuts ({selectedSilences}/{totalSilences})
                   </button>
                 </div>
               </div>
@@ -1806,7 +2501,7 @@ export const Screen2Workspace: React.FC = () => {
           })()}
 
           {/* Dual-Video Canvas Frame */}
-          <div className="relative w-full max-w-3xl aspect-video bg-black rounded-xl overflow-hidden border border-[#2C2B28] flex items-center justify-center">
+          <div className="relative w-full max-w-3xl h-[26dvh] min-h-[160px] max-h-[220px] md:h-auto md:aspect-video bg-[#0B0B0A] rounded-xl overflow-hidden border border-[#D8D4CC] flex items-center justify-center shadow-sm">
             {/* Playhead-driven Frame-accurate Transition Stage (Spec 1) */}
             <div
               ref={transitionStageRef}
@@ -1855,65 +2550,66 @@ export const Screen2Workspace: React.FC = () => {
               className="absolute inset-0 cursor-pointer flex items-center justify-center group z-30"
             >
               {!isPlaying && (
-                <div className="w-16 h-16 rounded-full bg-[#E8872A] text-[#11100E] flex items-center justify-center shadow-lg transform group-hover:scale-105 transition-all">
-                  <Play className="w-8 h-8 fill-[#11100E] translate-x-0.5" />
+                <div className="w-14 h-14 md:w-16 md:h-16 rounded-full bg-[#D96B27] text-white flex items-center justify-center shadow-lg transform group-hover:scale-105 transition-all">
+                  <Play className="w-7 h-7 md:w-8 md:h-8 fill-white translate-x-0.5" />
                 </div>
               )}
             </div>
           </div>
 
           {/* Player Controls Bar */}
-          <div className="w-full max-w-3xl flex items-center justify-between mt-3 px-2">
-            <div className="flex items-center space-x-3">
+          <div className="w-full max-w-3xl flex items-center justify-between mt-2 md:mt-3 px-1 md:px-2">
+            <div className="flex items-center space-x-2 md:space-x-3">
               <button
                 onClick={togglePlayPause}
-                className="w-9 h-9 rounded-lg bg-[#E8872A] hover:bg-[#F59A3D] text-[#11100E] flex items-center justify-center shadow-none transition-all active:scale-95"
+                className="w-8 h-8 md:w-9 md:h-9 rounded-lg bg-[#D96B27] hover:bg-[#C25E1F] text-white flex items-center justify-center shadow-sm transition-all active:scale-95 cursor-pointer"
               >
-                {isPlaying ? <Pause className="w-4 h-4 fill-[#11100E]" /> : <Play className="w-4 h-4 fill-[#11100E] translate-x-0.5" />}
+                {isPlaying ? <Pause className="w-4 h-4 fill-white" /> : <Play className="w-4 h-4 fill-white translate-x-0.5" />}
               </button>
 
               <button
                 onClick={() => handleSeek(0)}
-                className="p-2 text-[#A19E97] hover:text-[#F4F2EE] transition-colors"
+                className="p-1.5 md:p-2 text-[#66625B] hover:text-[#181715] transition-colors cursor-pointer"
                 title="Restart"
               >
                 <RotateCcw className="w-4 h-4" />
               </button>
 
-              <div className="text-xs font-mono tabular-nums text-[#F4F2EE]">
-                <span className="font-bold text-[#F4F2EE]">{curProjSec}s</span>
-                <span className="text-[#6E6B64]"> / </span>
-                <span className="text-[#A19E97]">{totalProjSec}s</span>
+              <div className="text-[11px] md:text-xs font-mono tabular-nums text-[#181715]">
+                <span className="font-bold text-[#181715]">{curProjSec}s</span>
+                <span className="text-[#8E8A82]"> / </span>
+                <span className="text-[#66625B]">{totalProjSec}s</span>
               </div>
             </div>
 
             {/* Editing quick tools */}
-            <div className="flex items-center space-x-2">
+            <div className="flex items-center space-x-1.5 md:space-x-2">
               <button
                 onClick={splitAtPlayhead}
-                className="px-3 py-1.5 bg-[#23221F] hover:bg-[#2E2C28] border border-[#35332F] text-[#E6E3DC] rounded-lg text-xs font-medium flex items-center space-x-1.5 transition-colors"
-                title="Split at playhead position"
+                className="px-2.5 py-1 md:px-3 md:py-1.5 bg-white hover:bg-[#F7F6F2] border border-[#E5E2DC] text-[#181715] rounded-lg text-xs font-medium flex items-center space-x-1.5 transition-colors shadow-sm cursor-pointer"
+                title="Split at playhead position (S)"
               >
-                <Scissors className="w-3.5 h-3.5 text-[#E8872A]" />
-                <span>Split (S)</span>
+                <Scissors className="w-3.5 h-3.5 text-[#D96B27]" />
+                <span className="hidden sm:inline">Split (S)</span>
+                <span className="sm:hidden">Split</span>
               </button>
 
               <button
                 onClick={deleteSelected}
                 disabled={!selectedItemId}
-                className="px-3 py-1.5 bg-[#DC2626]/12 hover:bg-[#DC2626]/20 border border-[#EF4444]/40 text-[#F87171] rounded-lg text-xs font-medium flex items-center space-x-1.5 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                className="px-2.5 py-1 md:px-3 md:py-1.5 bg-[#FEF2F2] hover:bg-[#FEE2E2] border border-[#FCA5A5] text-[#DC2626] rounded-lg text-xs font-medium flex items-center space-x-1.5 transition-colors disabled:opacity-30 disabled:cursor-not-allowed shadow-sm cursor-pointer"
                 title="Delete selected clip"
               >
                 <Trash2 className="w-3.5 h-3.5" />
-                <span>Delete</span>
+                <span className="hidden sm:inline">Delete</span>
               </button>
 
-              <div className="h-4 w-[1px] bg-[#2C2B28] mx-1" />
+              <div className="h-4 w-[1px] bg-[#E5E2DC] mx-0.5 md:mx-1" />
 
               <button
                 onClick={undo}
                 disabled={undoStack.length === 0}
-                className="p-1.5 text-[#A19E97] hover:text-[#F4F2EE] disabled:opacity-30 transition-colors"
+                className="p-1.5 text-[#66625B] hover:text-[#181715] disabled:opacity-30 transition-colors cursor-pointer"
                 title="Undo"
               >
                 <RotateCcw className="w-4 h-4" />
@@ -1922,7 +2618,7 @@ export const Screen2Workspace: React.FC = () => {
               <button
                 onClick={redo}
                 disabled={redoStack.length === 0}
-                className="p-1.5 text-[#A19E97] hover:text-[#F4F2EE] disabled:opacity-30 transition-colors"
+                className="p-1.5 text-[#66625B] hover:text-[#181715] disabled:opacity-30 transition-colors cursor-pointer"
                 title="Redo"
               >
                 <RotateCw className="w-4 h-4" />
@@ -1931,34 +2627,34 @@ export const Screen2Workspace: React.FC = () => {
           </div>
         </div>
 
-        {/* Right Collapsible Panel: AI Command Hub */}
+        {/* Right Collapsible Panel: AI Command Hub (Desktop) */}
         <div
-          className={`border-l border-[#2C2B28] bg-[#161614] flex flex-col h-full min-h-0 overflow-hidden transition-all duration-200 z-10 ${
-            isRightOpen ? 'w-80' : 'w-10'
+          className={`hidden md:flex flex-col border-l border-[#E5E2DC] bg-white h-full min-h-0 overflow-hidden transition-all duration-200 z-10 ${
+            isRightOpen ? 'w-72 lg:w-80' : 'w-10'
           }`}
         >
-          <div className="h-10 shrink-0 border-b border-[#2C2B28] flex items-center justify-between px-3">
+          <div className="h-10 shrink-0 border-b border-[#E5E2DC] flex items-center justify-between px-3">
             <button
               onClick={() => setIsRightOpen(!isRightOpen)}
-              className="text-[#A19E97] hover:text-[#F4F2EE] p-1"
+              className="text-[#66625B] hover:text-[#181715] p-1 cursor-pointer"
             >
               {isRightOpen ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
             </button>
             {isRightOpen && (
-              <span className="text-xs font-semibold text-[#F4F2EE] flex items-center space-x-1">
-                <Sparkles className="w-3.5 h-3.5 text-[#E8872A]" />
+              <span className="text-xs font-semibold text-[#181715] flex items-center space-x-1">
+                <Sparkles className="w-3.5 h-3.5 text-[#D96B27]" />
                 <span>AI Command Hub</span>
               </span>
             )}
           </div>
 
           {isRightOpen && (
-            <>
+            <div className="flex-1 min-h-0 flex flex-col justify-between overflow-hidden">
               {/* Scrollable Middle Body */}
-              <div className="flex-1 min-h-0 overflow-y-auto space-y-3 px-3 py-2">
+              <div className="flex-1 min-h-0 overflow-y-auto space-y-3 px-3 py-2 flex flex-col">
                 {/* Quick Prompt Chips */}
-                <div className="space-y-1.5">
-                  <span className="text-[10px] uppercase font-bold text-[#A19E97] tracking-wider">Quick Prompts</span>
+                <div className="space-y-1.5 shrink-0">
+                  <span className="text-[10px] uppercase font-bold text-[#66625B] tracking-wider">Quick Prompts</span>
                   <div className="flex flex-wrap gap-1.5">
                     {[
                       'Remove silence',
@@ -1969,7 +2665,7 @@ export const Screen2Workspace: React.FC = () => {
                       <button
                         key={chip}
                         onClick={() => setPromptInput(chip)}
-                        className="text-[11px] bg-[#1F1E1C] hover:bg-[#292825] hover:text-[#F4F2EE] text-[#A19E97] px-2 py-1 rounded-md border border-[#2C2B28] transition-colors"
+                        className="text-[11px] bg-[#F7F6F2] hover:bg-[#F2EFEB] hover:text-[#181715] text-[#66625B] px-2 py-1 rounded-md border border-[#E5E2DC] transition-colors cursor-pointer"
                       >
                         {chip}
                       </button>
@@ -1977,415 +2673,31 @@ export const Screen2Workspace: React.FC = () => {
                   </div>
                 </div>
 
-                {/* Meme Reactions Section (Two-Option: Library vs Custom Upload) */}
-                <div className="space-y-2 pt-1 border-t border-[#2C2B28]">
-                  {/* Section Header with Chevron Toggle & Replace Banner */}
-                  <div className="flex items-center justify-between">
-                    <button
-                      type="button"
-                      onClick={() => setIsMemeSectionOpen(!isMemeSectionOpen)}
-                      className="flex items-center space-x-1.5 hover:text-[#F4F2EE] transition-colors group cursor-pointer"
-                    >
-                      <Film className="w-3.5 h-3.5 text-[#FDA4AF]" />
-                      <span className="text-[10px] uppercase font-bold text-[#A19E97] group-hover:text-[#F4F2EE] tracking-wider">
-                        Meme Reactions
-                      </span>
-                      <ChevronDown
-                        className={`w-3 h-3 text-[#A19E97] group-hover:text-[#F4F2EE] transition-transform duration-150 ${
-                          isMemeSectionOpen ? 'rotate-0' : '-rotate-90'
-                        }`}
-                      />
-                    </button>
-                    {replacingMemeId && (
-                      <button
-                        onClick={() => setReplacingMemeId(null)}
-                        className="text-[10px] text-[#FCD34D] hover:text-white font-medium flex items-center space-x-0.5 bg-[#D97706]/30 px-1.5 py-0.5 rounded border border-[#F59E0B]/50"
-                      >
-                        <span>Cancel Replace</span>
-                        <X className="w-2.5 h-2.5 ml-0.5" />
-                      </button>
-                    )}
-                  </div>
-
-                  {isMemeSectionOpen && (
-                    <>
-                      {replacingMemeId && (
-                        <div className="p-1.5 rounded bg-[#D97706]/15 border border-[#F59E0B]/50 text-[#FCD34D] text-[10px]">
-                          Select any meme below to replace the chosen clip
-                        </div>
-                      )}
-
-                      {/* Segmented Two-Option Toggle */}
-                      <div className="flex rounded-lg bg-[#1F1E1C] p-0.5 border border-[#2C2B28] text-[11px]">
-                        <button
-                          onClick={() => setMemeTab('library')}
-                          className={`flex-1 py-1 rounded-md font-medium transition-colors text-center ${
-                            memeTab === 'library'
-                              ? 'bg-[#14B8A6]/15 border border-[#2DD4BF]/50 text-[#5EEAD4]'
-                              : 'text-[#8A8780] hover:text-[#E6E3DC]'
-                          }`}
-                        >
-                          Choose a Meme ({MEME_LIBRARY.length})
-                        </button>
-                        <button
-                          onClick={() => setMemeTab('custom')}
-                          className={`flex-1 py-1 rounded-md font-medium transition-colors text-center ${
-                            memeTab === 'custom'
-                              ? 'bg-[#14B8A6]/15 border border-[#2DD4BF]/50 text-[#5EEAD4]'
-                              : 'text-[#8A8780] hover:text-[#E6E3DC]'
-                          }`}
-                        >
-                          Insert Your Own ({userUploadedClips.length})
-                        </button>
-                      </div>
-
-                      {/* Tab 1: Meme Library */}
-                      {memeTab === 'library' && (
-                        <div className="space-y-2">
-                          {/* Search Input */}
-                          <div className="relative">
-                            <Search className="w-3 h-3 absolute left-2 top-2 text-[#6E6B64]" />
-                            <input
-                              type="text"
-                              value={memeSearch}
-                              onChange={(e) => setMemeSearch(e.target.value)}
-                              placeholder="Search memes (e.g. damn, rock, snoop)..."
-                              className="w-full bg-[#1F1E1C] border border-[#2C2B28] rounded-lg pl-7 pr-7 py-1 text-[11px] text-[#F4F2EE] placeholder-[#6E6B64] focus:outline-none focus:border-[#E8872A]"
-                            />
-                            {memeSearch && (
-                              <button
-                                onClick={() => setMemeSearch('')}
-                                className="absolute right-2 top-1.5 text-[#6E6B64] hover:text-[#F4F2EE]"
-                              >
-                                <X className="w-3 h-3" />
-                              </button>
-                            )}
-                          </div>
-
-                          {/* Meme List */}
-                          <div className="max-h-[190px] overflow-y-auto space-y-1.5 pr-1">
-                            {filteredMemes.length === 0 ? (
-                              <div className="text-[11px] text-[#6E6B64] text-center py-4 italic">
-                                No memes match "{memeSearch}"
-                              </div>
-                            ) : (
-                              filteredMemes.map((m) => (
-                                <div
-                                  key={m.id}
-                                  className="flex items-center justify-between p-1.5 rounded-lg bg-[#1F1E1C] hover:bg-[#292825] border border-[#2C2B28] group transition-all"
-                                >
-                                  <div className="flex items-center space-x-2 min-w-0 flex-1">
-                                    {/* Hover Video Preview */}
-                                    <div className="w-12 h-9 rounded bg-black overflow-hidden relative flex-shrink-0 border border-[#2C2B28] group-hover:border-[#45423C]">
-                                      <video
-                                        src={m.url}
-                                        muted
-                                        loop
-                                        preload="metadata"
-                                        onMouseEnter={(e) => {
-                                          e.currentTarget.play().catch(() => {});
-                                        }}
-                                        onMouseLeave={(e) => {
-                                          e.currentTarget.pause();
-                                          e.currentTarget.currentTime = 0;
-                                        }}
-                                        className="w-full h-full object-cover"
-                                      />
-                                      <span className="absolute bottom-0.5 right-0.5 bg-black/80 px-0.5 py-0.2 text-[7.5px] font-mono tabular-nums text-[#A19E97] rounded leading-none">
-                                        {(m.durationMs / 1000).toFixed(1)}s
-                                      </span>
-                                    </div>
-
-                                    <div className="min-w-0 flex-1 pr-1">
-                                      <div className="text-[11px] font-medium text-[#F4F2EE] truncate">
-                                        {m.title}
-                                      </div>
-                                      <div className="text-[9px] text-[#6E6B64] truncate">
-                                        {m.keywords.slice(0, 3).join(', ')}
-                                      </div>
-                                    </div>
-                                  </div>
-
-                                  {/* Action Button */}
-                                  {replacingMemeId ? (
-                                    <button
-                                      onClick={async () => {
-                                        await replaceMemeClip(replacingMemeId, {
-                                          id: m.id,
-                                          name: m.title,
-                                          url: m.url,
-                                          durationMs: m.durationMs,
-                                          isCustom: false
-                                        });
-                                        setReplacingMemeId(null);
-                                        addCommandLog({
-                                          id: `cmd_${Date.now()}`,
-                                          rawInput: `Replace meme with ${m.title}`,
-                                          timestamp: Date.now(),
-                                          parsedCommand: {
-                                            action: 'INSERT_LIBRARY_MEME',
-                                            payload: { memeId: m.id as any, atProjectMs: currentProjectMs },
-                                            explanation: `Replaced with ${m.title}`
-                                          },
-                                          status: 'SUCCESS',
-                                          appliedMessage: `Replaced with "${m.title}".`
-                                        });
-                                      }}
-                                      className="px-2 py-1 bg-[#D97706] hover:bg-[#B45309] text-white rounded text-[10px] font-semibold transition-colors flex-shrink-0"
-                                    >
-                                      Replace
-                                    </button>
-                                  ) : (
-                                    <button
-                                      onClick={async () => {
-                                        await insertMemeAtProjectMs({
-                                          id: m.id,
-                                          name: m.title,
-                                          url: m.url,
-                                          durationMs: m.durationMs,
-                                          isCustom: false
-                                        }, currentProjectMs);
-                                        addCommandLog({
-                                          id: `cmd_${Date.now()}`,
-                                          rawInput: `Insert meme ${m.title}`,
-                                          timestamp: Date.now(),
-                                          parsedCommand: {
-                                            action: 'INSERT_LIBRARY_MEME',
-                                            payload: { memeId: m.id as any, atProjectMs: currentProjectMs },
-                                            explanation: `Inserted ${m.title}`
-                                          },
-                                          status: 'SUCCESS',
-                                          appliedMessage: `Inserted "${m.title}" at ${(currentProjectMs / 1000).toFixed(1)}s.`
-                                        });
-                                      }}
-                                      className="px-2 py-1 bg-[#E8872A] hover:bg-[#F59A3D] text-[#11100E] font-semibold rounded text-[10px] flex items-center space-x-0.5 transition-colors flex-shrink-0"
-                                      title={`Insert at ${(currentProjectMs / 1000).toFixed(1)}s`}
-                                    >
-                                      <Plus className="w-2.5 h-2.5" />
-                                      <span>Insert</span>
-                                    </button>
-                                  )}
-                                </div>
-                              ))
-                            )}
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Tab 2: Custom User Clips */}
-                      {memeTab === 'custom' && (
-                        <div className="space-y-2">
-                          {/* 1-Line Helper Step Strip (Step 3.2) */}
-                          <div className="px-2 py-1.5 rounded-lg bg-[#1F1E1C] border border-[#2C2B28] text-[10px] text-[#A19E97] flex items-center justify-between font-mono">
-                            <span>1. Upload MP4</span>
-                            <span className="text-[#6E6B64]">→</span>
-                            <span>2. Move red playhead</span>
-                            <span className="text-[#6E6B64]">→</span>
-                            <span className="text-[#5EEAD4]">3. Click Insert</span>
-                          </div>
-
-                          {/* Compact Slim Upload Bar */}
-                          <label
-                            onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); }}
-                            onDrop={(e) => {
-                              e.preventDefault();
-                              e.stopPropagation();
-                              const droppedFile = e.dataTransfer.files?.[0];
-                              if (droppedFile) processCustomMemeFile(droppedFile);
-                            }}
-                            className="border border-dashed border-[#2C2B28] hover:border-[#E8872A] bg-[#1F1E1C] hover:bg-[#292825] rounded-lg py-2.5 px-3 flex items-center justify-center space-x-2 text-center cursor-pointer transition-colors group"
-                          >
-                            <Upload className="w-4 h-4 text-[#E8872A] group-hover:scale-110 transition-transform flex-shrink-0" />
-                            <div className="flex items-center space-x-1.5 text-xs min-w-0">
-                              <span className="font-medium text-[#F4F2EE] truncate">Drop or browse .mp4, .webm, or .mov clip</span>
-                              <span className="text-[10px] text-[#6E6B64] flex-shrink-0">(Max 100 MB • 3 min)</span>
-                            </div>
-                            <input
-                              type="file"
-                              accept="video/mp4,video/webm,video/quicktime"
-                              onChange={handleCustomMemeUpload}
-                              className="hidden"
-                            />
-                          </label>
-
-                          {memeUploadError && (
-                            <div className="p-2 rounded-lg bg-[#DC2626]/15 border border-[#EF4444]/50 text-[#F87171] text-xs flex items-center justify-between space-x-1.5">
-                              <div className="flex items-center space-x-1.5 min-w-0">
-                                <AlertCircle className="w-3.5 h-3.5 flex-shrink-0" />
-                                <span className="leading-snug">{memeUploadError}</span>
-                              </div>
-                              <button
-                                type="button"
-                                onClick={() => setMemeUploadError(null)}
-                                className="text-[#F87171] hover:text-white p-0.5 flex-shrink-0"
-                                title="Dismiss"
-                              >
-                                <X className="w-3.5 h-3.5" />
-                              </button>
-                            </div>
-                          )}
-
-                          {/* Uploaded clips list with immediate visibility and auto-scroll */}
-                          <div ref={customClipsListRef} className="max-h-[220px] overflow-y-auto space-y-1.5 pr-1">
-                            {userUploadedClips.length === 0 ? (
-                              <div className="text-[10px] text-[#6E6B64] italic text-center py-4 bg-[#1F1E1C] rounded-lg border border-[#2C2B28] p-2">
-                                No custom clips yet. Upload an .mp4 clip to insert it into your video!
-                              </div>
-                            ) : (
-                              userUploadedClips.map((clip) => (
-                                <div
-                                  key={clip.id}
-                                  className="flex items-center justify-between p-1.5 rounded-lg bg-[#1F1E1C] hover:bg-[#292825] border border-[#2C2B28] group transition-all"
-                                >
-                                  <div className="flex items-center space-x-2 min-w-0 flex-1">
-                                    {/* Hover Video Preview */}
-                                    <div className="w-12 h-9 rounded bg-black overflow-hidden relative flex-shrink-0 border border-[#2C2B28] group-hover:border-[#45423C]">
-                                      <video
-                                        src={clip.blobUrl}
-                                        muted
-                                        loop
-                                        preload="metadata"
-                                        onMouseEnter={(e) => {
-                                          e.currentTarget.play().catch(() => {});
-                                        }}
-                                        onMouseLeave={(e) => {
-                                          e.currentTarget.pause();
-                                          e.currentTarget.currentTime = 0;
-                                        }}
-                                        className="w-full h-full object-cover"
-                                      />
-                                      <span className="absolute bottom-0.5 right-0.5 bg-black/80 px-0.5 py-0.2 text-[7.5px] font-mono tabular-nums text-[#A19E97] rounded leading-none">
-                                        {(clip.durationMs / 1000).toFixed(1)}s
-                                      </span>
-                                    </div>
-
-                                    <div className="min-w-0 flex-1 pr-1">
-                                      <div className="text-[11px] font-medium text-[#F4F2EE] truncate">
-                                        {clip.name}
-                                      </div>
-                                      <div className="text-[9px] text-[#A19E97] font-mono tabular-nums">
-                                        {(clip.durationMs / 1000).toFixed(1)}s
-                                      </div>
-                                    </div>
-                                  </div>
-
-                                  <div className="flex items-center space-x-1 flex-shrink-0">
-                                    {/* Action Buttons (Step 3.2: Insert at Playhead + Add to End) */}
-                                    {replacingMemeId ? (
-                                      <button
-                                        onClick={async () => {
-                                          await replaceMemeClip(replacingMemeId, {
-                                            id: clip.id,
-                                            name: clip.name,
-                                            url: clip.blobUrl,
-                                            durationMs: clip.durationMs,
-                                            isCustom: true
-                                          });
-                                          setReplacingMemeId(null);
-                                          addCommandLog({
-                                            id: `cmd_${Date.now()}`,
-                                            rawInput: `Replace meme with ${clip.name}`,
-                                            timestamp: Date.now(),
-                                            parsedCommand: {
-                                              action: 'INSERT_USER_CLIP',
-                                              payload: { clipId: clip.id, atProjectMs: currentProjectMs },
-                                              explanation: `Replaced with custom clip ${clip.name}`
-                                            },
-                                            status: 'SUCCESS',
-                                            appliedMessage: `Replaced with custom clip "${clip.name}".`
-                                          });
-                                        }}
-                                        className="px-2 py-1 bg-[#D97706] hover:bg-[#B45309] text-white rounded text-[10px] font-semibold transition-colors"
-                                      >
-                                        Replace
-                                      </button>
-                                    ) : (
-                                      <>
-                                        <button
-                                          onClick={async () => {
-                                            await insertMemeAtProjectMs({
-                                              id: clip.id,
-                                              name: clip.name,
-                                              url: clip.blobUrl,
-                                              durationMs: clip.durationMs,
-                                              isCustom: true
-                                            }, currentProjectMs);
-                                            addCommandLog({
-                                              id: `cmd_${Date.now()}`,
-                                              rawInput: `Insert custom clip ${clip.name}`,
-                                              timestamp: Date.now(),
-                                              parsedCommand: {
-                                                action: 'INSERT_USER_CLIP',
-                                                payload: { clipId: clip.id, atProjectMs: currentProjectMs },
-                                                explanation: `Inserted ${clip.name}`
-                                              },
-                                              status: 'SUCCESS',
-                                              appliedMessage: `Inserted "${clip.name}" at ${(currentProjectMs / 1000).toFixed(1)}s.`
-                                            });
-                                          }}
-                                          className="px-1.5 py-1 bg-[#E8872A] hover:bg-[#F59A3D] text-[#11100E] font-semibold rounded text-[10px] flex items-center space-x-0.5 transition-colors"
-                                          title={`Insert at ${(currentProjectMs / 1000).toFixed(1)}s (splits clip at playhead)`}
-                                        >
-                                          <Plus className="w-2.5 h-2.5" />
-                                          <span>At Playhead</span>
-                                        </button>
-                                        <button
-                                          onClick={async () => {
-                                            await appendClipToEnd({
-                                              id: clip.id,
-                                              name: clip.name,
-                                              url: clip.blobUrl,
-                                              durationMs: clip.durationMs,
-                                              isCustom: true
-                                            });
-                                          }}
-                                          className="px-1.5 py-1 bg-[#23221F] hover:bg-[#2E2C28] text-[#E6E3DC] hover:text-[#F4F2EE] border border-[#35332F] rounded text-[10px] font-medium transition-colors"
-                                          title="Append to end of timeline"
-                                        >
-                                          <span>+ End</span>
-                                        </button>
-                                      </>
-                                    )}
-
-                                    {/* Delete clip button */}
-                                    <button
-                                      onClick={() => removeUploadedMeme(clip.id)}
-                                      className="p-1 text-[#6E6B64] hover:text-[#F87171] transition-colors rounded hover:bg-[#2C2B28]"
-                                      title="Delete custom clip"
-                                    >
-                                      <Trash2 className="w-3 h-3" />
-                                    </button>
-                                  </div>
-                                </div>
-                              ))
-                            )}
-                          </div>
-                        </div>
-                      )}
-                    </>
-                  )}
+                {/* Meme Reactions Section */}
+                <div className="shrink-0">
+                  {renderMemesSection()}
                 </div>
 
                 {/* Command Execution Log */}
-                <div className="space-y-1.5 pt-1 border-t border-[#2C2B28]">
-                  <span className="text-[10px] uppercase font-bold text-[#A19E97] tracking-wider">Execution Log</span>
-                  <div className="max-h-[110px] overflow-y-auto space-y-1.5 pr-1">
+                <div className="flex-1 min-h-[130px] flex flex-col space-y-1.5 pt-1 border-t border-[#E5E2DC]">
+                  <span className="text-[10px] uppercase font-bold text-[#66625B] tracking-wider shrink-0">Execution Log</span>
+                  <div className="flex-1 overflow-y-auto space-y-1.5 pr-1">
                     {commandLogs.length === 0 ? (
-                      <p className="text-[11px] text-[#6E6B64] italic">No AI commands executed yet.</p>
+                      <p className="text-[11px] text-[#8E8A82] italic">No AI commands executed yet.</p>
                     ) : (
                       commandLogs.map((log) => (
                         <div
                           key={log.id}
-                          className={`p-2 rounded-lg border text-[11px] space-y-1 ${
+                          className={`p-2 rounded-lg border text-[11px] space-y-1 shadow-sm ${
                             log.status === 'SUCCESS'
-                              ? 'bg-[#14B8A6]/10 border-[#2DD4BF]/30 text-[#5EEAD4]'
+                              ? 'bg-[#F0FDFA] border-[#99F6E4] text-[#0F766E]'
                               : log.status === 'CLARIFICATION' || log.status === 'WARNING' || log.parsedCommand.action === 'UNSUPPORTED_OPERATION'
-                              ? 'bg-[#D97706]/10 border-[#F59E0B]/30 text-[#FCD34D]'
-                              : 'bg-[#DC2626]/10 border-[#EF4444]/30 text-[#F87171]'
+                              ? 'bg-[#FFFBEB] border-[#FCD34D] text-[#92400E]'
+                              : 'bg-[#FEF2F2] border-[#FCA5A5] text-[#B91C1C]'
                           }`}
                         >
                           <div className="font-semibold">{log.rawInput}</div>
-                          <div className="text-[#A19E97] text-[10px]">{log.appliedMessage}</div>
+                          <div className="text-[10px] opacity-80">{log.appliedMessage}</div>
                         </div>
                       ))
                     )}
@@ -2394,7 +2706,7 @@ export const Screen2Workspace: React.FC = () => {
               </div>
 
               {/* Permanently Pinned AI Command Input Bar (Footer) */}
-              <div className="shrink-0 border-t border-[#2C2B28] bg-[#161614] p-3">
+              <div className="shrink-0 border-t border-[#E5E2DC] bg-white p-3">
                 <div className="relative">
                   <input
                     type="text"
@@ -2403,127 +2715,90 @@ export const Screen2Workspace: React.FC = () => {
                     onKeyDown={(e) => e.key === 'Enter' && handleSendCommand()}
                     placeholder='e.g. "Cut from 0:10 to 0:25"'
                     disabled={isAiProcessing}
-                    className="w-full bg-[#1F1E1C] border border-[#2C2B28] rounded-lg pl-3 pr-9 py-2 text-xs text-[#F4F2EE] placeholder-[#6E6B64] focus:outline-none focus:border-[#E8872A]"
+                    className="w-full bg-[#F7F6F2] border border-[#E5E2DC] rounded-lg pl-3 pr-9 py-2 text-xs text-[#181715] placeholder-[#8E8A82] focus:outline-none focus:border-[#D96B27]"
                   />
                   <button
                     onClick={handleSendCommand}
                     disabled={isAiProcessing || !promptInput.trim()}
-                    className="absolute right-1.5 bottom-1.5 p-1.5 rounded-lg bg-[#E8872A] hover:bg-[#F59A3D] text-[#11100E] disabled:opacity-40 transition-colors"
+                    className="absolute right-1.5 bottom-1.5 p-1.5 rounded-lg bg-[#D96B27] hover:bg-[#C25E1F] text-white disabled:opacity-40 transition-colors shadow-sm cursor-pointer"
                   >
                     <Send className="w-3 h-3" />
                   </button>
                 </div>
               </div>
-            </>
+            </div>
           )}
         </div>
       </div>
 
       {/* Bottom Timeline Section (Spec 1 & Spec 2) */}
-      <footer className="h-56 border-t border-[#2C2B28] bg-[#161614] flex flex-col p-3 z-20">
+      <footer className="h-[116px] md:h-52 border-t border-[#E5E2DC] bg-white flex flex-col p-2 md:p-3 z-20 shrink-0">
         {/* Timeline Toolbar */}
-        <div className="flex flex-wrap items-center justify-between pb-2 text-xs gap-2">
-          <div className="flex items-center space-x-3">
-            {/* Playback Speed Controls (Item 1) */}
-            <div className="flex items-center space-x-1.5">
-              <span className="text-[#A19E97] text-[11px] font-medium">Speed:</span>
+        <div className="flex flex-wrap items-center justify-between pb-1.5 md:pb-2 text-xs gap-1.5 md:gap-2">
+          <div className="flex items-center space-x-2 md:space-x-3 overflow-x-auto no-scrollbar">
+            {/* Playback Speed Controls */}
+            <div className="flex items-center space-x-1 md:space-x-1.5">
+              <span className="text-[#66625B] text-[11px] font-medium hidden sm:inline">Speed:</span>
               {([1, 2, 5] as const).map((s) => (
                 <button
                   key={s}
                   onClick={() => setPreviewSpeed(s)}
-                  className={`px-2 py-0.5 rounded text-[11px] font-mono tabular-nums font-medium transition-colors ${
+                  className={`px-1.5 md:px-2 py-0.5 rounded text-[11px] font-mono tabular-nums font-medium transition-colors cursor-pointer ${
                     previewSpeed === s
-                      ? 'bg-[#14B8A6]/15 border border-[#2DD4BF]/50 text-[#5EEAD4]'
-                      : 'bg-[#23221F] border border-[#35332F] text-[#8A8780] hover:text-[#E6E3DC]'
+                      ? 'bg-[#0F766E] text-white shadow-sm'
+                      : 'bg-white border border-[#E5E2DC] text-[#66625B] hover:bg-[#F7F6F2]'
                   }`}
                 >
                   {s}x
                 </button>
               ))}
-              <span className="text-[10px] text-[#6E6B64] hidden sm:inline">Preview speed only. Export keeps normal speed.</span>
-              {previewSpeed === 5 && (
-                <span className="text-[10px] text-[#FCD34D] ml-1">
-                  (Audio may be muted or distorted at 5x by browser)
-                </span>
-              )}
+              <span className="text-[10px] text-[#8E8A82] hidden lg:inline">Preview speed only. Export keeps normal speed.</span>
             </div>
 
-            {/* Timeline Zoom Controls (Item 1B) */}
-            <div className="flex items-center space-x-1.5 pl-3 border-l border-[#2C2B28]">
-              <span className="text-[#A19E97] text-[11px] font-medium">Zoom:</span>
+            {/* Timeline Zoom Controls */}
+            <div className="flex items-center space-x-1 md:space-x-1.5 pl-2 md:pl-3 border-l border-[#E5E2DC]">
+              <span className="text-[#66625B] text-[11px] font-medium hidden sm:inline">Zoom:</span>
               <button
                 onClick={zoomOut}
                 disabled={timelineZoom <= 1}
-                className="w-5 h-5 flex items-center justify-center rounded bg-[#23221F] hover:bg-[#2E2C28] border border-[#35332F] text-[#E6E3DC] text-xs font-bold disabled:opacity-30 disabled:cursor-not-allowed"
+                className="w-5 h-5 flex items-center justify-center rounded bg-white hover:bg-[#F7F6F2] border border-[#E5E2DC] text-[#181715] text-xs font-bold disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer"
                 title="Zoom Out Timeline (-)"
               >
                 -
               </button>
-              <span className="text-[11px] font-mono tabular-nums text-[#F4F2EE] w-7 text-center">{timelineZoom}x</span>
+              <span className="text-[11px] font-mono tabular-nums text-[#181715] w-6 md:w-7 text-center">{timelineZoom}x</span>
               <button
                 onClick={zoomIn}
                 disabled={timelineZoom >= 5}
-                className="w-5 h-5 flex items-center justify-center rounded bg-[#23221F] hover:bg-[#2E2C28] border border-[#35332F] text-[#E6E3DC] text-xs font-bold disabled:opacity-30 disabled:cursor-not-allowed"
+                className="w-5 h-5 flex items-center justify-center rounded bg-white hover:bg-[#F7F6F2] border border-[#E5E2DC] text-[#181715] text-xs font-bold disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer"
                 title="Zoom In Timeline (+)"
               >
                 +
               </button>
             </div>
 
-            {/* Silence Detection (Normal Preset internally) */}
-            <div className="flex items-center space-x-1.5 pl-3 border-l border-[#2C2B28]">
+            {/* Silence Detection Button */}
+            <div className="hidden sm:flex items-center space-x-1.5 pl-2 md:pl-3 border-l border-[#E5E2DC]">
               <button
                 disabled={isDetectingSilences}
-                onClick={async () => {
-                  if (isDetectingSilences) return;
-                  setIsDetectingSilences(true);
-                  const cfg = SILENCE_PRESETS.Normal;
-                  try {
-                    const res = await detectSilencesOnly('Normal');
-                    addCommandLog({
-                      id: `cmd_${Date.now()}`,
-                      rawInput: 'Detect pauses (Normal mode)',
-                      timestamp: Date.now(),
-                      parsedCommand: {
-                        action: 'REMOVE_SILENCE',
-                        payload: { minDurationMs: cfg.minSilenceMs, paddingPreMs: cfg.prePaddingMs, paddingPostMs: cfg.postPaddingMs },
-                        explanation: res.message
-                      },
-                      status: res.count > 0 ? 'SUCCESS' : 'WARNING',
-                      appliedMessage: res.message
-                    });
-                  } catch (err: unknown) {
-                    addCommandLog({
-                      id: `cmd_${Date.now()}`,
-                      rawInput: 'Detect pauses (Normal mode)',
-                      timestamp: Date.now(),
-                      parsedCommand: {
-                        action: 'REMOVE_SILENCE',
-                        payload: { minDurationMs: cfg.minSilenceMs, paddingPreMs: cfg.prePaddingMs, paddingPostMs: cfg.postPaddingMs },
-                        explanation: 'Silence detection failed.'
-                      },
-                      status: 'WARNING',
-                      appliedMessage: err instanceof Error ? err.message : 'Could not analyze audio for pauses on this device.'
-                    });
-                  } finally {
-                    setIsDetectingSilences(false);
-                  }
-                }}
-                className="px-2 py-0.5 bg-[#D97706]/20 hover:bg-[#D97706]/35 border border-[#F59E0B]/60 text-[#FCD34D] rounded text-[11px] font-medium transition-colors flex items-center space-x-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
-                title="Experimental: works best on quiet/low-noise recordings. For noisy audio, use Split (S) or Cut commands."
+                onClick={handleDetectSilences}
+                className="px-2 py-0.5 bg-[#FFFBEB] hover:bg-[#FEF3C7] border border-[#FCD34D] text-[#92400E] rounded text-[11px] font-medium transition-colors flex items-center space-x-1.5 disabled:opacity-50 disabled:cursor-not-allowed shadow-sm cursor-pointer"
+                title="Scans audio for awkward silences"
               >
                 <span>{isDetectingSilences ? 'Detecting...' : 'Detect Silences'}</span>
-                <span className="bg-[#D97706]/15 border border-[#F59E0B]/40 text-[#FCD34D] text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded font-medium">
-                  Experimental
-                </span>
               </button>
+            </div>
+
+            {/* Add Clip & Add Music buttons */}
+            <div className="flex items-center space-x-1 md:space-x-1.5 pl-2 md:pl-3 border-l border-[#E5E2DC]">
               <button
                 onClick={() => addClipInputRef.current?.click()}
-                className="px-2 py-0.5 bg-[#23221F] hover:bg-[#2E2C28] text-[#E6E3DC] hover:text-[#F4F2EE] border border-[#35332F] rounded text-[11px] font-medium transition-colors flex items-center space-x-1"
+                className="px-2 py-0.5 bg-white hover:bg-[#F7F6F2] text-[#181715] border border-[#E5E2DC] rounded text-[11px] font-medium transition-colors flex items-center space-x-1 shadow-sm cursor-pointer"
                 title="Add an extra video clip to the end of the timeline (up to 3 min / 100 MB)"
               >
-                <Plus className="w-3 h-3 text-[#E8872A]" />
-                <span>+ Add Clip</span>
+                <Plus className="w-3 h-3 text-[#D96B27]" />
+                <span className="hidden sm:inline">+ Add Clip</span>
+                <span className="sm:hidden">+ Clip</span>
               </button>
               <input
                 ref={addClipInputRef}
@@ -2534,11 +2809,12 @@ export const Screen2Workspace: React.FC = () => {
               />
               <button
                 onClick={() => bgMusicInputRef.current?.click()}
-                className="px-2 py-0.5 bg-[#23221F] hover:bg-[#2E2C28] text-[#E6E3DC] hover:text-[#F4F2EE] border border-[#35332F] rounded text-[11px] font-medium transition-colors flex items-center space-x-1"
+                className="px-2 py-0.5 bg-white hover:bg-[#F7F6F2] text-[#0F766E] border border-[#E5E2DC] rounded text-[11px] font-medium transition-colors flex items-center space-x-1 shadow-sm cursor-pointer"
                 title="Add background music track (.mp3, .wav, .m4a, .aac, .ogg up to 30 MB)"
               >
-                <Music className="w-3 h-3 text-[#2DD4BF]" />
-                <span>+ Add Music</span>
+                <Music className="w-3 h-3 text-[#0F766E]" />
+                <span className="hidden sm:inline">+ Add Music</span>
+                <span className="sm:hidden">+ Music</span>
               </button>
               <input
                 ref={bgMusicInputRef}
@@ -2549,17 +2825,17 @@ export const Screen2Workspace: React.FC = () => {
               />
             </div>
 
-            {/* Thumbnail Generation Progress (Item 1) */}
+            {/* Thumbnail Generation Progress */}
             {thumbnailProgress && !thumbnailProgress.done && (
-              <div className="flex items-center space-x-1.5 px-2 py-0.5 rounded-full bg-[#1F1E1C] border border-[#2C2B28] text-[#5EEAD4] text-[10px] animate-pulse">
-                <div className="w-1.5 h-1.5 rounded-full bg-[#5EEAD4] animate-ping" />
+              <div className="flex items-center space-x-1.5 px-2 py-0.5 rounded-full bg-[#F0FDFA] border border-[#99F6E4] text-[#0F766E] text-[10px] animate-pulse">
+                <div className="w-1.5 h-1.5 rounded-full bg-[#0F766E] animate-ping" />
                 <span>Generating frames {thumbnailProgress.current}/{thumbnailProgress.total}</span>
               </div>
             )}
           </div>
 
           {/* Legend */}
-          <div className="flex items-center space-x-4 text-[11px] text-[#A19E97]">
+          <div className="hidden lg:flex items-center space-x-4 text-[11px] text-[#66625B]">
             <div className="flex items-center space-x-1.5">
               <span className="w-2.5 h-2.5 rounded-sm bg-[#3A3833] border border-[#45423C] inline-block" />
               <span>Active Clip</span>
@@ -2573,7 +2849,7 @@ export const Screen2Workspace: React.FC = () => {
               <span>Meme Insert</span>
             </div>
             <div className="flex items-center space-x-1.5">
-              <span className="w-2.5 h-2.5 rounded-sm bg-[#2DD4BF] inline-block" />
+              <span className="w-2.5 h-2.5 rounded-sm bg-[#0F766E] inline-block" />
               <span>Music</span>
             </div>
           </div>
@@ -2582,18 +2858,20 @@ export const Screen2Workspace: React.FC = () => {
         {/* Timeline Track Area (Horizontally Scrollable) */}
         <div
           ref={timelineContainerRef}
-          className="flex-1 bg-[#0E0E0D] rounded-xl border border-[#2C2B28] relative overflow-x-auto overflow-y-hidden p-2"
+          className="flex-1 bg-[#F7F6F2] rounded-xl border border-[#E5E2DC] relative overflow-x-auto overflow-y-hidden p-1.5 md:p-2"
         >
           {/* Inner scalable track container */}
           <div
             ref={trackContainerRef}
-            style={{ width: `${timelineZoom * 100}%`, minWidth: '100%' }}
-            onMouseDown={handleTrackMouseDown}
-            onMouseMove={handleTrackMouseMove}
+            style={{ width: `${timelineZoom * 100}%`, minWidth: '100%', touchAction: 'pan-x' }}
+            onPointerDown={handleTrackPointerDown}
+            onPointerMove={handleTrackPointerMove}
+            onPointerUp={handleTrackPointerUp}
+            onPointerCancel={handleTrackPointerCancel}
             onMouseLeave={handleTrackMouseLeave}
-            className="relative h-full flex flex-col justify-between cursor-pointer select-none pt-6 pb-1"
+            className="relative h-full flex flex-col justify-between cursor-pointer select-none pt-5 md:pt-6 pb-1"
           >
-            {/* Floating Scrub / Hover Time Readout (Item 2) */}
+            {/* Floating Scrub / Hover Time Readout */}
             {(isScrubbing || hoverPct !== null) && (
               <div
                 style={{
@@ -2601,15 +2879,15 @@ export const Screen2Workspace: React.FC = () => {
                 }}
                 className="absolute top-0 transform -translate-x-1/2 z-40 pointer-events-none flex flex-col items-center"
               >
-                <div className="bg-[#1F1E1C] border border-[#E8872A] text-[#E8872A] font-mono tabular-nums text-[10px] font-bold px-1.5 py-0.5 rounded shadow-lg whitespace-nowrap">
+                <div className="bg-[#181715] border border-[#D96B27] text-white font-mono tabular-nums text-[10px] font-bold px-1.5 py-0.5 rounded shadow-lg whitespace-nowrap">
                   {formatReadout(isScrubbing ? currentProjectMs : (hoverTimeMs ?? currentProjectMs))}
                 </div>
-                <div className="w-0 h-0 border-x-4 border-x-transparent border-t-4 border-t-[#E8872A]" />
+                <div className="w-0 h-0 border-x-4 border-x-transparent border-t-4 border-t-[#D96B27]" />
               </div>
             )}
 
-            {/* Thin Time Ruler Row (Item 2) */}
-            <div className="w-full h-5 border-b border-[#2C2B28] relative font-mono tabular-nums text-[9px] text-[#6E6B64] select-none pointer-events-none">
+            {/* Thin Time Ruler Row */}
+            <div className="w-full h-4 md:h-5 border-b border-[#E5E2DC] relative font-mono tabular-nums text-[9px] text-[#8E8A82] select-none pointer-events-none">
               {/* Minor Ticks */}
               {Array.from({ length: minorTickCount + 1 }).map((_, i) => {
                 const tickSec = i * rulerMinorStepSec;
@@ -2620,7 +2898,7 @@ export const Screen2Workspace: React.FC = () => {
                   <div
                     key={`minor_${i}`}
                     style={{ left: `${leftPct}%` }}
-                    className="absolute bottom-0 h-1.5 w-[1px] bg-[#2C2B28] transform -translate-x-1/2"
+                    className="absolute bottom-0 h-1.5 w-[1px] bg-[#E5E2DC] transform -translate-x-1/2"
                   />
                 );
               })}
@@ -2639,8 +2917,8 @@ export const Screen2Workspace: React.FC = () => {
                     style={{ left: `${leftPct}%` }}
                     className="absolute top-0 bottom-0 flex flex-col items-center transform -translate-x-1/2"
                   >
-                    <span className="leading-none text-[8.5px] text-[#6E6B64] font-mono tabular-nums">{mm}:{ss}</span>
-                    <div className="h-2 w-[1px] bg-[#35332F] mt-auto" />
+                    <span className="leading-none text-[8.5px] text-[#8E8A82] font-mono tabular-nums">{mm}:{ss}</span>
+                    <div className="h-2 w-[1px] bg-[#D8D4CC] mt-auto" />
                   </div>
                 );
               })}
@@ -2651,7 +2929,7 @@ export const Screen2Workspace: React.FC = () => {
               style={{
                 left: `${project.totalProjectDurationMs > 0 ? (currentProjectMs / project.totalProjectDurationMs) * 100 : 0}%`
               }}
-              className="absolute top-6 bottom-0 w-[2px] bg-[#EF4444] z-30 pointer-events-none"
+              className="absolute top-5 md:top-6 bottom-0 w-[2px] bg-[#EF4444] z-30 pointer-events-none"
             >
               <div className="w-3 h-3 bg-[#EF4444] transform -translate-x-1/2 -translate-y-1 rotate-45 rounded-sm shadow-md" />
               <div className="absolute top-0 transform -translate-x-1/2 -translate-y-4 px-1 rounded bg-[#EF4444] text-white font-mono tabular-nums text-[8px] font-bold shadow pointer-events-none whitespace-nowrap">
@@ -2660,7 +2938,7 @@ export const Screen2Workspace: React.FC = () => {
             </div>
 
             {/* Timeline Items Track */}
-            <div className="w-full h-12 flex items-center gap-0 flex-nowrap relative mt-1">
+            <div className="w-full h-10 md:h-12 flex items-center gap-0 flex-nowrap relative mt-0.5 md:mt-1 overflow-visible">
               {project.items.map((item) => {
                 const isSelected = selectedItemId === item.id;
 
@@ -2686,6 +2964,12 @@ export const Screen2Workspace: React.FC = () => {
                 const isHighZoom = timelineZoom >= 3;
                 const frameIntervalMs = isHighZoom ? 500 : 1000;
                 const tileCount = Math.max(1, Math.round(item.durationMs / frameIntervalMs));
+
+                // Active item touch reorder helpers
+                const nonDeletedItems = project.items.filter(it => it.status !== 'DELETED');
+                const curActiveIdx = nonDeletedItems.findIndex(it => it.id === item.id);
+                const prevActiveItem = curActiveIdx > 0 ? nonDeletedItems[curActiveIdx - 1] : null;
+                const nextActiveItem = curActiveIdx >= 0 && curActiveIdx < nonDeletedItems.length - 1 ? nonDeletedItems[curActiveIdx + 1] : null;
 
                 return (
                   <div
@@ -2727,32 +3011,66 @@ export const Screen2Workspace: React.FC = () => {
                       e.stopPropagation();
                       setSelectedItemId(item.id);
                     }}
-                    style={{ width: `${durPct}%` }}
+                    style={{ width: `${durPct}%`, minWidth: isSilence ? '44px' : undefined }}
                     title={`${item.title} (${(item.durationMs / 1000).toFixed(1)}s)${isDraggable ? ' • Drag to reorder' : ''}`}
-                    className={`h-11 rounded-lg px-2 py-1 flex flex-col justify-between transition-all relative select-none cursor-pointer box-border overflow-hidden flex-shrink-0 ${
+                    className={`h-9 md:h-11 rounded-lg px-2 py-1 flex flex-col justify-between transition-all relative select-none cursor-pointer box-border overflow-visible flex-shrink-0 ${
                       draggedItemId === item.id ? 'opacity-50' : 'opacity-100'
                     } ${
                       isSelected
-                        ? 'ring-2 ring-[#E8872A] border-transparent shadow-md'
-                        : 'border border-[#2C2B28]'
+                        ? 'ring-2 ring-[#D96B27] border-transparent shadow-md'
+                        : 'border border-[#E5E2DC]'
                     } ${
                       isSilence
                         ? isSilenceSelected
-                          ? 'bg-[#D97706]/25 border border-[#F59E0B]/70 text-[#FCD34D] hover:bg-[#D97706]/35'
-                          : 'border-dashed border-zinc-600 bg-zinc-800/40 text-zinc-500 hover:bg-zinc-800/60'
+                          ? 'bg-[#FEF3C7] border border-[#F59E0B] text-[#92400E] hover:bg-[#FDE68A]'
+                          : 'border-dashed border-[#D8D4CC] bg-[#F2EFEB] text-[#8E8A82] hover:bg-[#E5E2DC]'
                         : isMeme
                         ? replacingMemeId === item.id
-                          ? 'bg-[#E11D48]/35 text-[#FDA4AF] ring-2 ring-[#E8872A] animate-pulse shadow-lg border border-[#FB7185]/80'
-                          : 'bg-[#E11D48]/20 border border-[#FB7185]/60 text-[#FDA4AF] hover:bg-[#E11D48]/30'
-                        : 'bg-[#22211E] text-[#F4F2EE] border border-[#3A3833] hover:border-[#45423C]'
+                          ? 'bg-[#FFF1F2] text-[#BE123C] ring-2 ring-[#D96B27] animate-pulse shadow-lg border border-[#FDA4AF]'
+                          : 'bg-[#FFF1F2] border border-[#FDA4AF] text-[#BE123C] hover:bg-[#FFE4E6]'
+                        : 'bg-[#22211E] text-white border border-[#3A3833] hover:border-[#45423C]'
                     }`}
                   >
-                    {/* Amber Drop Indicator Lines (Step 2.4) */}
+                    {/* Touch Reorder Buttons on Selected Active Clip */}
+                    {isSelected && isDraggable && nonDeletedItems.length >= 2 && (
+                      <div
+                        className="absolute -top-3.5 left-1/2 -translate-x-1/2 flex items-center bg-[#181715] text-white rounded shadow-md z-40 px-1 py-0.5 gap-1 border border-[#3A3833]"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <button
+                          type="button"
+                          disabled={!prevActiveItem}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (prevActiveItem) reorderTimelineItem(item.id, prevActiveItem.id, 'before');
+                          }}
+                          className="text-[10px] font-bold hover:text-[#D96B27] disabled:opacity-25 px-1 cursor-pointer"
+                          title="Move clip left"
+                        >
+                          ←
+                        </button>
+                        <span className="text-[8px] text-[#8E8A82]">|</span>
+                        <button
+                          type="button"
+                          disabled={!nextActiveItem}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (nextActiveItem) reorderTimelineItem(item.id, nextActiveItem.id, 'after');
+                          }}
+                          className="text-[10px] font-bold hover:text-[#D96B27] disabled:opacity-25 px-1 cursor-pointer"
+                          title="Move clip right"
+                        >
+                          →
+                        </button>
+                      </div>
+                    )}
+
+                    {/* Amber Drop Indicator Lines */}
                     {dropTarget?.id === item.id && dropTarget.position === 'before' && (
-                      <div className="absolute left-0 top-0 bottom-0 w-[3px] bg-[#E8872A] z-40 shadow-[0_0_8px_rgba(232,135,42,0.9)] pointer-events-none rounded-l" />
+                      <div className="absolute left-0 top-0 bottom-0 w-[3px] bg-[#D96B27] z-40 shadow-[0_0_8px_rgba(217,107,39,0.9)] pointer-events-none rounded-l" />
                     )}
                     {dropTarget?.id === item.id && dropTarget.position === 'after' && (
-                      <div className="absolute right-0 top-0 bottom-0 w-[3px] bg-[#E8872A] z-40 shadow-[0_0_8px_rgba(232,135,42,0.9)] pointer-events-none rounded-r" />
+                      <div className="absolute right-0 top-0 bottom-0 w-[3px] bg-[#D96B27] z-40 shadow-[0_0_8px_rgba(217,107,39,0.9)] pointer-events-none rounded-r" />
                     )}
 
                     {/* Meme Thumbnail Frame */}
@@ -2769,7 +3087,7 @@ export const Screen2Workspace: React.FC = () => {
                       </div>
                     )}
 
-                    {/* Filmstrip Frame Thumbnails (Item 1) */}
+                    {/* Filmstrip Frame Thumbnails */}
                     {hasClipThumbnails && !isSilence && !isMeme && (
                       <div className="absolute inset-0 flex flex-row overflow-hidden pointer-events-none opacity-85 rounded-lg">
                         {Array.from({ length: tileCount }).map((_, tileIdx) => {
@@ -2796,13 +3114,13 @@ export const Screen2Workspace: React.FC = () => {
                       <div className="flex items-center min-w-0 mr-1 overflow-hidden">
                         {isDraggable && (
                           <span
-                            className="cursor-grab active:cursor-grabbing text-[#8A8780] hover:text-[#F4F2EE] mr-1 flex-shrink-0"
+                            className="cursor-grab active:cursor-grabbing text-[#8E8A82] hover:text-white mr-1 flex-shrink-0"
                             title="Grab and drag to move clip before or after other clips"
                           >
                             <GripVertical className="w-3 h-3" />
                           </span>
                         )}
-                        <span className="text-[11px] font-semibold truncate drop-shadow-md">
+                        <span className="text-[10px] md:text-[11px] font-semibold truncate drop-shadow-md">
                           {isMeme
                             ? isNarrow ? '🎬' : `🎬 ${item.title}`
                             : isSilence
@@ -2822,10 +3140,10 @@ export const Screen2Workspace: React.FC = () => {
                         >
                           <button
                             onClick={() => toggleSilenceSelected(item.id)}
-                            className={`p-1 rounded transition-colors ${
+                            className={`p-1 rounded transition-colors cursor-pointer ${
                               isSilenceSelected
-                                ? 'bg-[#E8872A] text-[#11100E] hover:bg-[#F59A3D]'
-                                : 'bg-[#23221F] text-zinc-400 hover:text-zinc-200 border border-[#35332F]'
+                                ? 'bg-[#D96B27] text-white hover:bg-[#C25E1F]'
+                                : 'bg-white text-[#66625B] hover:text-[#181715] border border-[#E5E2DC]'
                             }`}
                             title={isSilenceSelected ? 'Checked for cut (click to uncheck and keep pause)' : 'Unchecked (click to check for cut)'}
                           >
@@ -2837,7 +3155,7 @@ export const Screen2Workspace: React.FC = () => {
                           </button>
                           <button
                             onClick={() => keepSilencePause(item.id)}
-                            className="p-1 bg-[#23221F] hover:bg-[#2E2C28] text-[#E6E3DC] border border-[#35332F] rounded"
+                            className="p-1 bg-white hover:bg-[#F7F6F2] text-[#66625B] border border-[#E5E2DC] rounded cursor-pointer"
                             title="Remove from suggestions (Keep Pause)"
                           >
                             <X className="w-3 h-3" />
@@ -2857,10 +3175,10 @@ export const Screen2Workspace: React.FC = () => {
                               setIsRightOpen(true);
                               setIsMemeSectionOpen(true);
                             }}
-                            className={`px-1.5 py-0.5 rounded text-[9px] font-medium transition-colors ${
+                            className={`px-1.5 py-0.5 rounded text-[9px] font-medium transition-colors cursor-pointer ${
                               replacingMemeId === item.id
-                                ? 'bg-[#E8872A] text-[#11100E] font-bold shadow'
-                                : 'bg-[#1F1E1C] hover:bg-[#292825] text-[#FDA4AF] border border-[#FB7185]/40'
+                                ? 'bg-[#D96B27] text-white font-bold shadow'
+                                : 'bg-white hover:bg-[#FFF1F2] text-[#BE123C] border border-[#FDA4AF]'
                             }`}
                             title="Replace this meme with another from library or upload"
                           >
@@ -2868,7 +3186,7 @@ export const Screen2Workspace: React.FC = () => {
                           </button>
                           <button
                             onClick={() => removeMemeClip(item.id)}
-                            className="p-1 bg-[#1F1E1C] hover:bg-[#DC2626]/80 text-[#FDA4AF] hover:text-white rounded border border-[#FB7185]/40 transition-colors"
+                            className="p-1 bg-white hover:bg-[#FEF2F2] text-[#BE123C] hover:text-[#DC2626] rounded border border-[#FDA4AF] transition-colors cursor-pointer"
                             title="Remove this meme and restore continuous video"
                           >
                             <Trash2 className="w-2.5 h-2.5" />
@@ -2880,7 +3198,7 @@ export const Screen2Workspace: React.FC = () => {
                     <div className="relative z-10 flex items-center justify-between text-[10px] text-[#A19E97] font-mono tabular-nums drop-shadow-sm">
                       <span>{(item.durationMs / 1000).toFixed(1)}s</span>
                       {item.transitionOut && item.transitionOut.type !== 'none' && (
-                        <span className="bg-black/60 px-1 rounded uppercase text-[9px] text-[#A19E97]">
+                        <span className="bg-black/60 px-1 rounded uppercase text-[9px] text-white">
                           {item.transitionOut.type}
                         </span>
                       )}
@@ -2897,15 +3215,15 @@ export const Screen2Workspace: React.FC = () => {
                         const nextType = types[(curIdx + 1) % types.length];
                         setTransition(item.id, nextType);
                       }}
-                      className={`absolute right-0 top-1/2 -translate-y-1/2 translate-x-1/2 w-4 h-4 rounded-full flex items-center justify-center text-[8px] z-20 shadow cursor-pointer transition-all ${
+                      className={`absolute right-0 top-1/2 -translate-y-1/2 translate-x-1/2 w-4 h-4 rounded-full flex items-center justify-center text-[8px] z-30 shadow cursor-pointer transition-all ${
                         item.transitionOut && item.transitionOut.type !== 'none'
-                          ? 'bg-[#29180B] border border-[#E8872A] text-[#E8872A] hover:bg-[#3D2310] scale-110'
-                          : 'bg-[#1F1E1C] border border-[#35332F] hover:border-[#E8872A] text-[#A19E97] hover:text-[#E8872A]'
+                          ? 'bg-[#D96B27] border border-white text-white hover:bg-[#C25E1F] scale-110'
+                          : 'bg-white border border-[#E5E2DC] hover:border-[#D96B27] text-[#66625B] hover:text-[#D96B27]'
                       }`}
                       title={`Click to toggle clip transition (Fade / None) - Current: ${item.transitionOut?.type || 'none'}`}
                     >
                       {item.transitionOut && item.transitionOut.type !== 'none' && (
-                        <span className="absolute -top-4 left-1/2 -translate-x-1/2 px-1 py-0.2 rounded bg-[#E8872A] text-[#11100E] font-bold text-[8px] uppercase tracking-wider shadow whitespace-nowrap pointer-events-none">
+                        <span className="absolute -top-4 left-1/2 -translate-x-1/2 px-1 py-0.5 rounded bg-[#D96B27] text-white font-bold text-[8px] uppercase tracking-wider shadow whitespace-nowrap pointer-events-none">
                           {item.transitionOut.type}
                         </span>
                       )}
@@ -2917,31 +3235,31 @@ export const Screen2Workspace: React.FC = () => {
             </div>
 
             {/* Background Music Track (Slim Track Bar) */}
-            <div className="w-full h-8 mt-2 flex items-center">
+            <div className="w-full h-7 md:h-8 mt-1 md:mt-2 flex items-center">
               {bgMusic ? (
-                <div className="w-full h-full bg-[#14B8A6]/10 border border-[#2DD4BF]/35 rounded-lg px-2.5 flex items-center justify-between text-xs transition-all">
+                <div className="w-full h-full bg-[#F0FDFA] border border-[#99F6E4] rounded-lg px-2.5 flex items-center justify-between text-xs transition-all shadow-sm">
                   <div className="flex items-center space-x-2 min-w-0 mr-3">
-                    <Music className="w-3.5 h-3.5 text-[#2DD4BF] shrink-0" />
-                    <span className="font-medium text-[#2DD4BF] truncate text-[11px]" title={bgMusic.name}>
+                    <Music className="w-3.5 h-3.5 text-[#0F766E] shrink-0" />
+                    <span className="font-medium text-[#0F766E] truncate text-[11px]" title={bgMusic.name}>
                       {bgMusic.name}
                     </span>
-                    <span className="text-[10px] text-[#A19E97] font-mono shrink-0">
+                    <span className="text-[10px] text-[#66625B] font-mono shrink-0">
                       ({(bgMusic.durationMs / 1000).toFixed(1)}s loop)
                     </span>
                   </div>
 
-                  <div className="flex items-center space-x-3 shrink-0">
+                  <div className="flex items-center space-x-2 md:space-x-3 shrink-0">
                     {/* Volume Slider */}
                     <div className="flex items-center space-x-1.5">
                       <button
                         onClick={() => toggleBgMusicMute()}
-                        className="text-[#A19E97] hover:text-[#F4F2EE] transition-colors p-0.5"
+                        className="text-[#66625B] hover:text-[#181715] transition-colors p-0.5 cursor-pointer"
                         title={bgMusic.isMuted || bgMusic.volume === 0 ? "Unmute music" : "Mute music"}
                       >
                         {bgMusic.isMuted || bgMusic.volume === 0 ? (
-                          <VolumeX className="w-3.5 h-3.5 text-[#EF4444]" />
+                          <VolumeX className="w-3.5 h-3.5 text-[#DC2626]" />
                         ) : (
-                          <Volume2 className="w-3.5 h-3.5 text-[#2DD4BF]" />
+                          <Volume2 className="w-3.5 h-3.5 text-[#0F766E]" />
                         )}
                       </button>
                       <input
@@ -2951,10 +3269,10 @@ export const Screen2Workspace: React.FC = () => {
                         step="0.05"
                         value={bgMusic.isMuted ? 0 : bgMusic.volume}
                         onChange={(e) => setBgMusicVolume(parseFloat(e.target.value))}
-                        className="w-16 h-1 bg-[#2C2B28] accent-[#2DD4BF] rounded-lg cursor-pointer"
+                        className="w-12 md:w-16 h-1 bg-[#E5E2DC] accent-[#0F766E] rounded-lg cursor-pointer"
                         title={`Music Volume: ${Math.round(bgMusic.volume * 100)}%`}
                       />
-                      <span className="text-[10px] font-mono tabular-nums text-[#A19E97] w-7">
+                      <span className="text-[10px] font-mono tabular-nums text-[#66625B] w-6 md:w-7">
                         {bgMusic.isMuted ? '0%' : `${Math.round(bgMusic.volume * 100)}%`}
                       </span>
                     </div>
@@ -2962,7 +3280,7 @@ export const Screen2Workspace: React.FC = () => {
                     {/* Replace Button */}
                     <button
                       onClick={() => bgMusicInputRef.current?.click()}
-                      className="px-2 py-0.5 bg-[#1F1E1C] hover:bg-[#2A2825] border border-[#35332F] text-[#E6E3DC] rounded text-[10px] font-medium transition-colors"
+                      className="px-2 py-0.5 bg-white hover:bg-[#F7F6F2] border border-[#E5E2DC] text-[#181715] rounded text-[10px] font-medium transition-colors shadow-sm cursor-pointer"
                       title="Replace music track"
                     >
                       Replace
@@ -2971,7 +3289,7 @@ export const Screen2Workspace: React.FC = () => {
                     {/* Remove Button */}
                     <button
                       onClick={() => removeBgMusic()}
-                      className="p-1 text-[#A19E97] hover:text-[#EF4444] transition-colors"
+                      className="p-1 text-[#8E8A82] hover:text-[#DC2626] transition-colors cursor-pointer"
                       title="Remove background music track"
                     >
                       <Trash2 className="w-3 h-3" />
@@ -2981,10 +3299,10 @@ export const Screen2Workspace: React.FC = () => {
               ) : (
                 <button
                   onClick={() => bgMusicInputRef.current?.click()}
-                  className="w-full h-full border border-dashed border-[#2C2B28] hover:border-[#2DD4BF]/50 bg-[#161614]/50 hover:bg-[#14B8A6]/5 rounded-lg px-3 flex items-center justify-center space-x-2 text-[11px] text-[#8A8780] hover:text-[#2DD4BF] transition-all group"
+                  className="w-full h-full border border-dashed border-[#E5E2DC] hover:border-[#0F766E] bg-white hover:bg-[#F0FDFA] rounded-lg px-3 flex items-center justify-center space-x-2 text-[11px] text-[#66625B] hover:text-[#0F766E] transition-all group cursor-pointer"
                   title="Click to add a background music track (.mp3, .wav, .m4a, .aac, .ogg)"
                 >
-                  <Music className="w-3 h-3 text-[#6E6B64] group-hover:text-[#2DD4BF] transition-colors" />
+                  <Music className="w-3 h-3 text-[#8E8A82] group-hover:text-[#0F766E] transition-colors" />
                   <span>+ Add Background Music track (.mp3, .wav, .m4a, up to 30 MB)</span>
                 </button>
               )}
@@ -2992,6 +3310,65 @@ export const Screen2Workspace: React.FC = () => {
           </div>
         </div>
       </footer>
+
+      {/* Mobile 4-Tab Tool Drawer */}
+      <div className="flex md:hidden flex-1 min-h-0 flex-col bg-white border-t border-[#E5E2DC]">
+        {/* Drawer Tabs Header */}
+        <div className="flex items-center border-b border-[#E5E2DC] bg-[#FAF9F5] text-xs font-medium shrink-0">
+          <button
+            onClick={() => setMobileDrawerTab('ai')}
+            className={`flex-1 py-2 flex items-center justify-center gap-1 border-b-2 transition-colors cursor-pointer ${
+              mobileDrawerTab === 'ai'
+                ? 'border-[#D96B27] text-[#D96B27] font-semibold bg-white'
+                : 'border-transparent text-[#66625B] hover:text-[#181715]'
+            }`}
+          >
+            <Sparkles className="w-3.5 h-3.5" />
+            <span>AI & Cuts</span>
+          </button>
+          <button
+            onClick={() => setMobileDrawerTab('clips')}
+            className={`flex-1 py-2 flex items-center justify-center gap-1 border-b-2 transition-colors cursor-pointer ${
+              mobileDrawerTab === 'clips'
+                ? 'border-[#D96B27] text-[#D96B27] font-semibold bg-white'
+                : 'border-transparent text-[#66625B] hover:text-[#181715]'
+            }`}
+          >
+            <Film className="w-3.5 h-3.5" />
+            <span>Clips & Memes</span>
+          </button>
+          <button
+            onClick={() => setMobileDrawerTab('audio')}
+            className={`flex-1 py-2 flex items-center justify-center gap-1 border-b-2 transition-colors cursor-pointer ${
+              mobileDrawerTab === 'audio'
+                ? 'border-[#0F766E] text-[#0F766E] font-semibold bg-white'
+                : 'border-transparent text-[#66625B] hover:text-[#181715]'
+            }`}
+          >
+            <Music className="w-3.5 h-3.5" />
+            <span>Audio</span>
+          </button>
+          <button
+            onClick={() => setMobileDrawerTab('transcript')}
+            className={`flex-1 py-2 flex items-center justify-center gap-1 border-b-2 transition-colors cursor-pointer ${
+              mobileDrawerTab === 'transcript'
+                ? 'border-[#D96B27] text-[#D96B27] font-semibold bg-white'
+                : 'border-transparent text-[#66625B] hover:text-[#181715]'
+            }`}
+          >
+            <Wand2 className="w-3.5 h-3.5" />
+            <span>Transcript</span>
+          </button>
+        </div>
+
+        {/* Drawer Content */}
+        <div className="flex-1 min-h-0 overflow-y-auto p-3 flex flex-col">
+          {mobileDrawerTab === 'ai' && renderAiCommandsSection()}
+          {mobileDrawerTab === 'clips' && renderMemesSection()}
+          {mobileDrawerTab === 'audio' && renderAudioSection()}
+          {mobileDrawerTab === 'transcript' && renderTranscriptSection()}
+        </div>
+      </div>
     </div>
   );
 };
