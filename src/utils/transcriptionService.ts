@@ -33,6 +33,13 @@ export function clearTranscriptCache(): void {
 
 let workerInstance: Worker | null = null;
 
+export function terminateTranscriptionWorker(): void {
+  if (workerInstance) {
+    workerInstance.terminate();
+    workerInstance = null;
+  }
+}
+
 function getWorker(): Worker {
   if (!workerInstance) {
     workerInstance = new Worker(
@@ -197,11 +204,29 @@ export async function transcribeVideoAudio(
       }
     };
 
+    const handleError = (e: ErrorEvent | MessageEvent) => {
+      cleanup();
+      const errText = (e as ErrorEvent).message || 'Transcription worker crashed unexpectedly.';
+      if (onProgress) {
+        onProgress({
+          status: 'error',
+          downloadPercent: 0,
+          currentDownloadFile: '',
+          errorMessage: errText
+        });
+      }
+      reject(new Error(errText));
+    };
+
     const cleanup = () => {
       worker.removeEventListener('message', handleWorkerMessage);
+      worker.removeEventListener('error', handleError);
+      worker.removeEventListener('messageerror', handleError);
     };
 
     worker.addEventListener('message', handleWorkerMessage);
+    worker.addEventListener('error', handleError);
+    worker.addEventListener('messageerror', handleError);
 
     // Send audio buffer to worker (using transfer to avoid copy overhead)
     try {

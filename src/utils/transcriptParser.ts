@@ -11,7 +11,7 @@ export interface ParsedTranscriptionResult {
   suppressWordRender: boolean;
 }
 
-export const HINDI_LOW_QUALITY_WARNING = "⚠️ Hindi transcription quality is low for this audio. Try 'English (translated)' mode for better results.";
+export const HINDI_LOW_QUALITY_WARNING = "Transcript quality looks low — try switching mode or regenerating.";
 
 /**
  * Catches single-word consecutive repetitions:

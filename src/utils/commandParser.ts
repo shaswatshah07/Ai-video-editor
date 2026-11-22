@@ -184,7 +184,7 @@ export function parseLocalCommand(
       action: 'UNSUPPORTED_OPERATION',
       payload: {
         feature: 'Voiceover & Advanced Audio',
-        message: 'Voiceover and advanced audio effects are currently not available in Fastcutz.ai. You can use Voice Enhance, Noise Removal, or \'+ Add Music\' instead.'
+        message: 'Voiceover and advanced audio effects are currently not available in Fastcutz.ai. You can use Voice Enhance, Reduce Low Hum (Basic), or \'+ Add Music\' instead.'
       },
       explanation: 'Voiceover and advanced audio effects are currently not available in Fastcutz.ai.'
     };
@@ -228,8 +228,24 @@ export function parseLocalCommand(
     }
   }
 
-  // Single timestamp cut ("cut at 0:15", "split at 10s")
-  const splitRegex = /(?:cut|split|delete|trim)\s+at\s+([0-9:.]+\s*s?)/i;
+  // Single timestamp split clarification ("split at 10s")
+  const splitCheckRegex = /\bsplit\s+at\s+([0-9:.]+\s*s?)/i;
+  const splitCheckMatch = lower.match(splitCheckRegex);
+  if (splitCheckMatch) {
+    const atMs = parseTimeStringToMs(splitCheckMatch[1]);
+    const atSecStr = atMs !== null ? `${(atMs / 1000).toFixed(1)}s` : splitCheckMatch[1];
+    return {
+      action: 'AMBIGUOUS_NEED_CLARIFICATION',
+      payload: {
+        message: `To split at ${atSecStr}, scrub the playhead to that point and tap the Split (S) button or press the 'S' key.`,
+        suggestedAction: `Move playhead to ${atSecStr} and press 'S'`
+      },
+      explanation: `Split command at a single timestamp requires manual playhead placement and Split (S).`
+    };
+  }
+
+  // Single timestamp cut ("cut at 0:15", "delete at 10s", "trim at 5s")
+  const splitRegex = /(?:cut|delete|trim)\s+at\s+([0-9:.]+\s*s?)/i;
   const splitMatch = lower.match(splitRegex);
   if (splitMatch) {
     const atMs = parseTimeStringToMs(splitMatch[1]);
@@ -237,14 +253,14 @@ export function parseLocalCommand(
       return {
         action: 'TRIM_SECTION',
         payload: { startMs: atMs, endMs: atMs + 1000 },
-        explanation: `Splitting and cutting 1-second interval around ${(atMs / 1000).toFixed(1)}s.`
+        explanation: `Cutting 1-second interval around ${(atMs / 1000).toFixed(1)}s.`
       };
     }
   }
 
-  // 2. REMOVE SILENCE
+  // 2. REMOVE SILENCE (support plurals: silences?, pauses?)
   if (
-    /\b(silence|awkward\s*pause|cut\s*pause|remove\s*pause|dead\s*air)\b/i.test(lower)
+    /\b(silences?|awkward\s*pauses?|cut\s*pauses?|remove\s*pauses?|pauses?|dead\s*air)\b/i.test(lower)
   ) {
     return {
       action: 'REMOVE_SILENCE',
@@ -288,7 +304,7 @@ export function parseLocalCommand(
     const cleaned = lower
       .replace(/(?:insert|add|put|place|play|drop|include)\s+/gi, '')
       .replace(/(?:at|around|on|near)\s+[0-9:.]+\s*s?/gi, '')
-      .replace(/\b(a|an|the|funny|hilarious|random|good|cool|quick|short|video|clip|reaction|meme|reaction clip)\b/gi, ' ')
+      .replace(/\b(a|an|the|funny|hilarious|random|good|cool|quick|short|video|clip|reaction|meme|reaction clip|here|there|now|this|spot|point)\b/gi, ' ')
       .trim();
 
     const remainingTokens = cleaned.split(/\s+/).filter(Boolean);
@@ -344,7 +360,7 @@ export function parseLocalCommand(
     return {
       action: 'RESET_AUDIO',
       payload: {},
-      explanation: 'Resetting audio enhancements and noise removal to default (off).'
+      explanation: 'Resetting audio enhancements and hum filter to default (off).'
     };
   }
 
@@ -366,7 +382,7 @@ export function parseLocalCommand(
     };
   }
 
-  // 7. REMOVE NOISE (Background Noise Removal)
+  // 7. REMOVE NOISE (Reduce Low Hum Basic)
   if (
     lower.includes('noise') ||
     lower.includes('hiss') ||
@@ -380,8 +396,8 @@ export function parseLocalCommand(
       action: 'REMOVE_NOISE',
       payload: { enabled: !isDisable },
       explanation: isDisable
-        ? 'Disabling background noise removal.'
-        : 'Activating Background Noise Removal (100Hz HPF, 7500Hz LPF, dynamic noise-floor gate).'
+        ? 'Disabling Reduce Low Hum (Basic).'
+        : 'Activating Reduce Low Hum (Basic) (Cascaded 180Hz HPF + 6.2kHz LPF + Noise Gate).'
     };
   }
 
@@ -407,10 +423,10 @@ export function parseLocalCommand(
     return {
       action: 'AMBIGUOUS_NEED_CLARIFICATION',
       payload: {
-        message: 'To undo or redo changes, use the Undo (Ctrl+Z) and Redo (Ctrl+Y) buttons in the workspace header.',
-        suggestedAction: 'Use Ctrl+Z / Ctrl+Y'
+        message: 'To undo or redo changes, tap the Undo or Redo buttons in the workspace header.',
+        suggestedAction: 'Use the Undo / Redo buttons in the header'
       },
-      explanation: 'Undo/Redo is available via workspace header buttons and keyboard shortcuts (Ctrl+Z / Ctrl+Y).'
+      explanation: 'Undo/Redo is available via the Undo and Redo buttons in the workspace header.'
     };
   }
 
@@ -428,7 +444,7 @@ export function parseLocalCommand(
       action: 'UNSUPPORTED_OPERATION',
       payload: {
         feature: text,
-        message: 'That editing feature is currently not available in Fastcutz.ai. Supported commands: cutting/trimming timestamps, inserting memes, adding Fade/Wipe transitions, and Voice Enhance / Noise Removal.'
+        message: 'That editing feature is currently not available in Fastcutz.ai. Supported commands: cutting/trimming timestamps, inserting memes, adding Fade/Wipe transitions, Voice Enhance, and Reduce Low Hum (Basic).'
       },
       explanation: 'That editing feature is currently not available in Fastcutz.ai.'
     };

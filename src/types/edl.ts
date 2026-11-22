@@ -66,12 +66,8 @@ export interface ChapterMarker {
 
 export interface AudioSettings {
   voiceEnhanceEnabled: boolean;  // Speaker Voice Enhancement (80Hz HPF + 250Hz cut + 3kHz boost + compressor)
-  noiseRemovalEnabled: boolean;  // Background Noise Removal (100Hz HPF + 7500Hz LPF + noise gate)
+  noiseRemovalEnabled: boolean;  // Reduce Low Hum (Basic) (Cascaded 180Hz HPF + 6.2kHz LPF + Noise Gate)
   noiseReductionEnabled?: boolean; // backwards compatibility alias
-  highPassFreq?: number;
-  eqPeakFreq?: number;
-  eqGainDb?: number;
-  compressorThresholdDb?: number;
 }
 
 export interface ProjectEDL {

@@ -66,11 +66,6 @@ export function peakNormalizeTo09(input: Float32Array, targetPeak = 0.9): Float3
 }
 
 /**
- * Backward compatibility alias for peakNormalizeMinus3dB
- */
-export const peakNormalizeMinus3dB = (input: Float32Array) => peakNormalizeTo09(input, 0.9);
-
-/**
  * Applies gentle 80 Hz high-pass + peak amplitude normalization (~0.9) to 16 kHz Float32Array.
  */
 export function preprocessAudioFloat32(rawFloat32: Float32Array, sampleRate = 16000): Float32Array {

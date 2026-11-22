@@ -600,7 +600,7 @@ const StudioPottedPlants: React.FC = () => {
 
 
 export const Screen1Upload: React.FC = () => {
-  const { loadProject, setScreen, toggleVoiceEnhance, toggleNoiseReduction, generateTranscript } = useEditorStore();
+  const { loadProject, setScreen, toggleVoiceEnhance, toggleNoiseRemoval, generateTranscript } = useEditorStore();
 
   const [isDragging, setIsDragging] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -612,7 +612,6 @@ export const Screen1Upload: React.FC = () => {
   // Auto Edit Checkboxes (3 options)
   const [autoOptions, setAutoOptions] = useState({
     transcript: true,
-    timestamps: false,
     voiceEnhance: true,
     noiseReduction: true
   });
@@ -633,8 +632,8 @@ export const Screen1Upload: React.FC = () => {
   const [isSnipping, setIsSnipping] = useState(false);
   const [cutFrames, setCutFrames] = useState<Record<string, 'cutting' | 'cut'>>({});
 
-  const cutTimersRef = useRef<NodeJS.Timeout[]>([]);
-  const botTimersRef = useRef<NodeJS.Timeout[]>([]);
+  const cutTimersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
+  const botTimersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
 
   // Cleanup all timers on unmount only
   useEffect(() => {
@@ -872,20 +871,45 @@ export const Screen1Upload: React.FC = () => {
     setIsProcessing(true);
     setProcessingStatus('Analyzing video container and duration...');
 
+    let createdVideoUrl: string | null = null;
     try {
       const videoUrl = URL.createObjectURL(selectedFile);
+      createdVideoUrl = videoUrl;
       const tempVideo = document.createElement('video');
+      tempVideo.preload = 'metadata';
+      tempVideo.muted = true;
       tempVideo.src = videoUrl;
 
       await new Promise<void>((resolve, reject) => {
-        tempVideo.onloadedmetadata = () => resolve();
-        tempVideo.onerror = () => reject(new Error('Invalid video file'));
+        let isDone = false;
+        const cleanup = () => {
+          if (isDone) return;
+          isDone = true;
+          clearTimeout(timer);
+          tempVideo.onloadedmetadata = null;
+          tempVideo.onerror = null;
+        };
+        const timer = setTimeout(() => {
+          cleanup();
+          reject(new Error('Video metadata loading timed out'));
+        }, 12000);
+        tempVideo.onloadedmetadata = () => {
+          cleanup();
+          resolve();
+        };
+        tempVideo.onerror = () => {
+          cleanup();
+          reject(new Error('Invalid video file'));
+        };
+        tempVideo.load();
       });
 
       const durationMs = Math.round((tempVideo.duration || 10) * 1000);
 
       // Guardrail: Max 5 minutes (300,000 ms)
       if (durationMs > 300000) {
+        URL.revokeObjectURL(videoUrl);
+        createdVideoUrl = null;
         setErrorMsg('Video exceeds the 5-minute guardrail limit for real-time browser processing.');
         setIsProcessing(false);
         return;
@@ -918,16 +942,19 @@ export const Screen1Upload: React.FC = () => {
 
       if (isAutoMode) {
         if (autoOptions.voiceEnhance) toggleVoiceEnhance(true);
-        if (autoOptions.noiseReduction) toggleNoiseReduction(true);
+        if (autoOptions.noiseReduction) toggleNoiseRemoval(true);
       }
 
       if (isAutoMode && autoOptions.transcript) {
-        generateTranscript('accurate', 'translate_en');
+        generateTranscript('fast', 'transcribe_en');
       }
 
       setIsProcessing(false);
       setScreen('WORKSPACE');
     } catch {
+      if (createdVideoUrl) {
+        URL.revokeObjectURL(createdVideoUrl);
+      }
       setErrorMsg('Failed to process video file. Ensure it is a valid H.264 MP4/MOV.');
       setIsProcessing(false);
     }
@@ -1487,7 +1514,7 @@ export const Screen1Upload: React.FC = () => {
               </div>
 
               {selectedFile ? (
-                <div className="space-y-1 relative z-20">
+                <div className="space-y-1 relative z-20 pointer-events-none">
                   <p className="text-sm font-semibold text-[#22D3EE]">{selectedFile.name}</p>
                   <p className="text-xs text-[#A5B4DC] tabular-nums">
                     {(selectedFile.size / (1024 * 1024)).toFixed(2)} MB • Ready for processing

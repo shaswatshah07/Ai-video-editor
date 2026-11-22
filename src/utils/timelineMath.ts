@@ -263,7 +263,8 @@ export function splitItemAtPlayhead(
         id: `${item.id}_part1_${Date.now()}`,
         sourceEndMs: splitSourceMs,
         durationMs: offset,
-        status: 'ACTIVE'
+        status: 'ACTIVE',
+        transitionOut: { type: 'none', durationMs: 0 }
       });
 
       result.push({

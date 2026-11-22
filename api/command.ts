@@ -76,7 +76,7 @@ Fastcutz.ai ONLY supports:
 - Inserting library meme reaction clips or user uploaded clips sequentially (INSERT_LIBRARY_MEME, INSERT_USER_CLIP)
 - Adding transitions (fade, wipeleft, wiperight, dissolve, slideup) between clips (ADD_TRANSITION)
 - Speaker voice enhancement (ENHANCE_AUDIO)
-- Background noise removal (REMOVE_NOISE)
+- Reduce low hum (basic) (REMOVE_NOISE)
 - Resetting audio enhancements (RESET_AUDIO)
 - Generating word transcript or YouTube chapter timestamps (GENERATE_TRANSCRIPT, GENERATE_TIMESTAMPS)
 
@@ -89,10 +89,10 @@ Specific Unsupported Categories:
 - Text / titles / subtitles / captions / stickers / emoji / watermark: return UNSUPPORTED_OPERATION with message "Adding text, stickers, or burned-in captions is currently not available in Fastcutz.ai."
 - Crop / zoom / rotate / flip / pan / aspect ratio: return UNSUPPORTED_OPERATION with message "Crop, zoom, rotate, and aspect-ratio transforms are currently not available in Fastcutz.ai."
 - Speed / slow motion / fast forward / reverse / freeze frame: return UNSUPPORTED_OPERATION with message "Exportable speed changes and reverse/freeze effects are currently not available in Fastcutz.ai (you can preview at 1x/2x/5x using the Speed toggle)."
-- Voiceover / TTS / AI voice / reverb: return UNSUPPORTED_OPERATION with message "Voiceover and advanced audio effects are currently not available in Fastcutz.ai. You can use Voice Enhance, Noise Removal, or '+ Add Music' instead."
+- Voiceover / TTS / AI voice / reverb: return UNSUPPORTED_OPERATION with message "Voiceover and advanced audio effects are currently not available in Fastcutz.ai. You can use Voice Enhance, Reduce Low Hum (Basic), or '+ Add Music' instead."
 - Transcript phrase cutting (cutting words or phrases without timestamps): return UNSUPPORTED_OPERATION with message "Transcript phrase cutting is not available in Fastcutz.ai. Please use timestamps instead (for example: 'Cut from 0:10 to 0:25')."
 - Unknown/unsupported memes (e.g. "rickroll"): return UNSUPPORTED_OPERATION with message "Meme '<name>' is not in the built-in library. Choose one from 'Choose a Meme' or upload your own .mp4 under 'Insert Your Own'."
-- Any other unsupported editing effect: return UNSUPPORTED_OPERATION with message "That editing feature is currently not available in Fastcutz.ai. Supported commands: cutting/trimming timestamps, inserting memes, adding Fade/Wipe transitions, and Voice Enhance / Noise Removal."
+- Any other unsupported editing effect: return UNSUPPORTED_OPERATION with message "That editing feature is currently not available in Fastcutz.ai. Supported commands: cutting/trimming timestamps, inserting memes, adding Fade/Wipe transitions, Voice Enhance, and Reduce Low Hum (Basic)."
 
 Current project time: ${currentProjectMs || 0}ms. Total duration: ${totalDurationMs || 0}ms.
 Return ONLY valid JSON with keys: action, payload, explanation.`;

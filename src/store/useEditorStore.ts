@@ -8,9 +8,9 @@ import {
   getTotalProjectDuration
 } from '../utils/timelineMath';
 import { MEME_LIBRARY, getMemeById, findMemeByKeyword } from '../utils/memeLibrary';
-import { detectSilenceInVideo, injectSilenceCutsIntoTimeline, SilenceSensitivity, SILENCE_PRESETS } from '../utils/silenceDetector';
+import { detectSilenceInVideo, injectSilenceCutsIntoTimeline, SilenceSensitivity } from '../utils/silenceDetector';
 import { generateSourceThumbnails, ThumbnailMap, ThumbnailProgress } from '../utils/thumbnailGenerator';
-import { transcribeVideoAudio, suggestNonSpeechCuts, TranscriptionStatus } from '../utils/transcriptionService';
+import { transcribeVideoAudio, suggestNonSpeechCuts, TranscriptionStatus, terminateTranscriptionWorker } from '../utils/transcriptionService';
 
 export type ScreenState = 'UPLOAD' | 'WORKSPACE' | 'EXPORT';
 
@@ -48,26 +48,17 @@ interface EditorState {
   thumbnailProgress: ThumbnailProgress | null;
   selectedItemId: string | null;
   commandLogs: CommandLogEntry[];
-  customMemeClips: UploadedMemeClip[];
   userUploadedClips: UploadedMemeClip[];
   undoStack: TimelineItem[][];
   redoStack: TimelineItem[][];
   voiceEnhanceEnabled: boolean;
   noiseRemovalEnabled: boolean;
-  isAudioEnhanceActive: boolean;
-  isNoiseReductionActive: boolean;
-  denoisedAudioUrl: string | null;
-  denoisedAudioBlob: Blob | null;
-  isDenoising: boolean;
-  denoiseProgress: string;
 
   // Real Web Worker Transcription State (Part A & Quality/Mode Options)
   transcriptionStatus: TranscriptionStatus;
   transcriptionDownloadPercent: number;
-  transcriptionCurrentFile: string;
   transcriptionError: string | null;
   transcriptionFallbackNotice: string | null;
-  selectedLanguage: 'english' | 'hindi';
   transcriptQuality: TranscriptModelQuality;
   transcriptMode: TranscriptMode;
   addedClipTranscribing: boolean;
@@ -86,18 +77,14 @@ interface EditorState {
   setCurrentProjectMs: (ms: number) => void;
   setIsPlaying: (playing: boolean) => void;
   setPreviewSpeed: (speed: 1 | 2 | 5) => void;
-  setTimelineZoom: (zoom: number) => void;
   zoomIn: () => void;
   zoomOut: () => void;
-  setMinSilenceDurationMs: (ms: number) => void;
-  setSilenceSensitivity: (sensitivity: SilenceSensitivity) => void;
-  setSelectedLanguage: (lang: 'english' | 'hindi') => void;
   setTranscriptQuality: (quality: TranscriptModelQuality) => void;
   setTranscriptMode: (mode: TranscriptMode) => void;
   updateTranscriptWord: (wordId: string, newText: string) => void;
   generateTranscript: (quality?: TranscriptModelQuality, mode?: TranscriptMode) => Promise<void>;
   transcribeAddedClip: (clipId: string, blobUrl: string, durationMs: number) => Promise<void>;
-  suggestNonSpeechSilences: () => { count: number; totalDurationMs: number; message: string };
+  suggestNonSpeechCuts: () => { count: number; totalDurationMs: number; message: string };
   setSelectedItemId: (id: string | null) => void;
   addCommandLog: (log: CommandLogEntry) => void;
   
@@ -107,13 +94,11 @@ interface EditorState {
   redo: () => void;
   splitAtPlayhead: () => void;
   deleteSelected: () => void;
-  acceptSilenceCut: (itemId: string) => void;
   keepSilencePause: (itemId: string) => void;
   toggleSilenceSelected: (itemId: string) => void;
   clearAllSilences: () => void;
   applySelectedSilenceCuts: () => void;
   cancelTranscription: () => void;
-  acceptAllSilences: () => Promise<{ changed: boolean; message: string }>;
   detectSilencesOnly: (param?: SilenceSensitivity | number) => Promise<{ count: number; message: string }>;
   removeOrDetectSilences: (param?: SilenceSensitivity | number) => Promise<{ changed: boolean; message: string; count?: number; totalSilenceMs?: number; newDurationMs?: number }>;
   setTransition: (itemId: string, type: TransitionType, durationMs?: number) => void;
@@ -133,12 +118,6 @@ interface EditorState {
   removeBgMusic: () => void;
   toggleVoiceEnhance: (enabled?: boolean) => void;
   toggleNoiseRemoval: (enabled?: boolean) => void;
-  toggleNoiseReduction: (enabled?: boolean) => void;
-  setDenoisedAudio: (blob: Blob, url: string) => void;
-  clearDenoisedAudio: () => void;
-  setIsDenoising: (val: boolean) => void;
-  setDenoiseProgress: (msg: string) => void;
-  addCustomMeme: (file: File) => Promise<CustomMeme>;
   applyAICommand: (command: AICommand, rawInput?: string) => Promise<void>;
 }
 
@@ -158,32 +137,32 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   thumbnailProgress: null,
   selectedItemId: null,
   commandLogs: [],
-  customMemeClips: [],
   userUploadedClips: [],
   undoStack: [],
   redoStack: [],
   voiceEnhanceEnabled: false,
   noiseRemovalEnabled: false,
-  isAudioEnhanceActive: false,
-  isNoiseReductionActive: false,
-  denoisedAudioUrl: null,
-  denoisedAudioBlob: null,
-  isDenoising: false,
-  denoiseProgress: '',
   transcriptionStatus: 'idle',
   transcriptionDownloadPercent: 0,
-  transcriptionCurrentFile: '',
   transcriptionError: null,
   transcriptionFallbackNotice: null,
   bgMusic: null,
-  selectedLanguage: 'english',
-  transcriptQuality: 'accurate',
-  transcriptMode: 'translate_en',
+  transcriptQuality: 'fast',
+  transcriptMode: 'transcribe_en',
   addedClipTranscribing: false,
 
   setScreen: (screen) => set({ screen }),
 
   loadProject: (videoUrl, fileName, fileSize, durationMs, initialItems, isDemoSample = false) => {
+    const prevProject = get().project;
+    if (prevProject && prevProject.sourceVideoUrl && prevProject.sourceVideoUrl !== videoUrl) {
+      try {
+        URL.revokeObjectURL(prevProject.sourceVideoUrl);
+      } catch {
+        // ignore
+      }
+    }
+
     const rawItems: TimelineItem[] = initialItems && initialItems.length > 0
       ? initialItems
       : [
@@ -244,18 +223,11 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       audioSettings: {
         voiceEnhanceEnabled: false,
         noiseRemovalEnabled: false,
-        noiseReductionEnabled: false,
-        highPassFreq: 80,
-        eqPeakFreq: 3000,
-        eqGainDb: 4,
-        compressorThresholdDb: -20
+        noiseReductionEnabled: false
       },
       createdAt: Date.now(),
       updatedAt: Date.now()
     };
-
-    const oldDenoisedUrl = get().denoisedAudioUrl;
-    if (oldDenoisedUrl) URL.revokeObjectURL(oldDenoisedUrl);
 
     const oldBgMusic = get().bgMusic;
     if (oldBgMusic?.blobUrl) URL.revokeObjectURL(oldBgMusic.blobUrl);
@@ -272,14 +244,8 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       thumbnailProgress: { current: 0, total: Math.min(300, Math.max(1, Math.floor(durationMs / 1000))), done: false },
       transcriptionStatus: 'idle',
       transcriptionDownloadPercent: 0,
-      transcriptionCurrentFile: '',
       transcriptionError: null,
       noiseRemovalEnabled: false,
-      isNoiseReductionActive: false,
-      denoisedAudioUrl: null,
-      denoisedAudioBlob: null,
-      isDenoising: false,
-      denoiseProgress: '',
       bgMusic: null
     });
 
@@ -310,15 +276,8 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   setCurrentProjectMs: (ms) => set({ currentProjectMs: Math.max(0, Math.round(ms)) }),
   setIsPlaying: (isPlaying) => set({ isPlaying }),
   setPreviewSpeed: (previewSpeed) => set({ previewSpeed }),
-  setTimelineZoom: (timelineZoom) => set({ timelineZoom: Math.max(1, Math.min(5, timelineZoom)) }),
   zoomIn: () => set((s) => ({ timelineZoom: Math.min(5, Number((s.timelineZoom + 0.5).toFixed(1))) })),
   zoomOut: () => set((s) => ({ timelineZoom: Math.max(1, Number((s.timelineZoom - 0.5).toFixed(1))) })),
-  setMinSilenceDurationMs: (minSilenceDurationMs) => set({ minSilenceDurationMs }),
-  setSilenceSensitivity: (silenceSensitivity) => set({
-    silenceSensitivity,
-    minSilenceDurationMs: SILENCE_PRESETS[silenceSensitivity]?.minSilenceMs ?? 500
-  }),
-  setSelectedLanguage: (selectedLanguage) => set({ selectedLanguage }),
   setTranscriptQuality: (transcriptQuality) => set({
     transcriptQuality,
     transcriptionError: null,
@@ -354,10 +313,10 @@ export const useEditorStore = create<EditorState>((set, get) => ({
 
   cancelTranscription: () => {
     transcriptionJobCounter++;
+    terminateTranscriptionWorker();
     set({
       transcriptionStatus: 'idle',
       transcriptionDownloadPercent: 0,
-      transcriptionCurrentFile: '',
       transcriptionError: null,
       transcriptionFallbackNotice: null
     });
@@ -368,15 +327,14 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     const { project, transcriptQuality, transcriptMode } = get();
     if (!project) return;
 
-    const chosenQuality = qual ?? transcriptQuality ?? 'accurate';
-    const chosenMode = m ?? transcriptMode ?? 'translate_en';
+    const chosenQuality = qual ?? transcriptQuality ?? 'fast';
+    const chosenMode = m ?? transcriptMode ?? 'transcribe_en';
 
     set({
       transcriptQuality: chosenQuality,
       transcriptMode: chosenMode,
       transcriptionStatus: 'extracting_audio',
       transcriptionDownloadPercent: 0,
-      transcriptionCurrentFile: 'Extracting 16kHz audio...',
       transcriptionError: null,
       transcriptionFallbackNotice: null
     });
@@ -391,7 +349,6 @@ export const useEditorStore = create<EditorState>((set, get) => ({
           set((s) => ({
             transcriptionStatus: progress.status,
             transcriptionDownloadPercent: Math.max(s.transcriptionDownloadPercent, progress.downloadPercent),
-            transcriptionCurrentFile: progress.currentDownloadFile,
             transcriptionError: progress.errorMessage,
             transcriptionFallbackNotice: progress.fallbackMessage || null
           }));
@@ -417,8 +374,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         if (currentJob !== transcriptionJobCounter) return;
         const clipItem = addedClips[i];
         set({
-          transcriptionStatus: 'transcribing',
-          transcriptionCurrentFile: `Transcribing added clip (${i + 1}/${addedClips.length})...`
+          transcriptionStatus: 'transcribing'
         });
         try {
           const clipRes = await transcribeVideoAudio(
@@ -445,7 +401,6 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       set((s) => ({
         transcriptionStatus: 'done',
         transcriptionDownloadPercent: 100,
-        transcriptionCurrentFile: '',
         transcriptionError: null,
         transcriptQuality: meta.modelQuality,
         transcriptMode: meta.mode,
@@ -472,6 +427,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         appliedMessage: `Generated ${words.length} words and ${chapters.length} auto-chapters (${meta.modelName}, ${(meta.durationMs / 1000).toFixed(1)}s).`
       });
     } catch (err: any) {
+      if (currentJob !== transcriptionJobCounter) return;
       const errMsg = err?.message || 'Transcription failed.';
       set({
         transcriptionStatus: 'error',
@@ -492,7 +448,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     }
   },
 
-  suggestNonSpeechSilences: () => {
+  suggestNonSpeechCuts: () => {
     const { project } = get();
     if (!project || project.transcript.length === 0) {
       const msg = 'Please generate a transcript first to detect non-speech segments.';
@@ -622,27 +578,6 @@ export const useEditorStore = create<EditorState>((set, get) => ({
 
     set({
       selectedItemId: null,
-      project: {
-        ...project,
-        items: recalculated,
-        totalProjectDurationMs: totalProjMs,
-        updatedAt: Date.now()
-      }
-    });
-  },
-
-  acceptSilenceCut: (itemId: string) => {
-    const { project } = get();
-    if (!project) return;
-    get().pushHistory();
-
-    const updated = project.items.map((it) =>
-      it.id === itemId ? { ...it, status: 'DELETED' as const } : it
-    );
-    const recalculated = recalculateTimeline(updated);
-    const totalProjMs = getTotalProjectDuration(recalculated);
-
-    set({
       project: {
         ...project,
         items: recalculated,
@@ -847,20 +782,23 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   },
 
   detectSilencesOnly: async (param) => {
-    const { project, silenceSensitivity } = get();
-    if (!project) return { count: 0, message: 'No video project loaded.' };
+    const currentProject = get().project;
+    if (!currentProject) return { count: 0, message: 'No video project loaded.' };
 
     const effectiveSensitivity: SilenceSensitivity = typeof param === 'string'
       ? (param === 'Tight' ? 'Sensitive' : param === 'Gentle' ? 'Strict' : param as SilenceSensitivity)
       : typeof param === 'number'
       ? (param >= 700 ? 'Strict' : param <= 400 ? 'Sensitive' : 'Normal')
-      : (silenceSensitivity ?? 'Normal');
+      : (get().silenceSensitivity ?? 'Normal');
 
     const res = await detectSilenceInVideo(
-      project.sourceVideoUrl,
-      project.sourceDurationMs,
+      currentProject.sourceVideoUrl,
+      currentProject.sourceDurationMs,
       effectiveSensitivity
     );
+
+    const latestProject = get().project;
+    if (!latestProject) return { count: 0, message: 'Project was closed.' };
 
     const msg = res.diagnosticMessage || (res.silences.length === 0
       ? (res.warning || `No pauses detected (${effectiveSensitivity} mode).`)
@@ -871,13 +809,13 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     }
 
     get().pushHistory();
-    const updated = injectSilenceCutsIntoTimeline(project.items, res.silences);
+    const updated = injectSilenceCutsIntoTimeline(latestProject.items, res.silences);
     const recalculated = recalculateTimeline(updated);
     const totalProjMs = getTotalProjectDuration(recalculated);
 
     set({
       project: {
-        ...project,
+        ...latestProject,
         items: recalculated,
         totalProjectDurationMs: totalProjMs,
         updatedAt: Date.now()
@@ -888,28 +826,31 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   },
 
   removeOrDetectSilences: async (param) => {
-    const { project, silenceSensitivity } = get();
-    if (!project) return { changed: false, message: 'No video project loaded.' };
+    let currentProject = get().project;
+    if (!currentProject) return { changed: false, message: 'No video project loaded.' };
 
     const effectiveSensitivity: SilenceSensitivity = typeof param === 'string'
       ? (param === 'Tight' ? 'Sensitive' : param === 'Gentle' ? 'Strict' : param as SilenceSensitivity)
       : typeof param === 'number'
       ? (param >= 700 ? 'Strict' : param <= 400 ? 'Sensitive' : 'Normal')
-      : (silenceSensitivity ?? 'Normal');
-    let items = [...project.items];
-    let existingSuggested = items.filter(it => it.status === 'SUGGESTED_SILENCE_CUT');
-    let rawGapsCount = existingSuggested.length;
-    let noiseFloorDb = -50;
-    let speechLevelDb = -20;
-    let thresholdDb = -40;
+      : (get().silenceSensitivity ?? 'Normal');
 
-    // If detector hasn't run yet, run it directly on source video
+    let existingSuggested = currentProject.items.filter(it => it.status === 'SUGGESTED_SILENCE_CUT');
+    const hadPriorSuggestions = existingSuggested.length > 0;
+    let rawGapsCount = existingSuggested.length;
+    let noiseFloorDb: number | null = null;
+    let speechLevelDb: number | null = null;
+    let thresholdDb: number | null = null;
+
     if (existingSuggested.length === 0) {
       const res = await detectSilenceInVideo(
-        project.sourceVideoUrl,
-        project.sourceDurationMs,
+        currentProject.sourceVideoUrl,
+        currentProject.sourceDurationMs,
         effectiveSensitivity
       );
+      currentProject = get().project;
+      if (!currentProject) return { changed: false, message: 'Project was closed.' };
+
       rawGapsCount = res.rawGapsCount;
       noiseFloorDb = res.noiseFloorDb;
       speechLevelDb = res.speechLevelDb;
@@ -921,31 +862,80 @@ export const useEditorStore = create<EditorState>((set, get) => ({
           message: res.diagnosticMessage || res.warning || `No pauses detected (${effectiveSensitivity} mode).`
         };
       }
-      items = injectSilenceCutsIntoTimeline(items, res.silences);
-      existingSuggested = items.filter(it => it.status === 'SUGGESTED_SILENCE_CUT');
+      const injected = injectSilenceCutsIntoTimeline(currentProject.items, res.silences);
+      currentProject = { ...currentProject, items: injected };
+      existingSuggested = currentProject.items.filter(it => it.status === 'SUGGESTED_SILENCE_CUT');
     }
 
-    const count = existingSuggested.length;
-    const totalSilenceMs = existingSuggested.reduce((acc, it) => acc + it.durationMs, 0);
+    const silencesToDelete = existingSuggested.filter(it => it.meta?.silenceSelected !== false);
+    const count = silencesToDelete.length;
+    if (count === 0) {
+      return { changed: false, message: 'No selected silence cuts to apply.' };
+    }
+    const totalSilenceMs = silencesToDelete.reduce((acc, it) => acc + it.durationMs, 0);
 
     get().pushHistory();
 
-    const updated = items.map(it =>
-      it.status === 'SUGGESTED_SILENCE_CUT' ? { ...it, status: 'DELETED' as const } : it
-    );
-    const recalculated = recalculateTimeline(updated);
+    const updated = currentProject.items.map(it => {
+      if (it.status === 'SUGGESTED_SILENCE_CUT') {
+        const isSelected = it.meta?.silenceSelected !== false;
+        return {
+          ...it,
+          status: isSelected ? ('DELETED' as const) : ('ACTIVE' as const),
+          title: isSelected ? it.title : (currentProject?.sourceFileName || it.title)
+        };
+      }
+      return it;
+    });
+
+    // Coalesce adjacent active source clips
+    const coalesced: TimelineItem[] = [];
+    for (const it of updated) {
+      if (coalesced.length === 0) {
+        coalesced.push({ ...it });
+        continue;
+      }
+      const prev = coalesced[coalesced.length - 1];
+      if (
+        prev.status === 'ACTIVE' &&
+        it.status === 'ACTIVE' &&
+        prev.kind === 'SOURCE_CLIP' &&
+        it.kind === 'SOURCE_CLIP' &&
+        prev.blobUrl === it.blobUrl &&
+        Math.abs(prev.sourceEndMs - it.sourceStartMs) <= 5
+      ) {
+        prev.sourceEndMs = it.sourceEndMs;
+        prev.durationMs = prev.sourceEndMs - prev.sourceStartMs;
+        prev.projectEndMs = prev.projectStartMs + prev.durationMs;
+        if (it.transitionOut && it.transitionOut.type !== 'none') {
+          prev.transitionOut = it.transitionOut;
+        }
+        if (currentProject.sourceFileName) {
+          prev.title = currentProject.sourceFileName;
+        }
+      } else {
+        coalesced.push({ ...it });
+      }
+    }
+
+    const recalculated = recalculateTimeline(coalesced);
     const newDurationMs = getTotalProjectDuration(recalculated);
 
     set({
       project: {
-        ...project,
+        ...currentProject,
         items: recalculated,
         totalProjectDurationMs: newDurationMs,
         updatedAt: Date.now()
       }
     });
 
-    const msg = `Found ${rawGapsCount} raw gaps -> ${count} merged regions (${(totalSilenceMs / 1000).toFixed(1)}s removed, speech ${speechLevelDb.toFixed(1)} dB, noise ${noiseFloorDb.toFixed(1)} dB, threshold ${thresholdDb.toFixed(1)} dB). New length ${(newDurationMs / 1000).toFixed(1)} s.`;
+    const secondsRemovedStr = (totalSilenceMs / 1000).toFixed(1);
+    const newLengthStr = (newDurationMs / 1000).toFixed(1);
+    const msg = hadPriorSuggestions || noiseFloorDb === null
+      ? `Applied ${count} silence cuts (${secondsRemovedStr}s removed). New length ${newLengthStr}s.`
+      : `Found ${rawGapsCount} raw gaps -> ${count} merged regions (${secondsRemovedStr}s removed, speech ${speechLevelDb!.toFixed(1)} dB, noise ${noiseFloorDb!.toFixed(1)} dB, threshold ${thresholdDb!.toFixed(1)} dB). New length ${newLengthStr}s.`;
+
     return {
       changed: true,
       message: msg,
@@ -953,10 +943,6 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       totalSilenceMs,
       newDurationMs
     };
-  },
-
-  acceptAllSilences: async () => {
-    return await get().removeOrDetectSilences();
   },
 
   setTransition: (itemId: string, type: TransitionType, durationMs = 400) => {
@@ -1322,9 +1308,8 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   },
 
   insertUserClip: (clipId, atProjectMs) => {
-    const { customMemeClips, userUploadedClips } = get();
-    const clips = userUploadedClips.length > 0 ? userUploadedClips : customMemeClips;
-    const clip = clips.find((c) => c.id === clipId) || clips[clips.length - 1];
+    const { userUploadedClips } = get();
+    const clip = userUploadedClips.find((c) => c.id === clipId) || userUploadedClips[userUploadedClips.length - 1];
     if (!clip) return;
 
     get().insertMemeAtProjectMs({
@@ -1341,7 +1326,6 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     const next = enabled !== undefined ? enabled : !cur;
     set((s) => ({
       voiceEnhanceEnabled: next,
-      isAudioEnhanceActive: next,
       project: s.project
         ? {
             ...s.project,
@@ -1359,7 +1343,6 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     const next = enabled !== undefined ? enabled : !cur;
     set((s) => ({
       noiseRemovalEnabled: next,
-      isNoiseReductionActive: next,
       project: s.project
         ? {
             ...s.project,
@@ -1372,27 +1355,6 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         : null
     }));
   },
-
-  toggleNoiseReduction: (enabled) => {
-    get().toggleNoiseRemoval(enabled);
-  },
-
-  setDenoisedAudio: (blob, url) => {
-    // Revoke old URL if exists
-    const oldUrl = get().denoisedAudioUrl;
-    if (oldUrl) URL.revokeObjectURL(oldUrl);
-    set({ denoisedAudioBlob: blob, denoisedAudioUrl: url, isDenoising: false, denoiseProgress: '' });
-  },
-
-  clearDenoisedAudio: () => {
-    const oldUrl = get().denoisedAudioUrl;
-    if (oldUrl) URL.revokeObjectURL(oldUrl);
-    set({ denoisedAudioBlob: null, denoisedAudioUrl: null, isDenoising: false, denoiseProgress: '' });
-  },
-
-  setIsDenoising: (val) => set({ isDenoising: val }),
-
-  setDenoiseProgress: (msg) => set({ denoiseProgress: msg }),
 
   setBgMusic: (track) => {
     const prev = get().bgMusic;
@@ -1453,11 +1415,39 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     const blobUrl = URL.createObjectURL(file);
     const tempVideo = document.createElement('video');
     tempVideo.preload = 'metadata';
+    tempVideo.muted = true;
     tempVideo.src = blobUrl;
-    await new Promise<void>((resolve) => {
-      tempVideo.onloadedmetadata = () => resolve();
-      tempVideo.onerror = () => resolve();
-    });
+
+    try {
+      await new Promise<void>((resolve, reject) => {
+        const timeout = setTimeout(() => {
+          cleanup();
+          reject(new Error('Video metadata timeout (10s)'));
+        }, 10000);
+
+        const onLoaded = () => {
+          cleanup();
+          resolve();
+        };
+
+        const onError = () => {
+          cleanup();
+          reject(new Error('Failed to load video file'));
+        };
+
+        function cleanup() {
+          clearTimeout(timeout);
+          tempVideo.onloadedmetadata = null;
+          tempVideo.onerror = null;
+        }
+
+        tempVideo.onloadedmetadata = onLoaded;
+        tempVideo.onerror = onError;
+      });
+    } catch (err) {
+      URL.revokeObjectURL(blobUrl);
+      throw err;
+    }
 
     const durationMs = Math.round((tempVideo.duration || 3) * 1000);
     const newClip: UploadedMemeClip = {
@@ -1470,27 +1460,24 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     };
 
     set((s) => ({
-      userUploadedClips: [...(s.userUploadedClips || []), newClip],
-      customMemeClips: [...(s.customMemeClips || []), newClip]
+      userUploadedClips: [...(s.userUploadedClips || []), newClip]
     }));
 
     return newClip;
   },
 
   removeUploadedMeme: (clipId: string) => {
-    const { userUploadedClips } = get();
+    const { userUploadedClips, project } = get();
     const clip = userUploadedClips.find(c => c.id === clipId);
     if (clip?.blobUrl) {
-      URL.revokeObjectURL(clip.blobUrl);
+      const isUsedInTimeline = project?.items.some(it => it.blobUrl === clip.blobUrl);
+      if (!isUsedInTimeline) {
+        URL.revokeObjectURL(clip.blobUrl);
+      }
     }
     set((s) => ({
-      userUploadedClips: (s.userUploadedClips || []).filter(c => c.id !== clipId),
-      customMemeClips: (s.customMemeClips || []).filter(c => c.id !== clipId)
+      userUploadedClips: (s.userUploadedClips || []).filter(c => c.id !== clipId)
     }));
-  },
-
-  addCustomMeme: async (file: File) => {
-    return get().addUploadedMeme(file);
   },
 
   applyAICommand: async (command: AICommand, rawInput = '') => {
@@ -1533,7 +1520,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       });
     } else if (action === 'REMOVE_SILENCE') {
       if (rawInput.toLowerCase().includes('non-speech') || rawInput.toLowerCase().includes('breath') || rawInput.toLowerCase().includes('ambient')) {
-        store.suggestNonSpeechSilences();
+        store.suggestNonSpeechCuts();
         return;
       }
       const res = await store.removeOrDetectSilences(payload.minDurationMs);
@@ -1557,8 +1544,8 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         appliedMessage: `Inserted meme "${meme.title}" at ${(payload.atProjectMs / 1000).toFixed(1)}s.`
       });
     } else if (action === 'INSERT_USER_CLIP') {
-      const clips = store.userUploadedClips?.length > 0 ? store.userUploadedClips : store.customMemeClips;
-      if (!clips || clips.length === 0) {
+      const clips = store.userUploadedClips || [];
+      if (clips.length === 0) {
         store.addCommandLog({
           id: `cmd_${Date.now()}`,
           rawInput,
@@ -1584,18 +1571,28 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       });
     } else if (action === 'ADD_TRANSITION') {
       const activeItems = store.project?.items.filter(it => it.status === 'ACTIVE') || [];
-      const targetId = payload.clipId || (activeItems.length > 0 ? activeItems[0].id : undefined);
-      if (targetId) {
-        store.setTransition(targetId, payload.type, payload.durationMs);
+      if (activeItems.length === 0) {
         store.addCommandLog({
           id: `cmd_${Date.now()}`,
           rawInput,
           timestamp: Date.now(),
           parsedCommand: command,
-          status: 'SUCCESS',
-          appliedMessage: `Applied ${payload.type} transition (${payload.durationMs}ms).`
+          status: 'WARNING',
+          appliedMessage: 'No active clips on timeline to add a transition to.'
         });
+        return;
       }
+      const selectedActive = activeItems.find(it => it.id === store.selectedItemId);
+      const targetId = payload.clipId || (selectedActive ? selectedActive.id : activeItems[0].id);
+      store.setTransition(targetId, payload.type, payload.durationMs);
+      store.addCommandLog({
+        id: `cmd_${Date.now()}`,
+        rawInput,
+        timestamp: Date.now(),
+        parsedCommand: command,
+        status: 'SUCCESS',
+        appliedMessage: `Applied ${payload.type} transition (${payload.durationMs}ms).`
+      });
     } else if (action === 'ENHANCE_AUDIO') {
       store.toggleVoiceEnhance(payload.enabled);
       store.addCommandLog({
@@ -1605,7 +1602,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         parsedCommand: command,
         status: 'SUCCESS',
         appliedMessage: payload.enabled
-          ? 'Speaker Voice Enhancement activated (80Hz HPF + 250Hz warmth cut + 3kHz boost + dynamic leveling).'
+          ? 'Speaker Voice Enhancement activated (EQ & dynamic leveling).'
           : 'Speaker Voice Enhancement disabled.'
       });
     } else if (action === 'REMOVE_NOISE') {
@@ -1617,8 +1614,8 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         parsedCommand: command,
         status: 'SUCCESS',
         appliedMessage: payload.enabled
-          ? 'Background Noise Removal activated (100Hz HPF + 7500Hz LPF + dynamic noise-floor gate).'
-          : 'Background Noise Removal disabled.'
+          ? 'Reduce Low Hum (Basic) activated (high-pass filter).'
+          : 'Reduce Low Hum (Basic) disabled.'
       });
     } else if (action === 'RESET_AUDIO') {
       store.toggleVoiceEnhance(false);
@@ -1629,7 +1626,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         timestamp: Date.now(),
         parsedCommand: command,
         status: 'SUCCESS',
-        appliedMessage: 'Audio reset: Speaker Voice Enhancement and Background Noise Removal disabled.'
+        appliedMessage: 'Audio reset: Speaker Voice Enhancement and Reduce Low Hum (Basic) disabled.'
       });
     } else if (action === 'GENERATE_TRANSCRIPT') {
       const isHinglish = rawInput.toLowerCase().includes('hinglish') || rawInput.toLowerCase().includes('hindi');
@@ -1642,15 +1639,26 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         await store.generateTranscript();
         curChapters = get().project?.chapters || [];
       }
-      const chapList = curChapters.map(c => `${(c.sourceMs / 1000).toFixed(1)}s: ${c.title}`).join(' | ');
-      store.addCommandLog({
-        id: `cmd_${Date.now()}`,
-        rawInput,
-        timestamp: Date.now(),
-        parsedCommand: command,
-        status: 'SUCCESS',
-        appliedMessage: chapList || 'No speech segments detected to form chapters.'
-      });
+      if (curChapters.length > 0) {
+        const chapList = curChapters.map(c => `${(c.sourceMs / 1000).toFixed(1)}s: ${c.title}`).join(' | ');
+        store.addCommandLog({
+          id: `cmd_${Date.now()}`,
+          rawInput,
+          timestamp: Date.now(),
+          parsedCommand: command,
+          status: 'SUCCESS',
+          appliedMessage: chapList
+        });
+      } else {
+        store.addCommandLog({
+          id: `cmd_${Date.now()}`,
+          rawInput,
+          timestamp: Date.now(),
+          parsedCommand: command,
+          status: 'WARNING',
+          appliedMessage: 'No speech segments detected to form chapters.'
+        });
+      }
     } else if (action === 'AMBIGUOUS_NEED_CLARIFICATION') {
       store.addCommandLog({
         id: `cmd_${Date.now()}`,

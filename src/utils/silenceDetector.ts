@@ -146,16 +146,16 @@ export async function detectSilenceInVideo(
       audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
     } catch {
       await audioCtx.close();
-      const sim = generateSimulatedSilences(sourceDurationMs);
       return {
-        silences: sim,
-        noiseFloorDb: -50,
+        silences: [],
+        noiseFloorDb: -60,
         speechLevelDb: -20,
-        thresholdDb: -40,
-        rawGapsCount: sim.length,
-        mergedRegionsCount: sim.length,
-        totalWindows: Math.floor(sourceDurationMs / 50),
-        sensitivity: normalizedSensitivity
+        thresholdDb: -50,
+        rawGapsCount: 0,
+        mergedRegionsCount: 0,
+        totalWindows: 0,
+        sensitivity: normalizedSensitivity,
+        warning: 'Could not analyze audio for pauses on this device. You can still split or trim manually.'
       };
     }
 
@@ -322,50 +322,23 @@ export async function detectSilenceInVideo(
       diagnosticMessage
     };
   } catch (err) {
-    console.warn('[SilenceDetector] Audio analysis failed, using simulated fallback:', err);
-    const sim = generateSimulatedSilences(sourceDurationMs);
+    console.warn('[SilenceDetector] Audio analysis failed:', err);
     return {
-      silences: sim,
-      noiseFloorDb: -50,
+      silences: [],
+      noiseFloorDb: -60,
       speechLevelDb: -20,
-      thresholdDb: -40,
-      rawGapsCount: sim.length,
-      mergedRegionsCount: sim.length,
+      thresholdDb: -50,
+      rawGapsCount: 0,
+      mergedRegionsCount: 0,
       totalWindows: Math.floor(sourceDurationMs / 50),
       sensitivity: normalizedSensitivity,
-      warning: 'Audio analysis error; loaded fallback simulated pauses.'
+      warning: 'Could not analyze audio for pauses on this device. You can still split or trim manually.'
     };
   }
 }
 
 export const detectSilences = detectSilenceInVideo;
 export const detectSilencesLegacy = detectSilenceInVideo;
-
-/**
- * Fallback for synthetic demo video clips
- */
-export function generateSimulatedSilences(totalDurationMs: number): DetectedSilence[] {
-  if (totalDurationMs < 10000) return [];
-
-  const silences: DetectedSilence[] = [];
-  if (totalDurationMs >= 6000) {
-    silences.push({
-      startMs: 3800,
-      endMs: 5100,
-      durationMs: 1300,
-      avgRms: 0.004
-    });
-  }
-  if (totalDurationMs >= 16000) {
-    silences.push({
-      startMs: 11800,
-      endMs: 13600,
-      durationMs: 1800,
-      avgRms: 0.003
-    });
-  }
-  return silences;
-}
 
 /**
  * Splits existing timeline items into active speech segments and SUGGESTED_SILENCE_CUT items.
@@ -386,7 +359,7 @@ export function injectSilenceCutsIntoTimeline(
     const updated: TimelineItem[] = [];
 
     for (const item of activeItems) {
-      if (item.status !== 'ACTIVE') {
+      if (item.status !== 'ACTIVE' || item.kind !== 'SOURCE_CLIP' || item.meta?.isAddedClip) {
         updated.push(item);
         continue;
       }

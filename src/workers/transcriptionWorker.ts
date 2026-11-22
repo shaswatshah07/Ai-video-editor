@@ -13,7 +13,12 @@ async function getTranscriber(
 ) {
   // Check WebGPU support
   try {
-    if (typeof navigator !== 'undefined' && 'gpu' in navigator && (navigator as any).gpu) {
+    if (
+      typeof navigator !== 'undefined' &&
+      'gpu' in navigator &&
+      Boolean((navigator as any).gpu) &&
+      Boolean(await (navigator as any).gpu?.requestAdapter())
+    ) {
       currentDevice = 'webgpu';
     } else {
       currentDevice = 'wasm';
@@ -85,6 +90,20 @@ async function getTranscriber(
     }
   };
 
+  const createPipeline = async (targetModel: string, opts: any) => {
+    if (currentDevice === 'webgpu') {
+      try {
+        return await pipeline('automatic-speech-recognition', targetModel, opts);
+      } catch (gpuErr: any) {
+        console.warn(`WebGPU initialization failed for ${targetModel}, falling back to WASM:`, gpuErr);
+        currentDevice = 'wasm';
+        opts.device = 'wasm';
+        return await pipeline('automatic-speech-recognition', targetModel, opts);
+      }
+    }
+    return await pipeline('automatic-speech-recognition', targetModel, opts);
+  };
+
   if (requestedMode === 'transcribe_hinglish') {
     modelId = 'ishaan-g/whisper-hinglish-swift_timestamped';
     const cacheKey = `${modelId}_${currentDevice}`;
@@ -100,7 +119,7 @@ async function getTranscriber(
     // Try loading with dtype: { encoder_model: 'fp32', decoder_model_merged: 'q8' }
     // If fp32 encoder fails to load from Hugging Face, automatically catch and fall back to dtype: 'q8'
     try {
-      const transcriber = await pipeline('automatic-speech-recognition', modelId, {
+      const transcriber = await createPipeline(modelId, {
         ...pipelineOptions,
         dtype: { encoder_model: 'fp32', decoder_model_merged: 'q8' }
       });
@@ -109,7 +128,7 @@ async function getTranscriber(
     } catch (fp32Err: any) {
       console.warn('Hinglish fp32 encoder load failed; falling back to q8:', fp32Err);
       try {
-        const transcriber = await pipeline('automatic-speech-recognition', modelId, {
+        const transcriber = await createPipeline(modelId, {
           ...pipelineOptions,
           dtype: 'q8'
         });
@@ -122,7 +141,7 @@ async function getTranscriber(
           message: 'Whisper Hinglish model unavailable; falling back to multilingual Whisper Small.'
         });
         const fallbackModelId = 'onnx-community/whisper-small';
-        const fallbackTranscriber = await pipeline('automatic-speech-recognition', fallbackModelId, {
+        const fallbackTranscriber = await createPipeline(fallbackModelId, {
           ...pipelineOptions,
           dtype: { encoder_model: 'q4', decoder_model_merged: 'q4' }
         });
@@ -143,7 +162,7 @@ async function getTranscriber(
   }
 
   try {
-    const transcriber = await pipeline('automatic-speech-recognition', modelId, pipelineOptions);
+    const transcriber = await createPipeline(modelId, pipelineOptions);
     loadedTranscribers.set(cacheKey, transcriber);
     return { transcriber, quality: requestedQuality, modelId, device: currentDevice };
   } catch (err: any) {
@@ -155,7 +174,7 @@ async function getTranscriber(
       });
       const fallbackModelId = 'onnx-community/whisper-base';
       pipelineOptions.dtype = { encoder_model: 'fp32', decoder_model_merged: 'q4' };
-      const fallbackTranscriber = await pipeline('automatic-speech-recognition', fallbackModelId, pipelineOptions);
+      const fallbackTranscriber = await createPipeline(fallbackModelId, pipelineOptions);
       loadedTranscribers.set(`${fallbackModelId}_${currentDevice}`, fallbackTranscriber);
       return { transcriber: fallbackTranscriber, quality: 'fast', modelId: fallbackModelId, device: currentDevice };
     }

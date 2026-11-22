@@ -144,11 +144,6 @@ export const Screen2Workspace: React.FC = () => {
     currentProjectMsRef.current = currentProjectMs;
   }, [currentProjectMs]);
 
-  // Ensure Noise Removal defaults to OFF on fresh workspace load
-  useEffect(() => {
-    toggleNoiseRemoval(false);
-  }, [toggleNoiseRemoval]);
-
   // Web Audio Context & Native Real-Time DSP Filter Refs (audible with zero echo)
   const audioContextRef = useRef<AudioContext | null>(null);
   const nrHighPass1Ref = useRef<BiquadFilterNode | null>(null);
@@ -165,6 +160,7 @@ export const Screen2Workspace: React.FC = () => {
   // UI state
   const [promptInput, setPromptInput] = useState<string>('');
   const [isAiProcessing, setIsAiProcessing] = useState<boolean>(false);
+  const [isDetectingSilences, setIsDetectingSilences] = useState<boolean>(false);
   const [isLeftOpen, setIsLeftOpen] = useState<boolean>(true);
   const [isRightOpen, setIsRightOpen] = useState<boolean>(true);
   const [activeMemePlaying, setActiveMemePlaying] = useState<boolean>(false);
@@ -917,15 +913,28 @@ export const Screen2Workspace: React.FC = () => {
       const { item, sourceMs } = mapProjectToSource(currentProjectMsRef.current, project.items);
       if (item && item.kind === 'SOURCE_CLIP' && mainVideoRef.current) {
         setActiveMemePlaying(false);
+        if (memeVideoRef.current) {
+          if (!memeVideoRef.current.paused) memeVideoRef.current.pause();
+          memeVideoRef.current.muted = true;
+        }
+        mainVideoRef.current.muted = false;
         const targetSec = sourceMs / 1000;
         if (Math.abs(mainVideoRef.current.currentTime - targetSec) > 0.15 && !mainVideoRef.current.seeking) {
           mainVideoRef.current.currentTime = targetSec;
         }
         mainVideoRef.current.playbackRate = previewSpeed;
         mainVideoRef.current.preservesPitch = true;
-        mainVideoRef.current.play().catch(() => {});
+        mainVideoRef.current.play().catch(() => {
+          setIsPlaying(false);
+          isPlayingRef.current = false;
+        });
       } else if (item && item.kind === 'MEME_CLIP' && memeVideoRef.current) {
         setActiveMemePlaying(true);
+        if (mainVideoRef.current) {
+          if (!mainVideoRef.current.paused) mainVideoRef.current.pause();
+          mainVideoRef.current.muted = true;
+        }
+        memeVideoRef.current.muted = false;
         if (loadedSecondaryUrlRef.current !== item.blobUrl) {
           loadedSecondaryUrlRef.current = item.blobUrl;
           setIsSecondaryReady(false);
@@ -935,11 +944,14 @@ export const Screen2Workspace: React.FC = () => {
         }
         memeVideoRef.current.playbackRate = previewSpeed;
         memeVideoRef.current.preservesPitch = true;
-        const targetSec = (sourceMs - item.sourceStartMs) / 1000;
+        const targetSec = sourceMs / 1000;
         if (Math.abs(memeVideoRef.current.currentTime - targetSec) > 0.15 && !memeVideoRef.current.seeking) {
           memeVideoRef.current.currentTime = targetSec;
         }
-        memeVideoRef.current.play().catch(() => {});
+        memeVideoRef.current.play().catch(() => {
+          setIsPlaying(false);
+          isPlayingRef.current = false;
+        });
       }
     }
   };
@@ -993,7 +1005,7 @@ export const Screen2Workspace: React.FC = () => {
           } else if (memeVideoRef.current.readyState >= 2) {
             setIsSecondaryReady(true);
           }
-          const memeSec = Math.max(0, clamped - item.projectStartMs) / 1000;
+          const memeSec = sourceMs / 1000;
           memeVideoRef.current.currentTime = memeSec;
           lastSeekTargetRef.current = sourceMs;
           if (isPlayingRef.current && memeVideoRef.current.paused) {
@@ -1122,6 +1134,20 @@ export const Screen2Workspace: React.FC = () => {
         project
       );
       await applyAICommand(command, query);
+    } catch (err: unknown) {
+      console.warn('Command processing failed:', err);
+      addCommandLog({
+        id: `cmd_${Date.now()}`,
+        rawInput: query,
+        timestamp: Date.now(),
+        parsedCommand: {
+          action: 'UNSUPPORTED_OPERATION',
+          payload: { feature: 'command_execution', message: err instanceof Error ? err.message : 'Failed to process command' },
+          explanation: 'Command execution encountered an error.'
+        },
+        status: 'WARNING',
+        appliedMessage: err instanceof Error ? err.message : 'Could not execute command. Please try a different wording.'
+      });
     } finally {
       setIsAiProcessing(false);
     }
@@ -1265,7 +1291,21 @@ export const Screen2Workspace: React.FC = () => {
     };
 
     tempAudio.onerror = () => {
-      finalize(60000);
+      URL.revokeObjectURL(blobUrl);
+      if (bgMusicInputRef.current) bgMusicInputRef.current.value = '';
+      alert('Could not decode audio file metadata. Please choose a valid MP3, WAV, or AAC audio file.');
+      addCommandLog({
+        id: `cmd_${Date.now()}`,
+        rawInput: `Add music: ${file.name}`,
+        timestamp: Date.now(),
+        parsedCommand: {
+          action: 'UNSUPPORTED_OPERATION',
+          payload: { feature: 'bg_music', message: 'Could not decode audio file metadata.' },
+          explanation: 'Failed to read audio metadata.'
+        },
+        status: 'WARNING',
+        appliedMessage: `Could not load "${file.name}" — audio format could not be decoded.`
+      });
     };
   };
 
@@ -2433,26 +2473,46 @@ export const Screen2Workspace: React.FC = () => {
             {/* Silence Detection (Normal Preset internally) */}
             <div className="flex items-center space-x-1.5 pl-3 border-l border-[#2C2B28]">
               <button
+                disabled={isDetectingSilences}
                 onClick={async () => {
-                  const res = await detectSilencesOnly('Normal');
+                  if (isDetectingSilences) return;
+                  setIsDetectingSilences(true);
                   const cfg = SILENCE_PRESETS.Normal;
-                  addCommandLog({
-                    id: `cmd_${Date.now()}`,
-                    rawInput: 'Detect pauses (Normal mode)',
-                    timestamp: Date.now(),
-                    parsedCommand: {
-                      action: 'REMOVE_SILENCE',
-                      payload: { minDurationMs: cfg.minSilenceMs, paddingPreMs: cfg.prePaddingMs, paddingPostMs: cfg.postPaddingMs },
-                      explanation: res.message
-                    },
-                    status: res.count > 0 ? 'SUCCESS' : 'WARNING',
-                    appliedMessage: res.message
-                  });
+                  try {
+                    const res = await detectSilencesOnly('Normal');
+                    addCommandLog({
+                      id: `cmd_${Date.now()}`,
+                      rawInput: 'Detect pauses (Normal mode)',
+                      timestamp: Date.now(),
+                      parsedCommand: {
+                        action: 'REMOVE_SILENCE',
+                        payload: { minDurationMs: cfg.minSilenceMs, paddingPreMs: cfg.prePaddingMs, paddingPostMs: cfg.postPaddingMs },
+                        explanation: res.message
+                      },
+                      status: res.count > 0 ? 'SUCCESS' : 'WARNING',
+                      appliedMessage: res.message
+                    });
+                  } catch (err: unknown) {
+                    addCommandLog({
+                      id: `cmd_${Date.now()}`,
+                      rawInput: 'Detect pauses (Normal mode)',
+                      timestamp: Date.now(),
+                      parsedCommand: {
+                        action: 'REMOVE_SILENCE',
+                        payload: { minDurationMs: cfg.minSilenceMs, paddingPreMs: cfg.prePaddingMs, paddingPostMs: cfg.postPaddingMs },
+                        explanation: 'Silence detection failed.'
+                      },
+                      status: 'WARNING',
+                      appliedMessage: err instanceof Error ? err.message : 'Could not analyze audio for pauses on this device.'
+                    });
+                  } finally {
+                    setIsDetectingSilences(false);
+                  }
                 }}
-                className="px-2 py-0.5 bg-[#D97706]/20 hover:bg-[#D97706]/35 border border-[#F59E0B]/60 text-[#FCD34D] rounded text-[11px] font-medium transition-colors flex items-center space-x-1.5"
+                className="px-2 py-0.5 bg-[#D97706]/20 hover:bg-[#D97706]/35 border border-[#F59E0B]/60 text-[#FCD34D] rounded text-[11px] font-medium transition-colors flex items-center space-x-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
                 title="Experimental: works best on quiet/low-noise recordings. For noisy audio, use Split (S) or Cut commands."
               >
-                <span>Detect Silences</span>
+                <span>{isDetectingSilences ? 'Detecting...' : 'Detect Silences'}</span>
                 <span className="bg-[#D97706]/15 border border-[#F59E0B]/40 text-[#FCD34D] text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded font-medium">
                   Experimental
                 </span>
