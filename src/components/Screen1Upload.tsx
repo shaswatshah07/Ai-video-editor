@@ -4,6 +4,7 @@ import { useEditorStore } from '../store/useEditorStore';
 import { TimelineItem } from '../types/edl';
 import { MEME_LIBRARY, MemeLibraryItem } from '../utils/memeLibrary';
 import { getSavedUserProfile, saveUserProfile, registerUser, UserProfile } from '../utils/supabaseClient';
+import { ThemeToggle, useTheme } from './ThemeToggle';
 
 // Types for the mascot animation lifecycle
 type BotPhase = 'idle' | 'to-cupboard' | 'searching' | 'to-computer' | 'inserting' | 'returning';
@@ -16,7 +17,7 @@ const SEQUENCE_ORDER: FrameSlotType[] = ['slotA', 'welcome', 'to', 'fastcutz', '
  * Stationary Docking Cradle
  * Anchored permanently flush on the top edge of the left-hand Upload Dropbox
  */
-const StationaryDockingPod: React.FC = () => {
+const StationaryDockingPod: React.FC<{ isDark?: boolean }> = ({ isDark = false }) => {
   return (
     <div className="relative w-[90px] sm:w-[110px] h-[30px] sm:h-[34px] flex items-center justify-center pointer-events-none select-none">
       <svg
@@ -26,30 +27,30 @@ const StationaryDockingPod: React.FC = () => {
         xmlns="http://www.w3.org/2000/svg"
       >
         {/* Glows */}
-        <ellipse cx="55" cy="24" rx="34" ry="6" fill="#D96B27" opacity="0.12" />
-        <ellipse cx="55" cy="20" rx="20" ry="4" fill="#0F766E" opacity="0.12" />
+        <ellipse cx="55" cy="24" rx="34" ry="6" fill="#D96B27" opacity={isDark ? 0.2 : 0.12} />
+        <ellipse cx="55" cy="20" rx="20" ry="4" fill="#0F766E" opacity={isDark ? 0.2 : 0.12} />
 
         {/* Pod Outer Cradle Shell */}
         <path
           d="M20 6 C20 6 28 28 55 28 C82 28 90 6 90 6 L88 2 C88 2 80 22 55 22 C30 22 22 2 22 2 Z"
-          fill="#FFFFFF"
-          stroke="#D8D4CC"
+          fill={isDark ? '#22201D' : '#FFFFFF'}
+          stroke={isDark ? '#383531' : '#D8D4CC'}
           strokeWidth="1.2"
         />
         {/* Pod Base Mounting Foot (Flush on border) */}
-        <rect x="34" y="26" width="42" height="4" rx="2" fill="#F0EEE9" stroke="#E5E2DC" strokeWidth="1" />
+        <rect x="34" y="26" width="42" height="4" rx="2" fill={isDark ? '#2A2825' : '#F0EEE9'} stroke={isDark ? '#383531' : '#E5E2DC'} strokeWidth="1" />
 
         {/* Studio Teal Charging Strip */}
         <rect x="44" y="10.5" width="22" height="2.5" rx="1.25" fill="#0F766E" opacity="0.85" />
         <rect x="46" y="10.5" width="18" height="2.5" rx="1.25" fill="#14B8A6" opacity="0.75" />
 
         {/* Crisp Nameplate Badge: FASTCUTZ */}
-        <rect x="35" y="15" width="40" height="10" rx="2.5" fill="#F7F6F2" stroke="#E5E2DC" strokeWidth="1" />
+        <rect x="35" y="15" width="40" height="10" rx="2.5" fill={isDark ? '#1E1D1B' : '#F7F6F2'} stroke={isDark ? '#383531' : '#E5E2DC'} strokeWidth="1" />
         <text
           x="55"
           y="22.5"
           textAnchor="middle"
-          fill="#D96B27"
+          fill={isDark ? '#E8632A' : '#D96B27'}
           fontSize="6.5"
           fontWeight="bold"
           fontFamily="monospace"
@@ -66,7 +67,7 @@ const StationaryDockingPod: React.FC = () => {
  * Traveling Cute Fastcutz Robot Mascot
  * Glides smoothly across the stage, searches the cupboard, and carries meme cartridges
  */
-const TravelingRobot: React.FC<{ isSearching: boolean; isCarrying: boolean }> = ({ isSearching, isCarrying }) => {
+const TravelingRobot: React.FC<{ isSearching: boolean; isCarrying: boolean; isDark?: boolean }> = ({ isSearching, isCarrying, isDark = false }) => {
   return (
     <div className={`relative w-[52px] sm:w-[60px] h-[56px] sm:h-[64px] flex items-center justify-center ${isSearching ? 'animate-fastcutz-search' : ''}`}>
       <svg
@@ -77,15 +78,15 @@ const TravelingRobot: React.FC<{ isSearching: boolean; isCarrying: boolean }> = 
       >
         <g className={isSearching ? '' : 'animate-fastcutz-breathe'}>
           {/* Top Antenna Stem */}
-          <line x1="30" y1="17" x2="30" y2="8" stroke="#8E8A82" strokeWidth="2" strokeLinecap="round" />
+          <line x1="30" y1="17" x2="30" y2="8" stroke={isDark ? '#A39E95' : '#8E8A82'} strokeWidth="2" strokeLinecap="round" />
           {/* Glowing Terracotta Antenna Bulb */}
-          <circle cx="30" cy="6.5" r="3.5" fill="#D96B27" />
-          <circle cx="30" cy="6.5" r="5.5" fill="#D96B27" opacity="0.25" />
+          <circle cx="30" cy="6.5" r="3.5" fill={isDark ? '#E8632A' : '#D96B27'} />
+          <circle cx="30" cy="6.5" r="5.5" fill={isDark ? '#E8632A' : '#D96B27'} opacity="0.25" />
           <circle cx="28.8" cy="5.2" r="1" fill="#FFFFFF" opacity="0.9" />
 
           {/* Left & Right Ear Bolt Accents */}
-          <rect x="5" y="27" width="3" height="10" rx="1.5" fill="#E5E2DC" stroke="#CBD5E1" strokeWidth="1" />
-          <rect x="52" y="27" width="3" height="10" rx="1.5" fill="#E5E2DC" stroke="#CBD5E1" strokeWidth="1" />
+          <rect x="5" y="27" width="3" height="10" rx="1.5" fill={isDark ? '#2A2825' : '#E5E2DC'} stroke={isDark ? '#383531' : '#CBD5E1'} strokeWidth="1" />
+          <rect x="52" y="27" width="3" height="10" rx="1.5" fill={isDark ? '#2A2825' : '#E5E2DC'} stroke={isDark ? '#383531' : '#CBD5E1'} strokeWidth="1" />
 
           {/* Sleek Crisp White Head Shell */}
           <rect
@@ -94,8 +95,8 @@ const TravelingRobot: React.FC<{ isSearching: boolean; isCarrying: boolean }> = 
             width="46"
             height="36"
             rx="14"
-            fill="#FFFFFF"
-            stroke="#D8D4CC"
+            fill={isDark ? '#24221F' : '#FFFFFF'}
+            stroke={isDark ? '#383531' : '#D8D4CC'}
             strokeWidth="1.5"
           />
 
@@ -106,7 +107,7 @@ const TravelingRobot: React.FC<{ isSearching: boolean; isCarrying: boolean }> = 
             width="37"
             height="22"
             rx="8"
-            fill="#181715"
+            fill="#0E0E0D"
             stroke="#2C2B28"
             strokeWidth="1"
           />
@@ -139,16 +140,16 @@ const TravelingRobot: React.FC<{ isSearching: boolean; isCarrying: boolean }> = 
           />
 
           {/* Compact Rounded Paws */}
-          <ellipse cx="14" cy="51" rx="4" ry="3" fill="#F0EEE9" stroke="#D8D4CC" strokeWidth="1" />
-          <ellipse cx="46" cy="51" rx="4" ry="3" fill="#F0EEE9" stroke="#D8D4CC" strokeWidth="1" />
+          <ellipse cx="14" cy="51" rx="4" ry="3" fill={isDark ? '#2A2825' : '#F0EEE9'} stroke={isDark ? '#383531' : '#D8D4CC'} strokeWidth="1" />
+          <ellipse cx="46" cy="51" rx="4" ry="3" fill={isDark ? '#2A2825' : '#F0EEE9'} stroke={isDark ? '#383531' : '#D8D4CC'} strokeWidth="1" />
         </g>
       </svg>
 
       {/* Mini meme cartridge in hands when carrying across stage */}
       {isCarrying && (
-        <div className="absolute -bottom-1.5 left-1/2 -translate-x-1/2 z-40 flex items-center space-x-1 px-1.5 py-0.5 rounded bg-white border border-[#D96B27] shadow-[0_2px_8px_rgba(217,107,39,0.35)] animate-pulse">
-          <div className="w-1.5 h-1.5 rounded-full bg-[#D96B27]" />
-          <span className="font-mono text-[7.5px] font-bold text-[#D96B27] tracking-wider">MP4</span>
+        <div className="absolute -bottom-1.5 left-1/2 -translate-x-1/2 z-40 flex items-center space-x-1 px-1.5 py-0.5 rounded bg-white dark:bg-[#24221F] border border-[#D96B27] dark:border-[#E8632A] shadow-[0_2px_8px_rgba(217,107,39,0.35)] animate-pulse">
+          <div className="w-1.5 h-1.5 rounded-full bg-[#D96B27] dark:bg-[#E8632A]" />
+          <span className="font-mono text-[7.5px] font-bold text-[#D96B27] dark:text-[#E8632A] tracking-wider">MP4</span>
         </div>
       )}
     </div>
@@ -309,7 +310,7 @@ const StudioKeyLight: React.FC = () => {
  * Studio Editor Chair (Back View)
  * Centered directly below the Upload Dropbox, facing toward the dropbox as the studio screen
  */
-const StudioEditorChair: React.FC = () => {
+const StudioEditorChair: React.FC<{ isDark?: boolean }> = ({ isDark = false }) => {
   return (
     <div
       className="w-[125px] sm:w-[135px] md:w-[155px] h-[125px] sm:h-[135px] md:h-[150px] flex items-center justify-center pointer-events-none select-none"
@@ -323,79 +324,79 @@ const StudioEditorChair: React.FC = () => {
       >
         <defs>
           <linearGradient id="chair-spine" x1="0%" y1="0%" x2="100%" y2="0%">
-            <stop offset="0%" stopColor="#E5E2DC" />
-            <stop offset="50%" stopColor="#FFFFFF" />
-            <stop offset="100%" stopColor="#E5E2DC" />
+            <stop offset="0%" stopColor={isDark ? '#2A2825' : '#E5E2DC'} />
+            <stop offset="50%" stopColor={isDark ? '#383531' : '#FFFFFF'} />
+            <stop offset="100%" stopColor={isDark ? '#2A2825' : '#E5E2DC'} />
           </linearGradient>
 
           <linearGradient id="chair-piston" x1="0%" y1="0%" x2="100%" y2="0%">
-            <stop offset="0%" stopColor="#C4BFB6" />
-            <stop offset="50%" stopColor="#E5E2DC" />
-            <stop offset="100%" stopColor="#C4BFB6" />
+            <stop offset="0%" stopColor={isDark ? '#1E1D1B' : '#C4BFB6'} />
+            <stop offset="50%" stopColor={isDark ? '#383531' : '#E5E2DC'} />
+            <stop offset="100%" stopColor={isDark ? '#1E1D1B' : '#C4BFB6'} />
           </linearGradient>
         </defs>
 
         {/* Ambient Floor Shadow Ellipse */}
-        <ellipse cx="77.5" cy="142" rx="46" ry="6" fill="#000000" fillOpacity="0.08" />
+        <ellipse cx="77.5" cy="142" rx="46" ry="6" fill="#000000" fillOpacity={isDark ? 0.25 : 0.08} />
 
-        {/* 5-Spoke Caster Base (Light warm slate) */}
+        {/* 5-Spoke Caster Base */}
         {/* Spoke 1: Far Left */}
-        <line x1="77.5" y1="124" x2="42" y2="138" stroke="#8E8A82" strokeWidth="4" strokeLinecap="round" />
-        <line x1="77.5" y1="124" x2="42" y2="138" stroke="#C4BFB6" strokeWidth="1.2" strokeLinecap="round" />
-        <circle cx="42" cy="139" r="3" fill="#66625B" stroke="#8E8A82" strokeWidth="1" />
+        <line x1="77.5" y1="124" x2="42" y2="138" stroke={isDark ? '#524F49' : '#8E8A82'} strokeWidth="4" strokeLinecap="round" />
+        <line x1="77.5" y1="124" x2="42" y2="138" stroke={isDark ? '#383531' : '#C4BFB6'} strokeWidth="1.2" strokeLinecap="round" />
+        <circle cx="42" cy="139" r="3" fill={isDark ? '#3E3B36' : '#66625B'} stroke={isDark ? '#524F49' : '#8E8A82'} strokeWidth="1" />
 
         {/* Spoke 2: Mid Left */}
-        <line x1="77.5" y1="124" x2="58" y2="143" stroke="#8E8A82" strokeWidth="4.5" strokeLinecap="round" />
-        <line x1="77.5" y1="124" x2="58" y2="143" stroke="#C4BFB6" strokeWidth="1.5" strokeLinecap="round" />
-        <circle cx="58" cy="144" r="3" fill="#66625B" stroke="#8E8A82" strokeWidth="1" />
+        <line x1="77.5" y1="124" x2="58" y2="143" stroke={isDark ? '#524F49' : '#8E8A82'} strokeWidth="4.5" strokeLinecap="round" />
+        <line x1="77.5" y1="124" x2="58" y2="143" stroke={isDark ? '#383531' : '#C4BFB6'} strokeWidth="1.5" strokeLinecap="round" />
+        <circle cx="58" cy="144" r="3" fill={isDark ? '#3E3B36' : '#66625B'} stroke={isDark ? '#524F49' : '#8E8A82'} strokeWidth="1" />
 
         {/* Spoke 3: Center Down */}
-        <line x1="77.5" y1="124" x2="77.5" y2="145" stroke="#8E8A82" strokeWidth="5" strokeLinecap="round" />
-        <line x1="77.5" y1="124" x2="77.5" y2="145" stroke="#C4BFB6" strokeWidth="1.5" strokeLinecap="round" />
-        <circle cx="77.5" cy="146" r="3.2" fill="#66625B" stroke="#8E8A82" strokeWidth="1" />
+        <line x1="77.5" y1="124" x2="77.5" y2="145" stroke={isDark ? '#524F49' : '#8E8A82'} strokeWidth="5" strokeLinecap="round" />
+        <line x1="77.5" y1="124" x2="77.5" y2="145" stroke={isDark ? '#383531' : '#C4BFB6'} strokeWidth="1.5" strokeLinecap="round" />
+        <circle cx="77.5" cy="146" r="3.2" fill={isDark ? '#3E3B36' : '#66625B'} stroke={isDark ? '#524F49' : '#8E8A82'} strokeWidth="1" />
 
         {/* Spoke 4: Mid Right */}
-        <line x1="77.5" y1="124" x2="97" y2="143" stroke="#8E8A82" strokeWidth="4.5" strokeLinecap="round" />
-        <line x1="77.5" y1="124" x2="97" y2="143" stroke="#C4BFB6" strokeWidth="1.5" strokeLinecap="round" />
-        <circle cx="97" cy="144" r="3" fill="#66625B" stroke="#8E8A82" strokeWidth="1" />
+        <line x1="77.5" y1="124" x2="97" y2="143" stroke={isDark ? '#524F49' : '#8E8A82'} strokeWidth="4.5" strokeLinecap="round" />
+        <line x1="77.5" y1="124" x2="97" y2="143" stroke={isDark ? '#383531' : '#C4BFB6'} strokeWidth="1.5" strokeLinecap="round" />
+        <circle cx="97" cy="144" r="3" fill={isDark ? '#3E3B36' : '#66625B'} stroke={isDark ? '#524F49' : '#8E8A82'} strokeWidth="1" />
 
         {/* Spoke 5: Far Right */}
-        <line x1="77.5" y1="124" x2="113" y2="138" stroke="#8E8A82" strokeWidth="4" strokeLinecap="round" />
-        <line x1="77.5" y1="124" x2="113" y2="138" stroke="#C4BFB6" strokeWidth="1.2" strokeLinecap="round" />
-        <circle cx="113" cy="139" r="3" fill="#66625B" stroke="#8E8A82" strokeWidth="1" />
+        <line x1="77.5" y1="124" x2="113" y2="138" stroke={isDark ? '#524F49' : '#8E8A82'} strokeWidth="4" strokeLinecap="round" />
+        <line x1="77.5" y1="124" x2="113" y2="138" stroke={isDark ? '#383531' : '#C4BFB6'} strokeWidth="1.2" strokeLinecap="round" />
+        <circle cx="113" cy="139" r="3" fill={isDark ? '#3E3B36' : '#66625B'} stroke={isDark ? '#524F49' : '#8E8A82'} strokeWidth="1" />
 
         {/* Center Hub Star Cap */}
-        <circle cx="77.5" cy="124" r="6" fill="#66625B" stroke="#8E8A82" strokeWidth="1.2" />
+        <circle cx="77.5" cy="124" r="6" fill={isDark ? '#3E3B36' : '#66625B'} stroke={isDark ? '#524F49' : '#8E8A82'} strokeWidth="1.2" />
 
         {/* Pneumatic Gas-Lift Piston Cylinder */}
-        <rect x="74" y="104" width="7" height="20" rx="1.5" fill="url(#chair-piston)" stroke="#8E8A82" strokeWidth="0.8" />
+        <rect x="74" y="104" width="7" height="20" rx="1.5" fill="url(#chair-piston)" stroke={isDark ? '#423F3A' : '#8E8A82'} strokeWidth="0.8" />
         {/* Tilt Mechanism Under-Seat Box */}
-        <rect x="66" y="99" width="23" height="7" rx="2" fill="#E5E2DC" stroke="#8E8A82" strokeWidth="1" />
+        <rect x="66" y="99" width="23" height="7" rx="2" fill={isDark ? '#24221F' : '#E5E2DC'} stroke={isDark ? '#423F3A' : '#8E8A82'} strokeWidth="1" />
         {/* Tilt tension knob */}
-        <rect x="74" y="103" width="7" height="3" rx="1" fill="#D96B27" opacity="0.9" />
+        <rect x="74" y="103" width="7" height="3" rx="1" fill={isDark ? '#E8632A' : '#D96B27'} opacity="0.9" />
 
         {/* Armrests */}
         <path
           d="M44 68 C44 54 48 48 55 48 L56 52 C51 52 48 56 48 68 L48 83 C48 87 53 88 58 88 L58 92 C50 92 44 89 44 83 Z"
-          fill="#F0EEE9"
-          stroke="#D8D4CC"
+          fill={isDark ? '#1E1D1B' : '#F0EEE9'}
+          stroke={isDark ? '#383531' : '#D8D4CC'}
           strokeWidth="1"
         />
-        <rect x="42" y="47" width="14" height="4.5" rx="2" fill="#E5E2DC" stroke="#C4BFB6" strokeWidth="0.8" />
+        <rect x="42" y="47" width="14" height="4.5" rx="2" fill={isDark ? '#2A2825' : '#E5E2DC'} stroke={isDark ? '#383531' : '#C4BFB6'} strokeWidth="0.8" />
 
         <path
           d="M111 68 C111 54 107 48 100 48 L99 52 C104 52 107 56 107 68 L107 83 C107 87 102 88 97 88 L97 92 C105 92 111 89 111 83 Z"
-          fill="#F0EEE9"
-          stroke="#D8D4CC"
+          fill={isDark ? '#1E1D1B' : '#F0EEE9'}
+          stroke={isDark ? '#383531' : '#D8D4CC'}
           strokeWidth="1"
         />
-        <rect x="99" y="47" width="14" height="4.5" rx="2" fill="#E5E2DC" stroke="#C4BFB6" strokeWidth="0.8" />
+        <rect x="99" y="47" width="14" height="4.5" rx="2" fill={isDark ? '#2A2825' : '#E5E2DC'} stroke={isDark ? '#383531' : '#C4BFB6'} strokeWidth="0.8" />
 
         {/* High-Back Contoured Creator Shell */}
         <path
           d="M58 26 C58 23 60 21 64 21 L91 21 C95 21 97 23 97 26 L95 44 C99 52 102 60 102 74 C102 89 97 96 92 98 L63 98 C58 96 53 89 53 74 C53 60 56 52 60 44 Z"
-          fill="#FFFFFF"
-          stroke="#D8D4CC"
+          fill={isDark ? '#22201D' : '#FFFFFF'}
+          stroke={isDark ? '#383531' : '#D8D4CC'}
           strokeWidth="1.4"
         />
 
@@ -403,36 +404,36 @@ const StudioEditorChair: React.FC = () => {
         <path
           d="M74.5 30 L80.5 30 L80.5 96 L74.5 96 Z"
           fill="url(#chair-spine)"
-          stroke="#C4BFB6"
+          stroke={isDark ? '#423F3A' : '#C4BFB6'}
           strokeWidth="0.8"
         />
 
         {/* Lumbar Support Ribbed Wings */}
         <path
           d="M60 62 C65 65 72 66 74 66 L74 77 C71 77 64 76 58 71 Z"
-          fill="#F7F6F2"
-          stroke="#E5E2DC"
+          fill={isDark ? '#2A2825' : '#F7F6F2'}
+          stroke={isDark ? '#383531' : '#E5E2DC'}
           strokeWidth="0.8"
         />
         <path
           d="M95 62 C90 65 83 66 81 66 L81 77 C84 77 91 76 97 71 Z"
-          fill="#F7F6F2"
-          stroke="#E5E2DC"
+          fill={isDark ? '#2A2825' : '#F7F6F2'}
+          stroke={isDark ? '#383531' : '#E5E2DC'}
           strokeWidth="0.8"
         />
 
         {/* Upper Backrest Cushion Contour */}
-        <rect x="63" y="32" width="29" height="18" rx="4" fill="#F0EEE9" stroke="#E5E2DC" strokeWidth="0.8" />
+        <rect x="63" y="32" width="29" height="18" rx="4" fill={isDark ? '#262421' : '#F0EEE9'} stroke={isDark ? '#383531' : '#E5E2DC'} strokeWidth="0.8" />
 
         {/* Headrest Cushion Unit */}
-        <rect x="61" y="9" width="33" height="15" rx="4.5" fill="#FFFFFF" stroke="#D8D4CC" strokeWidth="1.2" />
-        <rect x="63.5" y="11.5" width="28" height="10" rx="3" fill="#F7F6F2" />
+        <rect x="61" y="9" width="33" height="15" rx="4.5" fill={isDark ? '#2A2825' : '#FFFFFF'} stroke={isDark ? '#383531' : '#D8D4CC'} strokeWidth="1.2" />
+        <rect x="63.5" y="11.5" width="28" height="10" rx="3" fill={isDark ? '#22201D' : '#F7F6F2'} />
 
         {/* Signature Amber Stitching Accent on Headrest */}
-        <line x1="66" y1="16.5" x2="89" y2="16.5" stroke="#D96B27" strokeWidth="1.5" strokeDasharray="3 1.5" strokeLinecap="round" />
+        <line x1="66" y1="16.5" x2="89" y2="16.5" stroke={isDark ? '#E8632A' : '#D96B27'} strokeWidth="1.5" strokeDasharray="3 1.5" strokeLinecap="round" />
 
         {/* Headrest Mounting Bracket Neck */}
-        <rect x="73.5" y="21" width="8" height="4" rx="1" fill="#E5E2DC" stroke="#C4BFB6" strokeWidth="0.8" />
+        <rect x="73.5" y="21" width="8" height="4" rx="1" fill={isDark ? '#24221F' : '#E5E2DC'} stroke={isDark ? '#383531' : '#C4BFB6'} strokeWidth="0.8" />
       </svg>
     </div>
   );
@@ -597,6 +598,7 @@ const StudioPottedPlants: React.FC = () => {
 
 export const Screen1Upload: React.FC = () => {
   const { loadProject, setScreen, toggleVoiceEnhance, toggleNoiseRemoval, generateTranscript } = useEditorStore();
+  const { isDark } = useTheme();
 
   const [isDragging, setIsDragging] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -973,10 +975,10 @@ export const Screen1Upload: React.FC = () => {
       <div
         className={`w-full h-full rounded-lg border flex flex-col justify-between p-1.5 md:p-2 relative overflow-hidden transition-all ${
           hasMeme
-            ? 'bg-white border-[#0F766E]/50 shadow-[0_2px_10px_-2px_rgba(15,118,110,0.2)]'
+            ? 'bg-white dark:bg-[#1B1A18] border-[#0F766E]/50 dark:border-[#2DD4BF]/50 shadow-[0_2px_10px_-2px_rgba(15,118,110,0.2)]'
             : isFastcutz
-            ? 'bg-white border-[#D96B27]/60 shadow-[0_2px_10px_-2px_rgba(217,107,39,0.2)]'
-            : 'bg-white border-[#E5E2DC]'
+            ? 'bg-white dark:bg-[#1B1A18] border-[#D96B27]/60 dark:border-[#E8632A]/60 shadow-[0_2px_10px_-2px_rgba(217,107,39,0.2)]'
+            : 'bg-white dark:bg-[#1B1A18] border-[#E5E2DC] dark:border-[#2E2C28]'
         }`}
       >
         {/* If this slot holds a meme, render auto-playing looping video background (Copy 1 only) */}
@@ -994,27 +996,27 @@ export const Screen1Upload: React.FC = () => {
           </div>
         )}
         {hasMeme && isCopy2 && (
-          <div className="absolute inset-0 z-0 overflow-hidden bg-gradient-to-br from-[#0F766E]/20 via-[#F7F6F2] to-[#D96B27]/15 pointer-events-none" />
+          <div className="absolute inset-0 z-0 overflow-hidden bg-gradient-to-br from-[#0F766E]/20 via-[#F7F6F2] dark:via-[#1B1A18] to-[#D96B27]/15 pointer-events-none" />
         )}
 
         {/* Top Sprocket Rail */}
         <div className="flex items-center justify-between px-1 relative z-10">
           <div className="flex items-center space-x-1.5">
-            <div className="w-2.5 h-1 rounded-[1.5px] bg-[#F0EEE9] border border-[#E5E2DC]" />
-            <div className="w-2.5 h-1 rounded-[1.5px] bg-[#F0EEE9] border border-[#E5E2DC]" />
-            <div className="w-2.5 h-1 rounded-[1.5px] bg-[#F0EEE9] border border-[#E5E2DC]" />
+            <div className="w-2.5 h-1 rounded-[1.5px] bg-[#F0EEE9] dark:bg-[#24221F] border border-[#E5E2DC] dark:border-[#2C2A27]" />
+            <div className="w-2.5 h-1 rounded-[1.5px] bg-[#F0EEE9] dark:bg-[#24221F] border border-[#E5E2DC] dark:border-[#2C2A27]" />
+            <div className="w-2.5 h-1 rounded-[1.5px] bg-[#F0EEE9] dark:bg-[#24221F] border border-[#E5E2DC] dark:border-[#2C2A27]" />
           </div>
           <span
             className={`font-mono text-[8px] md:text-[9px] tabular-nums tracking-widest ${
               hasMeme
-                ? 'text-[#0F766E] font-semibold'
+                ? 'text-[#0F766E] dark:text-[#2DD4BF] font-semibold'
                 : isFastcutz
-                ? 'text-[#D96B27] font-bold'
+                ? 'text-[#D96B27] dark:text-[#E8632A] font-bold'
                 : frameType === 'welcome'
-                ? 'text-[#181715] font-bold'
+                ? 'text-[#181715] dark:text-[#F4F2EC] font-bold'
                 : frameType === 'to'
-                ? 'text-[#66625B]'
-                : 'text-[#8E8A82]'
+                ? 'text-[#66625B] dark:text-[#A39E95]'
+                : 'text-[#8E8A82] dark:text-[#78736B]'
             }`}
           >
             {hasMeme
@@ -1028,9 +1030,9 @@ export const Screen1Upload: React.FC = () => {
               : 'F00'}
           </span>
           <div className="flex items-center space-x-1.5">
-            <div className="w-2.5 h-1 rounded-[1.5px] bg-[#F0EEE9] border border-[#E5E2DC]" />
-            <div className="w-2.5 h-1 rounded-[1.5px] bg-[#F0EEE9] border border-[#E5E2DC]" />
-            <div className="w-2.5 h-1 rounded-[1.5px] bg-[#F0EEE9] border border-[#E5E2DC]" />
+            <div className="w-2.5 h-1 rounded-[1.5px] bg-[#F0EEE9] dark:bg-[#24221F] border border-[#E5E2DC] dark:border-[#2C2A27]" />
+            <div className="w-2.5 h-1 rounded-[1.5px] bg-[#F0EEE9] dark:bg-[#24221F] border border-[#E5E2DC] dark:border-[#2C2A27]" />
+            <div className="w-2.5 h-1 rounded-[1.5px] bg-[#F0EEE9] dark:bg-[#24221F] border border-[#E5E2DC] dark:border-[#2C2A27]" />
           </div>
         </div>
 
@@ -1046,36 +1048,36 @@ export const Screen1Upload: React.FC = () => {
             <>
               {frameType === 'slotA' && (
                 <div className="relative w-full h-full flex items-center justify-center">
-                  <div className="absolute top-0.5 left-1.5 w-1.5 h-1.5 border-t border-l border-[#D8D4CC]" />
-                  <div className="absolute top-0.5 right-1.5 w-1.5 h-1.5 border-t border-r border-[#D8D4CC]" />
-                  <div className="absolute bottom-0.5 left-1.5 w-1.5 h-1.5 border-b border-l border-[#D8D4CC]" />
-                  <div className="absolute bottom-0.5 right-1.5 w-1.5 h-1.5 border-b border-r border-[#D8D4CC]" />
-                  <span className="text-[8.5px] font-mono text-[#8E8A82] tracking-wider">[EMPTY SLOT A]</span>
+                  <div className="absolute top-0.5 left-1.5 w-1.5 h-1.5 border-t border-l border-[#D8D4CC] dark:border-[#383531]" />
+                  <div className="absolute top-0.5 right-1.5 w-1.5 h-1.5 border-t border-r border-[#D8D4CC] dark:border-[#383531]" />
+                  <div className="absolute bottom-0.5 left-1.5 w-1.5 h-1.5 border-b border-l border-[#D8D4CC] dark:border-[#383531]" />
+                  <div className="absolute bottom-0.5 right-1.5 w-1.5 h-1.5 border-b border-r border-[#D8D4CC] dark:border-[#383531]" />
+                  <span className="text-[8.5px] font-mono text-[#8E8A82] dark:text-[#78736B] tracking-wider">[EMPTY SLOT A]</span>
                 </div>
               )}
               {frameType === 'welcome' && (
-                <span className="text-2xl md:text-3xl font-bold tracking-[0.14em] text-[#181715] font-sans">
+                <span className="text-2xl md:text-3xl font-bold tracking-[0.14em] text-[#181715] dark:text-[#F4F2EC] font-sans">
                   WELCOME
                 </span>
               )}
               {frameType === 'to' && (
-                <span className="text-2xl md:text-3xl font-semibold tracking-[0.2em] text-[#66625B] font-sans">
+                <span className="text-2xl md:text-3xl font-semibold tracking-[0.2em] text-[#66625B] dark:text-[#A39E95] font-sans">
                   TO
                 </span>
               )}
               {frameType === 'fastcutz' && (
                 <span className="text-2xl md:text-3xl font-extrabold tracking-tight">
-                  <span className="text-[#181715]">Fastcutz</span>
-                  <span className="text-[#D96B27]">.ai</span>
+                  <span className="text-[#181715] dark:text-[#F4F2EC]">Fastcutz</span>
+                  <span className="text-[#D96B27] dark:text-[#E8632A]">.ai</span>
                 </span>
               )}
               {frameType === 'slotB' && (
                 <div className="relative w-full h-full flex items-center justify-center">
-                  <div className="absolute top-0.5 left-1.5 w-1.5 h-1.5 border-t border-l border-[#D8D4CC]" />
-                  <div className="absolute top-0.5 right-1.5 w-1.5 h-1.5 border-t border-r border-[#D8D4CC]" />
-                  <div className="absolute bottom-0.5 left-1.5 w-1.5 h-1.5 border-b border-l border-[#D8D4CC]" />
-                  <div className="absolute bottom-0.5 right-1.5 w-1.5 h-1.5 border-b border-r border-[#D8D4CC]" />
-                  <span className="text-[8.5px] font-mono text-[#8E8A82] tracking-wider">[EMPTY SLOT B]</span>
+                  <div className="absolute top-0.5 left-1.5 w-1.5 h-1.5 border-t border-l border-[#D8D4CC] dark:border-[#383531]" />
+                  <div className="absolute top-0.5 right-1.5 w-1.5 h-1.5 border-t border-r border-[#D8D4CC] dark:border-[#383531]" />
+                  <div className="absolute bottom-0.5 left-1.5 w-1.5 h-1.5 border-b border-l border-[#D8D4CC] dark:border-[#383531]" />
+                  <div className="absolute bottom-0.5 right-1.5 w-1.5 h-1.5 border-b border-r border-[#D8D4CC] dark:border-[#383531]" />
+                  <span className="text-[8.5px] font-mono text-[#8E8A82] dark:text-[#78736B] tracking-wider">[EMPTY SLOT B]</span>
                 </div>
               )}
             </>
@@ -1085,17 +1087,17 @@ export const Screen1Upload: React.FC = () => {
         {/* Bottom Sprocket Rail */}
         <div className="flex items-center justify-between px-1 relative z-10">
           <div className="flex items-center space-x-1.5">
-            <div className="w-2.5 h-1 rounded-[1.5px] bg-[#F0EEE9] border border-[#E5E2DC]" />
-            <div className="w-2.5 h-1 rounded-[1.5px] bg-[#F0EEE9] border border-[#E5E2DC]" />
-            <div className="w-2.5 h-1 rounded-[1.5px] bg-[#F0EEE9] border border-[#E5E2DC]" />
+            <div className="w-2.5 h-1 rounded-[1.5px] bg-[#F0EEE9] dark:bg-[#24221F] border border-[#E5E2DC] dark:border-[#2C2A27]" />
+            <div className="w-2.5 h-1 rounded-[1.5px] bg-[#F0EEE9] dark:bg-[#24221F] border border-[#E5E2DC] dark:border-[#2C2A27]" />
+            <div className="w-2.5 h-1 rounded-[1.5px] bg-[#F0EEE9] dark:bg-[#24221F] border border-[#E5E2DC] dark:border-[#2C2A27]" />
           </div>
-          <span className="font-mono text-[8px] md:text-[9px] text-[#8E8A82] tabular-nums tracking-widest">
+          <span className="font-mono text-[8px] md:text-[9px] text-[#8E8A82] dark:text-[#78736B] tabular-nums tracking-widest">
             {frameType === 'slotA' ? '00:00:12' : frameType === 'welcome' ? '00:01:00' : frameType === 'to' ? '00:02:00' : frameType === 'fastcutz' ? '00:03:00' : '00:04:00'}
           </span>
           <div className="flex items-center space-x-1.5">
-            <div className="w-2.5 h-1 rounded-[1.5px] bg-[#F0EEE9] border border-[#E5E2DC]" />
-            <div className="w-2.5 h-1 rounded-[1.5px] bg-[#F0EEE9] border border-[#E5E2DC]" />
-            <div className="w-2.5 h-1 rounded-[1.5px] bg-[#F0EEE9] border border-[#E5E2DC]" />
+            <div className="w-2.5 h-1 rounded-[1.5px] bg-[#F0EEE9] dark:bg-[#24221F] border border-[#E5E2DC] dark:border-[#2C2A27]" />
+            <div className="w-2.5 h-1 rounded-[1.5px] bg-[#F0EEE9] dark:bg-[#24221F] border border-[#E5E2DC] dark:border-[#2C2A27]" />
+            <div className="w-2.5 h-1 rounded-[1.5px] bg-[#F0EEE9] dark:bg-[#24221F] border border-[#E5E2DC] dark:border-[#2C2A27]" />
           </div>
         </div>
       </div>
@@ -1116,7 +1118,7 @@ export const Screen1Upload: React.FC = () => {
         {!state && (
           <div
             onClick={() => handleCutFrame(instanceKey, frameType)}
-            className="w-full h-full cursor-pointer group rounded-lg transition-all hover:border-[#D96B27] hover:shadow-[0_2px_12px_rgba(217,107,39,0.25)]"
+            className="w-full h-full cursor-pointer group rounded-lg transition-all hover:border-[#D96B27] dark:hover:border-[#E8632A] hover:shadow-[0_2px_12px_rgba(217,107,39,0.25)]"
           >
             {renderFrameVisual(frameType, isCopy2)}
           </div>
@@ -1124,7 +1126,7 @@ export const Screen1Upload: React.FC = () => {
 
         {/* State 2: 'cutting' (0–560ms) - Left/right split shear and drop + amber cut line + CUT badge */}
         {state === 'cutting' && (
-          <div className="w-full h-full relative overflow-visible rounded-lg bg-[#F7F6F2] border border-[#E5E2DC]">
+          <div className="w-full h-full relative overflow-visible rounded-lg bg-[#F7F6F2] dark:bg-[#141312] border border-[#E5E2DC] dark:border-[#2C2A27]">
             {/* Left half with inset(0 50% 0 0) and animate-frame-split-left */}
             <div
               className="absolute inset-0 rounded-lg overflow-hidden animate-frame-split-left pointer-events-none"
@@ -1142,11 +1144,11 @@ export const Screen1Upload: React.FC = () => {
             </div>
 
             {/* Vertical Amber Cut Slice Line */}
-            <div className="absolute inset-y-0 left-1/2 -translate-x-1/2 w-[2px] bg-[#D96B27] shadow-[0_0_10px_#D96B27] animate-cut-slice-line z-30 pointer-events-none" />
+            <div className="absolute inset-y-0 left-1/2 -translate-x-1/2 w-[2px] bg-[#D96B27] dark:bg-[#E8632A] shadow-[0_0_10px_#D96B27] animate-cut-slice-line z-30 pointer-events-none" />
 
             {/* Floating ✂ CUT Badge */}
             <div className="absolute top-1/2 left-1/2 z-40 pointer-events-none animate-cut-badge-pop whitespace-nowrap">
-              <span className="px-2 py-0.5 rounded-full bg-white border border-[#D96B27] text-[#D96B27] font-mono text-[9px] font-bold shadow-md">
+              <span className="px-2 py-0.5 rounded-full bg-white dark:bg-[#24221F] border border-[#D96B27] dark:border-[#E8632A] text-[#D96B27] dark:text-[#E8632A] font-mono text-[9px] font-bold shadow-md">
                 ✂ CUT
               </span>
             </div>
@@ -1155,23 +1157,23 @@ export const Screen1Upload: React.FC = () => {
 
         {/* State 3: 'cut' (560ms until 1 full roll finishes) - Clean Recessed Cutout Slot */}
         {state === 'cut' && (
-          <div className="w-full h-full rounded-lg border border-dashed border-[#D96B27]/50 bg-[#F7F6F2] flex flex-col items-center justify-center space-y-1 p-2 relative overflow-hidden">
+          <div className="w-full h-full rounded-lg border border-dashed border-[#D96B27]/50 dark:border-[#E8632A]/50 bg-[#F7F6F2] dark:bg-[#141312] flex flex-col items-center justify-center space-y-1 p-2 relative overflow-hidden">
             <div className="absolute top-1.5 inset-x-2 flex items-center justify-between opacity-50">
-              <div className="w-2.5 h-1 rounded-[1.5px] bg-[#E5E2DC]" />
-              <div className="w-2.5 h-1 rounded-[1.5px] bg-[#E5E2DC]" />
+              <div className="w-2.5 h-1 rounded-[1.5px] bg-[#E5E2DC] dark:bg-[#2C2A27]" />
+              <div className="w-2.5 h-1 rounded-[1.5px] bg-[#E5E2DC] dark:bg-[#2C2A27]" />
             </div>
-            <div className="flex items-center space-x-1 text-[#D96B27]">
+            <div className="flex items-center space-x-1 text-[#D96B27] dark:text-[#E8632A]">
               <span className="text-xs">✂</span>
-              <span className="font-mono text-[8px] md:text-[9px] text-[#66625B] tracking-widest uppercase">
+              <span className="font-mono text-[8px] md:text-[9px] text-[#66625B] dark:text-[#A39E95] tracking-widest uppercase">
                 SPLICE GAP
               </span>
             </div>
-            <span className="font-mono text-[7px] text-[#8E8A82] tracking-wider">
+            <span className="font-mono text-[7px] text-[#8E8A82] dark:text-[#78736B] tracking-wider">
               RESTORES NEXT ROLL
             </span>
             <div className="absolute bottom-1.5 inset-x-2 flex items-center justify-between opacity-50">
-              <div className="w-2.5 h-1 rounded-[1.5px] bg-[#E5E2DC]" />
-              <div className="w-2.5 h-1 rounded-[1.5px] bg-[#E5E2DC]" />
+              <div className="w-2.5 h-1 rounded-[1.5px] bg-[#E5E2DC] dark:bg-[#2C2A27]" />
+              <div className="w-2.5 h-1 rounded-[1.5px] bg-[#E5E2DC] dark:bg-[#2C2A27]" />
             </div>
           </div>
         )}
@@ -1190,57 +1192,61 @@ export const Screen1Upload: React.FC = () => {
       : 'duration-300';
 
   return (
-    <div className="min-h-screen bg-[#F7F6F2] bg-[radial-gradient(ellipse_at_top,_rgba(217,107,39,0.06),_transparent_55%),radial-gradient(ellipse_at_bottom_left,_rgba(15,118,110,0.05),_transparent_50%)] text-[#181715] flex flex-col overflow-y-auto">
-      {/* Top Bar with Creator Profile Pill */}
+    <div className="min-h-screen bg-[#F7F6F2] dark:bg-[#0E0E0D] bg-[radial-gradient(ellipse_at_top,_rgba(217,107,39,0.06),_transparent_55%),radial-gradient(ellipse_at_bottom_left,_rgba(15,118,110,0.05),_transparent_50%)] dark:bg-[radial-gradient(ellipse_at_top,_rgba(232,99,42,0.08),_transparent_55%),radial-gradient(ellipse_at_bottom_left,_rgba(20,184,166,0.06),_transparent_50%)] text-[#181715] dark:text-[#F4F2EC] flex flex-col overflow-y-auto">
+      {/* Top Bar with Creator Profile Pill & Theme Toggle */}
       <header className="w-full max-w-6xl mx-auto px-4 sm:px-6 pt-3 pb-1 flex items-center justify-between z-30">
         <div className="flex items-center space-x-2">
-          <div className="w-7 h-7 rounded-lg bg-[#D96B27] text-white flex items-center justify-center font-bold text-xs shadow-xs">
+          <div className="w-7 h-7 rounded-lg bg-[#D96B27] dark:bg-[#E8632A] text-white flex items-center justify-center font-bold text-xs shadow-xs">
             <Scissors className="w-4 h-4 text-white" />
           </div>
           <span className="font-extrabold tracking-tight text-sm sm:text-base">
-            <span className="text-[#181715]">Fastcutz</span>
-            <span className="text-[#D96B27]">.ai</span>
+            <span className="text-[#181715] dark:text-[#F4F2EC]">Fastcutz</span>
+            <span className="text-[#D96B27] dark:text-[#E8632A]">.ai</span>
           </span>
         </div>
 
-        {/* Top-Right Compact Profile Pill */}
-        {userProfile && !userProfile.isGuest && userProfile.name ? (
-          <div className="bg-white border border-[#E5E2DC] text-[#181715] rounded-full px-3 py-1.5 text-xs font-medium shadow-sm flex items-center space-x-2">
-            <span className="text-[#181715] font-semibold truncate max-w-[120px] sm:max-w-none">
-              Hi, {userProfile.name.split(' ')[0]}
-            </span>
-            <span className="text-[#D8D4CC]">|</span>
+        <div className="flex items-center space-x-2 sm:space-x-3">
+          <ThemeToggle />
+
+          {/* Top-Right Compact Profile Pill */}
+          {userProfile && !userProfile.isGuest && userProfile.name ? (
+            <div className="bg-white dark:bg-[#1E1D1B] border border-[#E5E2DC] dark:border-[#2C2A27] text-[#181715] dark:text-[#F4F2EC] rounded-full px-3 py-1.5 text-xs font-medium shadow-sm flex items-center space-x-2">
+              <span className="text-[#181715] dark:text-[#F4F2EC] font-semibold truncate max-w-[120px] sm:max-w-none">
+                Hi, {userProfile.name.split(' ')[0]}
+              </span>
+              <span className="text-[#D8D4CC] dark:text-[#423F3A]">|</span>
+              <button
+                type="button"
+                onClick={() => {
+                  setNameInput(userProfile.name);
+                  setEmailInput(userProfile.email === 'guest' ? '' : userProfile.email);
+                  setIsAuthModalOpen(true);
+                }}
+                className="text-[11px] text-[#66625B] dark:text-[#A39E95] hover:text-[#D96B27] dark:hover:text-[#E8632A] underline cursor-pointer"
+              >
+                Switch
+              </button>
+            </div>
+          ) : (
             <button
               type="button"
               onClick={() => {
-                setNameInput(userProfile.name);
-                setEmailInput(userProfile.email === 'guest' ? '' : userProfile.email);
+                setNameInput(userProfile?.name && userProfile.name !== 'Guest' ? userProfile.name : '');
+                setEmailInput(userProfile?.email && userProfile.email !== 'guest' ? userProfile.email : '');
                 setIsAuthModalOpen(true);
               }}
-              className="text-[11px] text-[#66625B] hover:text-[#D96B27] underline cursor-pointer"
+              className="bg-white dark:bg-[#1E1D1B] border border-[#D96B27]/40 hover:border-[#D96B27] dark:border-[#E8632A]/50 dark:hover:border-[#E8632A] text-[#D96B27] dark:text-[#E8632A] rounded-full px-3 py-1.5 text-xs font-medium shadow-sm transition-colors cursor-pointer flex items-center space-x-1.5"
             >
-              Switch
+              <span>Sign in (Optional)</span>
             </button>
-          </div>
-        ) : (
-          <button
-            type="button"
-            onClick={() => {
-              setNameInput(userProfile?.name && userProfile.name !== 'Guest' ? userProfile.name : '');
-              setEmailInput(userProfile?.email && userProfile.email !== 'guest' ? userProfile.email : '');
-              setIsAuthModalOpen(true);
-            }}
-            className="bg-white border border-[#D96B27]/40 hover:border-[#D96B27] text-[#D96B27] rounded-full px-3 py-1.5 text-xs font-medium shadow-sm transition-colors cursor-pointer flex items-center space-x-1.5"
-          >
-            <span>Sign in (Optional)</span>
-          </button>
-        )}
+          )}
+        </div>
       </header>
 
       {/* Non-Blocking Sign-In Modal */}
       {isAuthModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs p-4 animate-in fade-in duration-200">
-          <div className="bg-white border border-[#E5E2DC] rounded-2xl shadow-xl max-w-sm w-full p-5 relative select-text">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 animate-in fade-in duration-200">
+          <div className="bg-white dark:bg-[#171615] border border-[#E5E2DC] dark:border-[#2C2A27] rounded-2xl shadow-xl max-w-sm w-full p-5 relative select-text">
             {/* Close Button */}
             <button
               type="button"
@@ -1251,21 +1257,21 @@ export const Screen1Upload: React.FC = () => {
                 setIsAuthModalOpen(false);
                 setModalError(null);
               }}
-              className="absolute top-4 right-4 text-[#8E8A82] hover:text-[#181715] p-1 rounded-lg transition-colors cursor-pointer"
+              className="absolute top-4 right-4 text-[#8E8A82] dark:text-[#78736B] hover:text-[#181715] dark:hover:text-[#F4F2EC] p-1 rounded-lg transition-colors cursor-pointer"
               title="Close and continue as guest"
             >
               <X className="w-4 h-4" />
             </button>
 
             <div className="space-y-1 mb-4">
-              <h3 className="text-base font-bold text-[#181715]">Welcome to Fastcutz.ai</h3>
-              <p className="text-xs text-[#66625B]">
+              <h3 className="text-base font-bold text-[#181715] dark:text-[#F4F2EC]">Welcome to Fastcutz.ai</h3>
+              <p className="text-xs text-[#66625B] dark:text-[#A39E95]">
                 Save your creator name for export tracking — or jump straight in as a guest.
               </p>
             </div>
 
             {modalError && (
-              <div className="mb-3 p-2 bg-[#FEF2F2] border border-[#FCA5A5] rounded-lg text-xs text-[#991B1B]">
+              <div className="mb-3 p-2 bg-[#FEF2F2] dark:bg-[#450A0A]/40 border border-[#FCA5A5] dark:border-[#991B1B] rounded-lg text-xs text-[#991B1B] dark:text-[#FCA5A5]">
                 {modalError}
               </div>
             )}
@@ -1295,7 +1301,7 @@ export const Screen1Upload: React.FC = () => {
               className="space-y-3"
             >
               <div>
-                <label className="block text-[11px] font-semibold text-[#181715] mb-1">
+                <label className="block text-[11px] font-semibold text-[#181715] dark:text-[#F4F2EC] mb-1">
                   Your Name
                 </label>
                 <input
@@ -1306,12 +1312,12 @@ export const Screen1Upload: React.FC = () => {
                     if (modalError) setModalError(null);
                   }}
                   placeholder="e.g. Alex Creator"
-                  className="w-full bg-[#F7F6F2] border border-[#E5E2DC] rounded-lg px-3 py-2 text-xs text-[#181715] placeholder-[#8E8A82] focus:outline-none focus:border-[#D96B27] select-text"
+                  className="w-full bg-[#F7F6F2] dark:bg-[#1E1D1B] border border-[#E5E2DC] dark:border-[#2C2A27] rounded-lg px-3 py-2 text-xs text-[#181715] dark:text-[#F4F2EC] placeholder-[#8E8A82] dark:placeholder-[#78736B] focus:outline-none focus:border-[#D96B27] dark:focus:border-[#E8632A] select-text"
                 />
               </div>
 
               <div>
-                <label className="block text-[11px] font-semibold text-[#181715] mb-1">
+                <label className="block text-[11px] font-semibold text-[#181715] dark:text-[#F4F2EC] mb-1">
                   Email
                 </label>
                 <input
@@ -1322,14 +1328,14 @@ export const Screen1Upload: React.FC = () => {
                     if (modalError) setModalError(null);
                   }}
                   placeholder="alex@creator.com"
-                  className="w-full bg-[#F7F6F2] border border-[#E5E2DC] rounded-lg px-3 py-2 text-xs text-[#181715] placeholder-[#8E8A82] focus:outline-none focus:border-[#D96B27] select-text"
+                  className="w-full bg-[#F7F6F2] dark:bg-[#1E1D1B] border border-[#E5E2DC] dark:border-[#2C2A27] rounded-lg px-3 py-2 text-xs text-[#181715] dark:text-[#F4F2EC] placeholder-[#8E8A82] dark:placeholder-[#78736B] focus:outline-none focus:border-[#D96B27] dark:focus:border-[#E8632A] select-text"
                 />
               </div>
 
               <div className="pt-2 space-y-2">
                 <button
                   type="submit"
-                  className="w-full bg-[#D96B27] hover:bg-[#C25A1B] text-white font-semibold py-2 px-4 rounded-lg text-xs transition-colors shadow-xs cursor-pointer min-h-[40px] flex items-center justify-center"
+                  className="w-full bg-[#D96B27] dark:bg-[#E8632A] hover:bg-[#C25A1B] dark:hover:bg-[#F2743D] text-white font-semibold py-2 px-4 rounded-lg text-xs transition-colors shadow-xs cursor-pointer min-h-[40px] flex items-center justify-center"
                 >
                   Continue
                 </button>
@@ -1343,7 +1349,7 @@ export const Screen1Upload: React.FC = () => {
                     setIsAuthModalOpen(false);
                     setModalError(null);
                   }}
-                  className="w-full bg-[#F0EEE9] hover:bg-[#E7E4DD] border border-[#E5E2DC] text-[#66625B] hover:text-[#181715] font-medium py-2 px-4 rounded-lg text-xs transition-colors cursor-pointer min-h-[38px] flex items-center justify-center"
+                  className="w-full bg-[#F0EEE9] dark:bg-[#24221F] hover:bg-[#E7E4DD] dark:hover:bg-[#2E2B27] border border-[#E5E2DC] dark:border-[#2C2A27] text-[#66625B] dark:text-[#A39E95] hover:text-[#181715] dark:hover:text-[#F4F2EC] font-medium py-2 px-4 rounded-lg text-xs transition-colors cursor-pointer min-h-[38px] flex items-center justify-center"
                 >
                   Continue as Guest
                 </button>
@@ -1370,18 +1376,18 @@ export const Screen1Upload: React.FC = () => {
             }
           }}
           onPointerLeave={() => setIsHoveringStrip(false)}
-          className={`w-full relative overflow-hidden py-1.5 bg-white border-y border-[#E5E2DC] shadow-xs ${
+          className={`w-full relative overflow-hidden py-1.5 bg-white dark:bg-[#141312] border-y border-[#E5E2DC] dark:border-[#2C2A27] shadow-xs ${
             isHoveringStrip ? 'md:cursor-none' : ''
           }`}
         >
           {/* Subtle Discoverability Hint */}
           <div className="pointer-events-none absolute top-1.5 right-4 z-20 flex items-center space-x-1 opacity-75">
-            <span className="text-[10px] font-mono text-[#8E8A82] tracking-wider">Click any frame to cut ✂</span>
+            <span className="text-[10px] font-mono text-[#8E8A82] dark:text-[#78736B] tracking-wider">Click any frame to cut ✂</span>
           </div>
 
           {/* Left & Right Gradient Fade Masks */}
-          <div className="pointer-events-none absolute inset-y-0 left-0 w-16 sm:w-24 md:w-36 bg-gradient-to-r from-[#F7F6F2] to-transparent z-10" />
-          <div className="pointer-events-none absolute inset-y-0 right-0 w-16 sm:w-24 md:w-36 bg-gradient-to-l from-[#F7F6F2] to-transparent z-10" />
+          <div className="pointer-events-none absolute inset-y-0 left-0 w-16 sm:w-24 md:w-36 bg-gradient-to-r from-[#F7F6F2] dark:from-[#0E0E0D] to-transparent z-10" />
+          <div className="pointer-events-none absolute inset-y-0 right-0 w-16 sm:w-24 md:w-36 bg-gradient-to-l from-[#F7F6F2] dark:from-[#0E0E0D] to-transparent z-10" />
 
           {/* Floating Custom Studio Scissor Cursor (Follows Pointer & Snips on Click) */}
           {isHoveringStrip && (
@@ -1473,23 +1479,23 @@ export const Screen1Upload: React.FC = () => {
               xmlns="http://www.w3.org/2000/svg"
             >
               {/* Outer Cabinet Shell */}
-              <rect x="8" y="8" width="72" height="84" rx="6" fill="#FFFFFF" stroke="#D8D4CC" strokeWidth="1.5" />
-              <rect x="12" y="12" width="64" height="76" rx="4" fill="#F7F6F2" />
+              <rect x="8" y="8" width="72" height="84" rx="6" fill={isDark ? '#22201D' : '#FFFFFF'} stroke={isDark ? '#383531' : '#D8D4CC'} strokeWidth="1.5" />
+              <rect x="12" y="12" width="64" height="76" rx="4" fill={isDark ? '#171615' : '#F7F6F2'} />
 
               {/* Status Indicator LED */}
               <circle cx="18" cy="18" r="2" fill="#0F766E" opacity="0.9" />
 
               {/* Top Drawer (Slides open when searching) */}
               <g className={botPhase === 'searching' ? 'translate-x-2 transition-transform duration-300' : 'transition-transform duration-300'}>
-                <rect x="14" y="24" width="60" height="30" rx="3.5" fill="#FFFFFF" stroke="#D8D4CC" strokeWidth="1" />
-                <rect x="36" y="37" width="16" height="4" rx="2" fill="#D96B27" />
+                <rect x="14" y="24" width="60" height="30" rx="3.5" fill={isDark ? '#2A2825' : '#FFFFFF'} stroke={isDark ? '#383531' : '#D8D4CC'} strokeWidth="1" />
+                <rect x="36" y="37" width="16" height="4" rx="2" fill={isDark ? '#E8632A' : '#D96B27'} />
                 {/* Plaque: MEME */}
-                <rect x="27" y="27" width="34" height="7.5" rx="2" fill="#F0EEE9" stroke="#E5E2DC" strokeWidth="0.8" />
+                <rect x="27" y="27" width="34" height="7.5" rx="2" fill={isDark ? '#22201D' : '#F0EEE9'} stroke={isDark ? '#383531' : '#E5E2DC'} strokeWidth="0.8" />
                 <text
                   x="44"
                   y="33"
                   textAnchor="middle"
-                  fill="#D96B27"
+                  fill={isDark ? '#E8632A' : '#D96B27'}
                   fontSize="6"
                   fontWeight="bold"
                   fontFamily="monospace"
@@ -1501,15 +1507,15 @@ export const Screen1Upload: React.FC = () => {
 
               {/* Bottom Drawer */}
               <g>
-                <rect x="14" y="56" width="60" height="30" rx="3.5" fill="#F7F6F2" stroke="#E5E2DC" strokeWidth="1" />
+                <rect x="14" y="56" width="60" height="30" rx="3.5" fill={isDark ? '#1E1D1B' : '#F7F6F2'} stroke={isDark ? '#2C2A27' : '#E5E2DC'} strokeWidth="1" />
                 <rect x="36" y="69" width="16" height="4" rx="2" fill="#8E8A82" />
                 {/* Plaque: VAULT */}
-                <rect x="27" y="59" width="34" height="7.5" rx="2" fill="#F0EEE9" stroke="#E5E2DC" strokeWidth="0.8" />
+                <rect x="27" y="59" width="34" height="7.5" rx="2" fill={isDark ? '#22201D' : '#F0EEE9'} stroke={isDark ? '#383531' : '#E5E2DC'} strokeWidth="0.8" />
                 <text
                   x="44"
                   y="65"
                   textAnchor="middle"
-                  fill="#66625B"
+                  fill={isDark ? '#A39E95' : '#66625B'}
                   fontSize="6"
                   fontFamily="monospace"
                   letterSpacing="0.12em"
@@ -1524,10 +1530,10 @@ export const Screen1Upload: React.FC = () => {
           <span
             className={`mt-0.5 sm:mt-1 text-[8.5px] sm:text-[10px] font-mono px-1.5 sm:px-2.5 py-0.5 rounded-full border transition-all shadow-xs whitespace-nowrap ${
               botPhase === 'searching'
-                ? 'bg-[#FEF3C7] border-[#F59E0B] text-[#92400E]'
+                ? 'bg-[#FEF3C7] dark:bg-[#78350F]/40 border-[#F59E0B] text-[#92400E] dark:text-[#FCD34D]'
                 : botPhase !== 'idle'
-                ? 'bg-[#F0EEE9] border-[#E5E2DC] text-[#8E8A82]'
-                : 'bg-white border-[#E5E2DC] text-[#66625B] group-hover:border-[#D96B27] group-hover:text-[#D96B27] group-hover:scale-105'
+                ? 'bg-[#F0EEE9] dark:bg-[#1E1D1B] border-[#E5E2DC] dark:border-[#2C2A27] text-[#8E8A82] dark:text-[#78736B]'
+                : 'bg-white dark:bg-[#1E1D1B] border-[#E5E2DC] dark:border-[#2C2A27] text-[#66625B] dark:text-[#A39E95] group-hover:border-[#D96B27] dark:group-hover:border-[#E8632A] group-hover:text-[#D96B27] dark:group-hover:text-[#E8632A] group-hover:scale-105'
             }`}
           >
             {botPhase === 'searching' ? 'Searching...' : botPhase !== 'idle' ? 'Adding...' : '⚡ Click to fetch meme'}
@@ -1536,7 +1542,7 @@ export const Screen1Upload: React.FC = () => {
 
         {/* Center-Left: Fixed Docking Pod (Permanently anchored flush on top of Upload Dropbox) */}
         <div className="absolute left-[46%] sm:left-[30%] -translate-x-1/2 bottom-0 z-10 pointer-events-none select-none scale-[0.78] sm:scale-100 origin-bottom">
-          <StationaryDockingPod />
+          <StationaryDockingPod isDark={isDark} />
         </div>
 
         {/* Traveling Cute Fastcutz Robot */}
@@ -1557,22 +1563,22 @@ export const Screen1Upload: React.FC = () => {
         >
           {/* Floating Status & Speech Bubbles */}
           {botPhase === 'searching' && (
-            <div className="absolute -top-7 left-1/2 -translate-x-1/2 whitespace-nowrap px-2 py-0.5 rounded-full bg-white border border-[#D96B27] text-[#D96B27] font-mono text-[9px] font-bold shadow-md animate-bounce">
+            <div className="absolute -top-7 left-1/2 -translate-x-1/2 whitespace-nowrap px-2 py-0.5 rounded-full bg-white dark:bg-[#1E1D1B] border border-[#D96B27] dark:border-[#E8632A] text-[#D96B27] dark:text-[#E8632A] font-mono text-[9px] font-bold shadow-md animate-bounce">
               Searching memes... 🔍
             </div>
           )}
           {botPhase === 'to-computer' && (
-            <div className="absolute -top-7 left-1/2 -translate-x-1/2 whitespace-nowrap px-2 py-0.5 rounded-full bg-white border border-[#0F766E] text-[#0F766E] font-mono text-[9px] font-bold shadow-md">
+            <div className="absolute -top-7 left-1/2 -translate-x-1/2 whitespace-nowrap px-2 py-0.5 rounded-full bg-white dark:bg-[#1E1D1B] border border-[#0F766E] dark:border-[#2DD4BF] text-[#0F766E] dark:text-[#2DD4BF] font-mono text-[9px] font-bold shadow-md">
               Adding meme... 🎬
             </div>
           )}
           {botPhase === 'inserting' && (
-            <div className="absolute -top-7 left-1/2 -translate-x-1/2 whitespace-nowrap px-2 py-0.5 rounded-full bg-white border border-[#10B981] text-[#059669] font-mono text-[9px] font-bold shadow-md animate-pulse">
+            <div className="absolute -top-7 left-1/2 -translate-x-1/2 whitespace-nowrap px-2 py-0.5 rounded-full bg-white dark:bg-[#1E1D1B] border border-[#10B981] text-[#059669] dark:text-[#34D399] font-mono text-[9px] font-bold shadow-md animate-pulse">
               Injecting to strip! ⚡
             </div>
           )}
           {botPhase === 'idle' && showEasyBubble && (
-            <div className="absolute -top-7 left-1/2 -translate-x-1/2 whitespace-nowrap px-2 py-0.5 rounded-full bg-white border border-[#0F766E] text-[#0F766E] font-mono text-[9px] font-bold shadow-md animate-float-badge">
+            <div className="absolute -top-7 left-1/2 -translate-x-1/2 whitespace-nowrap px-2 py-0.5 rounded-full bg-white dark:bg-[#1E1D1B] border border-[#0F766E] dark:border-[#2DD4BF] text-[#0F766E] dark:text-[#2DD4BF] font-mono text-[9px] font-bold shadow-md animate-float-badge">
               Easy! ✨
             </div>
           )}
@@ -1580,6 +1586,7 @@ export const Screen1Upload: React.FC = () => {
           <TravelingRobot
             isSearching={botPhase === 'searching'}
             isCarrying={botPhase === 'to-computer' || botPhase === 'inserting'}
+            isDark={isDark}
           />
         </div>
 
@@ -1593,11 +1600,11 @@ export const Screen1Upload: React.FC = () => {
               xmlns="http://www.w3.org/2000/svg"
             >
               {/* Monitor Stand Base & Neck */}
-              <rect x="36" y="74" width="32" height="6" rx="2" fill="#F0EEE9" stroke="#E5E2DC" strokeWidth="1" />
-              <rect x="49" y="60" width="6" height="15" rx="1" fill="#E5E2DC" stroke="#D8D4CC" strokeWidth="1" />
+              <rect x="36" y="74" width="32" height="6" rx="2" fill={isDark ? '#2A2825' : '#F0EEE9'} stroke={isDark ? '#383531' : '#E5E2DC'} strokeWidth="1" />
+              <rect x="49" y="60" width="6" height="15" rx="1" fill={isDark ? '#24221F' : '#E5E2DC'} stroke={isDark ? '#383531' : '#D8D4CC'} strokeWidth="1" />
 
               {/* Monitor Outer Frame */}
-              <rect x="4" y="4" width="96" height="58" rx="6" fill="#FFFFFF" stroke="#D8D4CC" strokeWidth="1.2" />
+              <rect x="4" y="4" width="96" height="58" rx="6" fill={isDark ? '#22201D' : '#FFFFFF'} stroke={isDark ? '#383531' : '#D8D4CC'} strokeWidth="1.2" />
 
               {/* Display Screen */}
               <rect
@@ -1632,12 +1639,12 @@ export const Screen1Upload: React.FC = () => {
                 /* Idle Screen: Mini Studio Timeline Tracks */
                 <g>
                   <rect x="14" y="16" width="50" height="4" rx="2" fill="#0F766E" opacity="0.9" />
-                  <rect x="14" y="24" width="70" height="4" rx="2" fill="#D96B27" opacity="0.9" />
+                  <rect x="14" y="24" width="70" height="4" rx="2" fill={isDark ? '#E8632A' : '#D96B27'} opacity="0.9" />
                   <rect x="14" y="32" width="38" height="4" rx="2" fill="#8B5CF6" opacity="0.9" />
                   <rect x="56" y="32" width="28" height="4" rx="2" fill="#10B981" opacity="0.9" />
                   {/* Red Playhead line */}
                   <line x1="42" y1="12" x2="42" y2="40" stroke="#EF4444" strokeWidth="1.2" />
-                  <text x="52" y="47" textAnchor="middle" fill="#8E8A82" fontSize="5.5" fontFamily="monospace">
+                  <text x="52" y="47" textAnchor="middle" fill={isDark ? '#A39E95' : '#8E8A82'} fontSize="5.5" fontFamily="monospace">
                     STUDIO MONITOR
                   </text>
                 </g>
@@ -1645,7 +1652,7 @@ export const Screen1Upload: React.FC = () => {
             </svg>
           </div>
 
-          <span className="mt-1 text-[9px] sm:text-[9.5px] font-mono text-[#8E8A82]">
+          <span className="mt-1 text-[9px] sm:text-[9.5px] font-mono text-[#8E8A82] dark:text-[#78736B]">
             {botPhase === 'inserting' ? 'Synced to Filmstrip' : 'Timeline Monitor'}
           </span>
         </div>
@@ -1669,10 +1676,10 @@ export const Screen1Upload: React.FC = () => {
               onDrop={handleFileDrop}
               className={`relative border-2 border-dashed rounded-2xl p-6 sm:p-8 flex flex-col items-center justify-center text-center transition-all shadow-xs ${
                 isDragging
-                  ? 'border-[#D96B27] bg-[#D96B27]/5 scale-[1.01]'
+                  ? 'border-[#D96B27] dark:border-[#E8632A] bg-[#D96B27]/5 dark:bg-[#E8632A]/10 scale-[1.01]'
                   : selectedFile
-                  ? 'border-[#0F766E]/60 bg-[#0F766E]/5'
-                  : 'border-[#E5E2DC] hover:border-[#D96B27] bg-white'
+                  ? 'border-[#0F766E]/60 dark:border-[#2DD4BF]/60 bg-[#0F766E]/5 dark:bg-[#14B8A6]/10'
+                  : 'border-[#E5E2DC] dark:border-[#2C2A27] hover:border-[#D96B27] dark:hover:border-[#E8632A] bg-white dark:bg-[#171615]'
               }`}
             >
               <input
@@ -1683,30 +1690,30 @@ export const Screen1Upload: React.FC = () => {
                 disabled={isProcessing}
               />
 
-              <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-[#F0EEE9] border border-[#E5E2DC] flex items-center justify-center mb-3 sm:mb-4">
+              <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-[#F0EEE9] dark:bg-[#24221F] border border-[#E5E2DC] dark:border-[#2C2A27] flex items-center justify-center mb-3 sm:mb-4">
                 {selectedFile ? (
-                  <FileVideo className="w-7 h-7 sm:w-8 sm:h-8 text-[#0F766E]" />
+                  <FileVideo className="w-7 h-7 sm:w-8 sm:h-8 text-[#0F766E] dark:text-[#2DD4BF]" />
                 ) : (
-                  <Upload className="w-7 h-7 sm:w-8 sm:h-8 text-[#D96B27]" />
+                  <Upload className="w-7 h-7 sm:w-8 sm:h-8 text-[#D96B27] dark:text-[#E8632A]" />
                 )}
               </div>
 
               {selectedFile ? (
                 <div className="space-y-1 relative z-20 pointer-events-none">
-                  <p className="text-sm font-semibold text-[#0F766E]">{selectedFile.name}</p>
-                  <p className="text-xs text-[#66625B] tabular-nums">
+                  <p className="text-sm font-semibold text-[#0F766E] dark:text-[#5EEAD4]">{selectedFile.name}</p>
+                  <p className="text-xs text-[#66625B] dark:text-[#A39E95] tabular-nums">
                     {(selectedFile.size / (1024 * 1024)).toFixed(2)} MB • Ready for processing
                   </p>
-                  <span className="inline-block mt-2 text-xs text-[#D96B27] hover:underline cursor-pointer">
+                  <span className="inline-block mt-2 text-xs text-[#D96B27] dark:text-[#E8632A] hover:underline cursor-pointer">
                     Tap or drop to change file
                   </span>
                 </div>
               ) : (
                 <div className="space-y-2">
-                  <p className="text-sm sm:text-base font-medium text-[#181715]">
-                    Drop your video here, or <span className="text-[#D96B27] font-semibold underline">browse files</span>
+                  <p className="text-sm sm:text-base font-medium text-[#181715] dark:text-[#F4F2EC]">
+                    Drop your video here, or <span className="text-[#D96B27] dark:text-[#E8632A] font-semibold underline">browse files</span>
                   </p>
-                  <p className="text-xs text-[#8E8A82]">
+                  <p className="text-xs text-[#8E8A82] dark:text-[#78736B]">
                     Supports MP4, MOV, and WebM • Max 250 MB • Max 5 minutes
                   </p>
                   <div className="relative z-20">
@@ -1716,11 +1723,11 @@ export const Screen1Upload: React.FC = () => {
                         handleLoadSampleClip(e);
                       }}
                       disabled={isLoadingSample || isProcessing}
-                      className="mt-3 inline-flex items-center gap-1.5 rounded-full border border-[#E5E2DC] bg-[#F7F6F2] px-3.5 py-1 text-xs text-[#D96B27] font-medium hover:border-[#D96B27] hover:bg-white transition cursor-pointer disabled:opacity-50 shadow-xs min-h-[36px]"
+                      className="mt-3 inline-flex items-center gap-1.5 rounded-full border border-[#E5E2DC] dark:border-[#2C2A27] bg-[#F7F6F2] dark:bg-[#1E1D1B] px-3.5 py-1 text-xs text-[#D96B27] dark:text-[#E8632A] font-medium hover:border-[#D96B27] dark:hover:border-[#E8632A] hover:bg-white dark:hover:bg-[#24221F] transition cursor-pointer disabled:opacity-50 shadow-xs min-h-[36px]"
                     >
                       {isLoadingSample ? (
                         <>
-                          <Loader2 className="w-3 h-3 animate-spin text-[#D96B27]" />
+                          <Loader2 className="w-3 h-3 animate-spin text-[#D96B27] dark:text-[#E8632A]" />
                           <span>Loading sample clip...</span>
                         </>
                       ) : (
@@ -1734,26 +1741,26 @@ export const Screen1Upload: React.FC = () => {
 
             {/* Studio Editor Chair (Directly below Dropbox, facing it as screen) */}
             <div className="flex justify-center pointer-events-none select-none pt-1">
-              <StudioEditorChair />
+              <StudioEditorChair isDark={isDark} />
             </div>
 
             {errorMsg && (
-              <div className="flex items-center space-x-2 p-3 bg-[#FEE2E2]/70 border border-[#EF4444]/40 rounded-xl text-[#B91C1C] text-xs">
+              <div className="flex items-center space-x-2 p-3 bg-[#FEE2E2]/70 dark:bg-[#450A0A]/40 border border-[#EF4444]/40 dark:border-[#991B1B] rounded-xl text-[#B91C1C] dark:text-[#FCA5A5] text-xs">
                 <AlertCircle className="w-4 h-4 flex-shrink-0" />
                 <span>{errorMsg}</span>
               </div>
             )}
 
             {isProcessing && (
-              <div className="p-4 bg-white border border-[#E5E2DC] rounded-xl space-y-2 shadow-xs">
-                <div className="flex items-center justify-between text-xs text-[#181715]">
+              <div className="p-4 bg-white dark:bg-[#171615] border border-[#E5E2DC] dark:border-[#2C2A27] rounded-xl space-y-2 shadow-xs">
+                <div className="flex items-center justify-between text-xs text-[#181715] dark:text-[#F4F2EC]">
                   <span className="flex items-center space-x-2">
-                    <div className="w-2 h-2 rounded-full bg-[#D96B27] animate-ping" />
+                    <div className="w-2 h-2 rounded-full bg-[#D96B27] dark:bg-[#E8632A] animate-ping" />
                     <span className="font-medium">{processingStatus}</span>
                   </span>
                 </div>
-                <div className="w-full bg-[#E5E2DC] h-1.5 rounded-full overflow-hidden">
-                  <div className="bg-gradient-to-r from-[#D96B27] to-[#E8872A] h-full w-2/3 animate-pulse" />
+                <div className="w-full bg-[#E5E2DC] dark:bg-[#2C2A27] h-1.5 rounded-full overflow-hidden">
+                  <div className="bg-gradient-to-r from-[#D96B27] to-[#E8872A] dark:from-[#E8632A] dark:to-[#F2743D] h-full w-2/3 animate-pulse" />
                 </div>
               </div>
             )}
@@ -1762,14 +1769,14 @@ export const Screen1Upload: React.FC = () => {
           {/* Right Column: Mode Selection (Auto Edit vs Custom Edit) */}
           <div className="md:col-span-5 space-y-5">
             {/* Card A: Auto Edit Recipes */}
-            <div className="bg-white border border-[#E5E2DC] hover:border-[#D8D4CC] rounded-2xl p-5 sm:p-6 space-y-4 transition-colors shadow-xs">
+            <div className="bg-white dark:bg-[#171615] border border-[#E5E2DC] dark:border-[#2C2A27] hover:border-[#D8D4CC] dark:hover:border-[#383531] rounded-2xl p-5 sm:p-6 space-y-4 transition-colors shadow-xs">
               <div className="flex items-center space-x-3">
-                <div className="w-8 h-8 rounded-lg bg-[#F0EEE9] border border-[#E5E2DC] text-[#D96B27] flex items-center justify-center">
+                <div className="w-8 h-8 rounded-lg bg-[#F0EEE9] dark:bg-[#24221F] border border-[#E5E2DC] dark:border-[#2C2A27] text-[#D96B27] dark:text-[#E8632A] flex items-center justify-center">
                   <Wand2 className="w-4 h-4" />
                 </div>
                 <div>
-                  <h3 className="text-sm font-semibold text-[#181715]">Mode A: AI Auto-Edit</h3>
-                  <p className="text-xs text-[#66625B]">Select automated enhancements to apply</p>
+                  <h3 className="text-sm font-semibold text-[#181715] dark:text-[#F4F2EC]">Mode A: AI Auto-Edit</h3>
+                  <p className="text-xs text-[#66625B] dark:text-[#A39E95]">Select automated enhancements to apply</p>
                 </div>
               </div>
 
@@ -1781,7 +1788,7 @@ export const Screen1Upload: React.FC = () => {
                 ].map(({ key, label }) => (
                   <label
                     key={key}
-                    className="flex items-center space-x-3 text-xs text-[#66625B] cursor-pointer select-none hover:text-[#181715] transition-colors"
+                    className="flex items-center space-x-3 text-xs text-[#66625B] dark:text-[#A39E95] cursor-pointer select-none hover:text-[#181715] dark:hover:text-[#F4F2EC] transition-colors"
                   >
                     <input
                       type="checkbox"
@@ -1789,7 +1796,7 @@ export const Screen1Upload: React.FC = () => {
                       onChange={(e) =>
                         setAutoOptions({ ...autoOptions, [key]: e.target.checked })
                       }
-                      className="w-4 h-4 rounded border-[#D8D4CC] accent-[#D96B27] bg-[#F7F6F2]"
+                      className="w-4 h-4 rounded border-[#D8D4CC] dark:border-[#383531] accent-[#D96B27] dark:accent-[#E8632A] bg-[#F7F6F2] dark:bg-[#1E1D1B]"
                     />
                     <span className="flex items-center space-x-2">
                       <span>{label}</span>
@@ -1801,7 +1808,7 @@ export const Screen1Upload: React.FC = () => {
               <button
                 onClick={() => handleStartEditing(true)}
                 disabled={!selectedFile || isProcessing}
-                className="w-full flex items-center justify-center space-x-2 bg-[#D96B27] hover:bg-[#C25A1B] text-white font-semibold py-2.5 px-4 rounded-lg text-sm transition-all disabled:opacity-40 disabled:cursor-not-allowed shadow-xs active:scale-[0.99] min-h-[44px]"
+                className="w-full flex items-center justify-center space-x-2 bg-[#D96B27] dark:bg-[#E8632A] hover:bg-[#C25A1B] dark:hover:bg-[#F2743D] text-white font-semibold py-2.5 px-4 rounded-lg text-sm transition-all disabled:opacity-40 disabled:cursor-not-allowed shadow-xs active:scale-[0.99] min-h-[44px]"
               >
                 <span>Start Auto Edit</span>
                 <ArrowRight className="w-4 h-4" />
@@ -1809,15 +1816,15 @@ export const Screen1Upload: React.FC = () => {
             </div>
 
             {/* Card B: Custom Edit */}
-            <div className="bg-white border border-[#E5E2DC] hover:border-[#D8D4CC] rounded-2xl p-5 flex items-center justify-between transition-colors shadow-xs">
+            <div className="bg-white dark:bg-[#171615] border border-[#E5E2DC] dark:border-[#2C2A27] hover:border-[#D8D4CC] dark:hover:border-[#383531] rounded-2xl p-5 flex items-center justify-between transition-colors shadow-xs">
               <div>
-                <h4 className="text-sm font-semibold text-[#181715]">Mode B: Custom Edit</h4>
-                <p className="text-xs text-[#66625B]">Direct workspace access without auto changes</p>
+                <h4 className="text-sm font-semibold text-[#181715] dark:text-[#F4F2EC]">Mode B: Custom Edit</h4>
+                <p className="text-xs text-[#66625B] dark:text-[#A39E95]">Direct workspace access without auto changes</p>
               </div>
               <button
                 onClick={() => handleStartEditing(false)}
                 disabled={!selectedFile || isProcessing}
-                className="px-4 py-2 bg-[#F0EEE9] hover:bg-[#E7E4DD] border border-[#E5E2DC] text-[#181715] text-xs font-semibold rounded-lg transition-colors disabled:opacity-40 min-h-[44px] flex items-center justify-center"
+                className="px-4 py-2 bg-[#F0EEE9] dark:bg-[#24221F] hover:bg-[#E7E4DD] dark:hover:bg-[#2E2B27] border border-[#E5E2DC] dark:border-[#2C2A27] text-[#181715] dark:text-[#F4F2EC] text-xs font-semibold rounded-lg transition-colors disabled:opacity-40 min-h-[44px] flex items-center justify-center"
               >
                 Custom Edit
               </button>
@@ -1827,7 +1834,7 @@ export const Screen1Upload: React.FC = () => {
       </section>
 
       {/* Footer */}
-      <footer className="max-w-6xl mx-auto w-full px-6 pt-4 pb-6 border-t border-[#E5E2DC] text-center text-xs text-[#8E8A82] mt-auto">
+      <footer className="max-w-6xl mx-auto w-full px-6 pt-4 pb-6 border-t border-[#E5E2DC] dark:border-[#2C2A27] text-center text-xs text-[#8E8A82] dark:text-[#78736B] mt-auto">
         Fastcutz.ai • Browser-First Creator Studio
       </footer>
     </div>

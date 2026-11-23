@@ -13,6 +13,25 @@
     color: #181715;
   }
 
+  /* Option A: Cinema Obsidian Dark Mode Base */
+  html.dark {
+    color-scheme: dark;
+    background-color: #0E0E0D;
+    color: #F4F2EC;
+  }
+
+  html.dark body {
+    background-color: #0E0E0D;
+    color: #F4F2EC;
+  }
+
+  /* Native Select Dark Styling (Prevents white-on-white popups) */
+  html.dark select,
+  html.dark option {
+    background-color: #24221F;
+    color: #F4F2EC;
+  }
+
   /* iOS Safari typing safety */
   input, textarea, select {
     -webkit-user-select: text;
@@ -51,6 +70,18 @@
   }
   ::-webkit-scrollbar-thumb:hover {
     background: #A8A297;
+  }
+
+  /* Option A Cinema Obsidian Dark Scrollbars */
+  html.dark ::-webkit-scrollbar-track {
+    background: #141312;
+  }
+  html.dark ::-webkit-scrollbar-thumb {
+    background: #2E2C28;
+    border-radius: 3px;
+  }
+  html.dark ::-webkit-scrollbar-thumb:hover {
+    background: #3E3B36;
   }
 }
 

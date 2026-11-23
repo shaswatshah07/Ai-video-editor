@@ -13,6 +13,7 @@ import { TransitionType, TimelineItem } from '../types/edl';
 import { SILENCE_PRESETS } from '../utils/silenceDetector';
 import { downloadTranscriptAsTxt } from '../utils/transcriptParser';
 import { MEME_LIBRARY } from '../utils/memeLibrary';
+import { ThemeToggle } from './ThemeToggle';
 
 interface ActiveTransitionMatch {
   boundaryMs: number;
@@ -1427,10 +1428,10 @@ export const Screen2Workspace: React.FC = () => {
       <div className="space-y-3">
         {/* Quality & Mode Controls OR Single Loading Card */}
         {transcriptionStatus === 'downloading_model' || transcriptionStatus === 'transcribing' ? (
-          <div className="p-3.5 rounded-xl bg-white border border-[#E5E2DC] space-y-2.5 shadow-sm">
-            <div className="flex items-center justify-between text-xs text-[#181715] font-medium">
+          <div className="p-3.5 rounded-xl bg-white dark:bg-[#1E1D1B] border border-[#E5E2DC] dark:border-[#2C2A27] space-y-2.5 shadow-sm">
+            <div className="flex items-center justify-between text-xs text-[#181715] dark:text-[#F4F2EC] font-medium">
               <span className="flex items-center space-x-2">
-                <Loader2 className="w-4 h-4 animate-spin text-[#D96B27]" />
+                <Loader2 className="w-4 h-4 animate-spin text-[#D96B27] dark:text-[#E8632A]" />
                 <span className="font-semibold">
                   {transcriptionStatus === 'downloading_model'
                     ? `Downloading Whisper Model... (${transcriptionDownloadPercent}%)`
@@ -1440,37 +1441,37 @@ export const Screen2Workspace: React.FC = () => {
               <button
                 type="button"
                 onClick={cancelTranscription}
-                className="text-xs text-[#66625B] hover:text-[#DC2626] px-2.5 py-1 rounded-md bg-[#F7F6F2] hover:bg-[#FEF2F2] border border-[#E5E2DC] transition-colors cursor-pointer font-medium"
+                className="text-xs text-[#66625B] dark:text-[#A39E95] hover:text-[#DC2626] dark:hover:text-[#F87171] px-2.5 py-1 rounded-md bg-[#F7F6F2] dark:bg-[#24221F] hover:bg-[#FEF2F2] dark:hover:bg-[#450A0A]/40 border border-[#E5E2DC] dark:border-[#2C2A27] transition-colors cursor-pointer font-medium"
               >
                 Cancel
               </button>
             </div>
             {transcriptionStatus === 'downloading_model' ? (
-              <div className="w-full bg-[#E5E2DC] rounded-full h-2 overflow-hidden">
+              <div className="w-full bg-[#E5E2DC] dark:bg-[#2C2A27] rounded-full h-2 overflow-hidden">
                 <div
-                  className="bg-[#D96B27] h-2 rounded-full transition-all duration-200"
+                  className="bg-[#D96B27] dark:bg-[#E8632A] h-2 rounded-full transition-all duration-200"
                   style={{ width: `${transcriptionDownloadPercent}%` }}
                 />
               </div>
             ) : (
-              <div className="w-full bg-[#E5E2DC] rounded-full h-2 overflow-hidden">
-                <div className="bg-[#D96B27] h-2 rounded-full w-2/3 animate-pulse" />
+              <div className="w-full bg-[#E5E2DC] dark:bg-[#2C2A27] rounded-full h-2 overflow-hidden">
+                <div className="bg-[#D96B27] dark:bg-[#E8632A] h-2 rounded-full w-2/3 animate-pulse" />
               </div>
             )}
-            <p className="text-[11px] text-[#8E8A82]">
+            <p className="text-[11px] text-[#8E8A82] dark:text-[#78736B]">
               First use downloads the model (~75 MB) once and caches it locally.
             </p>
           </div>
         ) : (
-          <div className="p-2.5 rounded-xl bg-[#F7F6F2] border border-[#E5E2DC] space-y-2">
+          <div className="p-2.5 rounded-xl bg-[#F7F6F2] dark:bg-[#1E1D1B] border border-[#E5E2DC] dark:border-[#2C2A27] space-y-2">
             {/* Quality Selector */}
             <div className="flex items-center justify-between text-[11px]">
-              <span className="text-[#66625B] font-medium">Quality:</span>
+              <span className="text-[#66625B] dark:text-[#A39E95] font-medium">Quality:</span>
               <select
                 value={transcriptQuality}
                 onChange={(e) => setTranscriptQuality(e.target.value as any)}
                 disabled={transcriptMode === 'transcribe_hinglish'}
-                className="bg-white border border-[#E5E2DC] text-[#181715] text-[11px] rounded px-2 py-1 focus:outline-none focus:border-[#D96B27] cursor-pointer disabled:opacity-50"
+                className="bg-white dark:bg-[#24221F] border border-[#E5E2DC] dark:border-[#2C2A27] text-[#181715] dark:text-[#F4F2EC] text-[11px] rounded px-2 py-1 focus:outline-none focus:border-[#D96B27] dark:focus:border-[#E8632A] cursor-pointer disabled:opacity-50"
               >
                 <option value="accurate">Accurate (Small, ~285 MB)</option>
                 <option value="fast">Fast (Base, ~75 MB)</option>
@@ -1479,11 +1480,11 @@ export const Screen2Workspace: React.FC = () => {
 
             {/* Mode Selector */}
             <div className="flex items-center justify-between text-[11px]">
-              <span className="text-[#66625B] font-medium">Mode:</span>
+              <span className="text-[#66625B] dark:text-[#A39E95] font-medium">Mode:</span>
               <select
                 value={transcriptMode}
                 onChange={(e) => setTranscriptMode(e.target.value as any)}
-                className="bg-white border border-[#E5E2DC] text-[#181715] text-[11px] rounded px-2 py-1 max-w-[175px] truncate focus:outline-none focus:border-[#D96B27] cursor-pointer disabled:opacity-50"
+                className="bg-white dark:bg-[#24221F] border border-[#E5E2DC] dark:border-[#2C2A27] text-[#181715] dark:text-[#F4F2EC] text-[11px] rounded px-2 py-1 max-w-[175px] truncate focus:outline-none focus:border-[#D96B27] dark:focus:border-[#E8632A] cursor-pointer disabled:opacity-50"
               >
                 <option value="transcribe_hinglish">Hinglish (Mixed Hindi + English)</option>
                 <option value="translate_en">English (translated)</option>
@@ -1491,7 +1492,7 @@ export const Screen2Workspace: React.FC = () => {
               </select>
             </div>
 
-            <p className="text-[10px] text-[#8E8A82]">
+            <p className="text-[10px] text-[#8E8A82] dark:text-[#78736B]">
               First use downloads the model ({transcriptMode === 'transcribe_hinglish' ? 'about 72 MB' : transcriptQuality === 'accurate' ? 'about 285 MB' : 'about 75 MB'}), only once.
             </p>
 
@@ -1499,7 +1500,7 @@ export const Screen2Workspace: React.FC = () => {
               <button
                 type="button"
                 onClick={() => generateTranscript(transcriptQuality, transcriptMode)}
-                className="flex-1 bg-[#D96B27] hover:bg-[#C25E1F] text-white font-medium py-1.5 px-3 rounded-lg text-xs flex items-center justify-center space-x-1.5 shadow-sm transition-all cursor-pointer"
+                className="flex-1 bg-[#D96B27] dark:bg-[#E8632A] hover:bg-[#C25E1F] dark:hover:bg-[#F2743D] text-white font-medium py-1.5 px-3 rounded-lg text-xs flex items-center justify-center space-x-1.5 shadow-sm transition-all cursor-pointer"
               >
                 {project.transcript.length > 0 && !project.isDemoSample ? (
                   <>
@@ -1519,7 +1520,7 @@ export const Screen2Workspace: React.FC = () => {
                   type="button"
                   onClick={() => downloadTranscriptAsTxt(project.transcript, `${project.title.replace(/\.[^/.]+$/, '')}_transcript.txt`)}
                   title="Download transcript as .txt"
-                  className="bg-white hover:bg-[#F7F6F2] text-[#66625B] p-1.5 rounded-lg border border-[#E5E2DC] transition-colors cursor-pointer"
+                  className="bg-white dark:bg-[#24221F] hover:bg-[#F7F6F2] dark:hover:bg-[#2E2B27] text-[#66625B] dark:text-[#A39E95] p-1.5 rounded-lg border border-[#E5E2DC] dark:border-[#2C2A27] transition-colors cursor-pointer"
                 >
                   <Download className="w-3.5 h-3.5" />
                 </button>
@@ -1530,34 +1531,32 @@ export const Screen2Workspace: React.FC = () => {
 
         {/* Fallback Notice if Small model fell back to Base */}
         {transcriptionFallbackNotice && (
-          <div className="p-2.5 rounded-lg bg-[#FFFBEB] border border-[#FCD34D] text-[#92400E] text-[11px] flex items-start space-x-2">
-            <ShieldAlert className="w-4 h-4 flex-shrink-0 text-[#D97706] mt-0.5" />
+          <div className="p-2.5 rounded-lg bg-[#FFFBEB] dark:bg-[#78350F]/30 border border-[#FCD34D] dark:border-[#B45309] text-[#92400E] dark:text-[#FDE68A] text-[11px] flex items-start space-x-2">
+            <ShieldAlert className="w-4 h-4 flex-shrink-0 text-[#D97706] dark:text-[#FBBF24] mt-0.5" />
             <span>{transcriptionFallbackNotice}</span>
           </div>
         )}
 
         {/* Urdu Script Warning Banner */}
         {project.transcriptionMeta?.hasUrduWarning && (
-          <div className="p-2.5 rounded-lg bg-[#FFFBEB] border border-[#FCD34D] text-[#92400E] text-[11px] flex items-start space-x-2">
-            <AlertCircle className="w-4 h-4 flex-shrink-0 text-[#D97706] mt-0.5" />
+          <div className="p-2.5 rounded-lg bg-[#FFFBEB] dark:bg-[#78350F]/30 border border-[#FCD34D] dark:border-[#B45309] text-[#92400E] dark:text-[#FDE68A] text-[11px] flex items-start space-x-2">
+            <AlertCircle className="w-4 h-4 flex-shrink-0 text-[#D97706] dark:text-[#FBBF24] mt-0.5" />
             <span>Output contains Urdu-script text. For a cleaner result use &apos;English (translated)&apos; mode.</span>
           </div>
         )}
 
-
-
         {/* Status Banner: Error */}
         {transcriptionStatus === 'error' && (
-          <div className="p-3 rounded-xl bg-[#FEF2F2] border border-[#FCA5A5] space-y-1.5">
-            <div className="flex items-center space-x-1.5 text-xs font-semibold text-[#B91C1C]">
+          <div className="p-3 rounded-xl bg-[#FEF2F2] dark:bg-[#450A0A]/40 border border-[#FCA5A5] dark:border-[#991B1B] space-y-1.5">
+            <div className="flex items-center space-x-1.5 text-xs font-semibold text-[#B91C1C] dark:text-[#FCA5A5]">
               <AlertCircle className="w-3.5 h-3.5 text-[#EF4444] flex-shrink-0" />
               <span>Transcription Failed</span>
             </div>
-            <p className="text-[11px] text-[#991B1B] leading-snug">{transcriptionError}</p>
+            <p className="text-[11px] text-[#991B1B] dark:text-[#FCA5A5] leading-snug">{transcriptionError}</p>
             <button
               type="button"
               onClick={() => generateTranscript(transcriptQuality, transcriptMode)}
-              className="text-[10px] text-[#DC2626] hover:underline mt-1 font-medium cursor-pointer"
+              className="text-[10px] text-[#DC2626] dark:text-[#F87171] hover:underline mt-1 font-medium cursor-pointer"
             >
               Try Again
             </button>
@@ -1566,34 +1565,34 @@ export const Screen2Workspace: React.FC = () => {
 
         {/* Transcript Content List */}
         {project.transcript.length === 0 && transcriptionStatus === 'idle' ? (
-          <div className="p-4 rounded-xl bg-[#F7F6F2] border border-[#E5E2DC] text-center space-y-2">
-            <p className="text-[#181715] text-xs font-medium">No transcript generated yet.</p>
-            <p className="text-[11px] text-[#66625B] leading-relaxed">
+          <div className="p-4 rounded-xl bg-[#F7F6F2] dark:bg-[#1E1D1B] border border-[#E5E2DC] dark:border-[#2C2A27] text-center space-y-2">
+            <p className="text-[#181715] dark:text-[#F4F2EC] text-xs font-medium">No transcript generated yet.</p>
+            <p className="text-[11px] text-[#66625B] dark:text-[#A39E95] leading-relaxed">
               Click &quot;Generate Transcript&quot; above to transcribe using in-browser Whisper AI. First use downloads the model once.
             </p>
           </div>
         ) : project.transcript.length > 0 ? (
           <div className="space-y-2">
             {project.transcriptionMeta?.lowQualityWarning && (
-              <div className="p-2.5 rounded-lg bg-[#FFFBEB] border border-[#FCD34D] text-[#92400E] text-[11px] flex items-start space-x-2">
-                <AlertCircle className="w-3.5 h-3.5 flex-shrink-0 text-[#D97706] mt-0.5" />
+              <div className="p-2.5 rounded-lg bg-[#FFFBEB] dark:bg-[#78350F]/30 border border-[#FCD34D] dark:border-[#B45309] text-[#92400E] dark:text-[#FDE68A] text-[11px] flex items-start space-x-2">
+                <AlertCircle className="w-3.5 h-3.5 flex-shrink-0 text-[#D97706] dark:text-[#FBBF24] mt-0.5" />
                 <span>{project.transcriptionMeta.lowQualityWarning}</span>
               </div>
             )}
 
-            <div className="flex items-center justify-between text-[11px] text-[#66625B] pb-1 border-b border-[#E5E2DC]">
+            <div className="flex items-center justify-between text-[11px] text-[#66625B] dark:text-[#A39E95] pb-1 border-b border-[#E5E2DC] dark:border-[#2C2A27]">
               <span>Click to seek • Double-click to edit:</span>
               {addedClipTranscribing ? (
-                <span className="text-[10px] bg-[#FFFBEB] text-[#D97706] border border-[#FCD34D] px-1.5 py-0.5 rounded font-mono flex items-center space-x-1">
+                <span className="text-[10px] bg-[#FFFBEB] dark:bg-[#78350F]/30 text-[#D97706] dark:text-[#FBBF24] border border-[#FCD34D] dark:border-[#B45309] px-1.5 py-0.5 rounded font-mono flex items-center space-x-1">
                   <Loader2 className="w-2.5 h-2.5 animate-spin" />
                   <span>Transcribing added clip...</span>
                 </span>
               ) : project.isDemoSample ? (
-                <span className="text-[10px] bg-[#FFFBEB] text-[#92400E] border border-[#FCD34D] px-1.5 py-0.5 rounded font-mono">
+                <span className="text-[10px] bg-[#FFFBEB] dark:bg-[#78350F]/30 text-[#92400E] dark:text-[#FDE68A] border border-[#FCD34D] dark:border-[#B45309] px-1.5 py-0.5 rounded font-mono">
                   Sample transcript
                 </span>
               ) : (
-                <span className="text-[10px] bg-[#F7F6F2] text-[#66625B] border border-[#E5E2DC] px-1.5 py-0.5 rounded font-mono">
+                <span className="text-[10px] bg-[#F7F6F2] dark:bg-[#24221F] text-[#66625B] dark:text-[#A39E95] border border-[#E5E2DC] dark:border-[#2C2A27] px-1.5 py-0.5 rounded font-mono">
                   {project.transcriptionMeta?.modelName || (transcriptQuality === 'accurate' ? 'Whisper Small' : 'Whisper Base')} ({project.transcript.length} words)
                 </span>
               )}
@@ -1604,10 +1603,10 @@ export const Screen2Workspace: React.FC = () => {
               const selWord = project.transcript.find(w => w.id === selectedWordId);
               if (!selWord) return null;
               return (
-                <div className="flex items-center justify-between p-2 rounded-lg bg-[#FAF9F5] border border-[#E5E2DC] text-xs">
+                <div className="flex items-center justify-between p-2 rounded-lg bg-[#FAF9F5] dark:bg-[#1E1D1B] border border-[#E5E2DC] dark:border-[#2C2A27] text-xs">
                   <div className="flex items-center space-x-1.5 truncate">
-                    <span className="text-[#66625B]">Selected:</span>
-                    <span className="font-semibold text-[#181715]">&quot;{selWord.word}&quot;</span>
+                    <span className="text-[#66625B] dark:text-[#A39E95]">Selected:</span>
+                    <span className="font-semibold text-[#181715] dark:text-[#F4F2EC]">&quot;{selWord.word}&quot;</span>
                   </div>
                   <div className="flex items-center space-x-1.5 shrink-0">
                     <button
@@ -1616,14 +1615,14 @@ export const Screen2Workspace: React.FC = () => {
                         setEditingWordId(selWord.id);
                         setEditingWordText(selWord.word);
                       }}
-                      className="px-2.5 py-1 bg-[#D96B27] hover:bg-[#C25E1F] text-white rounded text-xs font-medium cursor-pointer shadow-xs"
+                      className="px-2.5 py-1 bg-[#D96B27] dark:bg-[#E8632A] hover:bg-[#C25E1F] dark:hover:bg-[#F2743D] text-white rounded text-xs font-medium cursor-pointer shadow-xs"
                     >
                       Edit Word
                     </button>
                     <button
                       type="button"
                       onClick={() => setSelectedWordId(null)}
-                      className="p-1 text-[#66625B] hover:text-[#181715] cursor-pointer"
+                      className="p-1 text-[#66625B] dark:text-[#A39E95] hover:text-[#181715] dark:hover:text-[#F4F2EC] cursor-pointer"
                     >
                       <X className="w-3.5 h-3.5" />
                     </button>
@@ -1661,7 +1660,7 @@ export const Screen2Workspace: React.FC = () => {
                         setEditingWordId(null);
                       }}
                       onClick={(e) => e.stopPropagation()}
-                      className="bg-white text-[#181715] font-medium border border-[#D96B27] rounded px-1 py-0.5 text-xs outline-none w-20 inline-block shadow-sm"
+                      className="bg-white dark:bg-[#24221F] text-[#181715] dark:text-[#F4F2EC] font-medium border border-[#D96B27] dark:border-[#E8632A] rounded px-1 py-0.5 text-xs outline-none w-20 inline-block shadow-sm"
                     />
                   );
                 }
@@ -1697,24 +1696,24 @@ export const Screen2Workspace: React.FC = () => {
                     }
                     className={`inline-block px-1 py-0.5 rounded cursor-pointer transition-colors ${
                       isDeleted
-                        ? 'line-through text-[#8E8A82] bg-[#F2EFEB] hover:text-[#66625B]'
+                        ? 'line-through text-[#8E8A82] dark:text-[#78736B] bg-[#F2EFEB] dark:bg-[#1E1D1B] hover:text-[#66625B] dark:hover:text-[#A39E95]'
                         : isCurrent
-                        ? 'bg-[#FEF3C7] text-[#92400E] font-bold border border-[#F59E0B]'
+                        ? 'bg-[#FEF3C7] dark:bg-[#78350F]/50 text-[#92400E] dark:text-[#FDE68A] font-bold border border-[#F59E0B] dark:border-[#B45309]'
                         : selectedWordId === w.id
-                        ? 'bg-[#FAF9F5] text-[#181715] ring-2 ring-[#D96B27]'
-                        : 'text-[#181715] hover:bg-[#F2EFEB]'
-                    } ${w.edited ? 'ring-1 ring-[#0D9488]/50 bg-[#F0FDFA]' : ''}`}
+                        ? 'bg-[#FAF9F5] dark:bg-[#24221F] text-[#181715] dark:text-[#F4F2EC] ring-2 ring-[#D96B27] dark:ring-[#E8632A]'
+                        : 'text-[#181715] dark:text-[#F4F2EC] hover:bg-[#F2EFEB] dark:hover:bg-[#24221F]'
+                    } ${w.edited ? 'ring-1 ring-[#0D9488]/50 dark:ring-[#2DD4BF]/50 bg-[#F0FDFA] dark:bg-[#14B8A6]/15' : ''}`}
                   >
                     {w.word}
-                    {w.edited && <span className="text-[9px] text-[#0F766E] ml-0.5 font-bold">*</span>}
+                    {w.edited && <span className="text-[9px] text-[#0F766E] dark:text-[#5EEAD4] ml-0.5 font-bold">*</span>}
                   </span>
                 );
               })}
             </div>
 
             {/* Labels under the transcript */}
-            <div className="pt-2.5 mt-2 border-t border-[#E5E2DC] text-[11px] text-[#66625B] space-y-1">
-              <div className="flex items-center justify-between text-[10px] text-[#66625B] font-mono tabular-nums">
+            <div className="pt-2.5 mt-2 border-t border-[#E5E2DC] dark:border-[#2C2A27] text-[11px] text-[#66625B] dark:text-[#A39E95] space-y-1">
+              <div className="flex items-center justify-between text-[10px] text-[#66625B] dark:text-[#A39E95] font-mono tabular-nums">
                 <span>
                   {project.transcriptionMeta?.modelName || (transcriptQuality === 'accurate' ? 'Whisper Small' : 'Whisper Base')} ({project.transcriptionMeta?.device || 'WASM'})
                 </span>
@@ -1722,7 +1721,7 @@ export const Screen2Workspace: React.FC = () => {
                   {project.transcriptionMeta?.durationMs ? `${(project.transcriptionMeta.durationMs / 1000).toFixed(1)}s` : ''}
                 </span>
               </div>
-              <div className="text-[10px] text-[#66625B]">
+              <div className="text-[10px] text-[#66625B] dark:text-[#A39E95]">
                 Mode:{' '}
                 {
                   (project.transcriptionMeta?.mode || transcriptMode) === 'transcribe_hinglish'
@@ -1732,7 +1731,7 @@ export const Screen2Workspace: React.FC = () => {
                     : 'English (translated)'
                 }
               </div>
-              <p className="text-[10px] text-[#8E8A82] italic">
+              <p className="text-[10px] text-[#8E8A82] dark:text-[#78736B] italic">
                 Auto-generated, may contain errors. Double-click a word to fix it.
               </p>
             </div>
@@ -1744,20 +1743,20 @@ export const Screen2Workspace: React.FC = () => {
 
   // Sub-render: Memes Section (used in desktop right sidebar & mobile clips tab)
   const renderMemesSection = () => (
-    <div className="space-y-2 pt-1 border-t border-[#E5E2DC]">
+    <div className="space-y-2 pt-1 border-t border-[#E5E2DC] dark:border-[#2C2A27]">
       {/* Section Header with Chevron Toggle & Replace Banner */}
       <div className="flex items-center justify-between">
         <button
           type="button"
           onClick={() => setIsMemeSectionOpen(!isMemeSectionOpen)}
-          className="flex items-center space-x-1.5 hover:text-[#181715] transition-colors group cursor-pointer text-[#66625B]"
+          className="flex items-center space-x-1.5 hover:text-[#181715] dark:hover:text-[#F4F2EC] transition-colors group cursor-pointer text-[#66625B] dark:text-[#A39E95]"
         >
           <Film className="w-3.5 h-3.5 text-[#E11D48]" />
-          <span className="text-[10px] uppercase font-bold tracking-wider text-[#66625B] group-hover:text-[#181715]">
+          <span className="text-[10px] uppercase font-bold tracking-wider text-[#66625B] dark:text-[#A39E95] group-hover:text-[#181715] dark:group-hover:text-[#F4F2EC]">
             Meme Reactions
           </span>
           <ChevronDown
-            className={`w-3 h-3 text-[#66625B] group-hover:text-[#181715] transition-transform duration-150 ${
+            className={`w-3 h-3 text-[#66625B] dark:text-[#A39E95] group-hover:text-[#181715] dark:group-hover:text-[#F4F2EC] transition-transform duration-150 ${
               isMemeSectionOpen ? 'rotate-0' : '-rotate-90'
             }`}
           />
@@ -1765,7 +1764,7 @@ export const Screen2Workspace: React.FC = () => {
         {replacingMemeId && (
           <button
             onClick={() => setReplacingMemeId(null)}
-            className="text-[10px] text-[#92400E] hover:text-[#78350F] font-medium flex items-center space-x-0.5 bg-[#FFFBEB] px-1.5 py-0.5 rounded border border-[#FCD34D] cursor-pointer"
+            className="text-[10px] text-[#92400E] dark:text-[#FDE68A] hover:text-[#78350F] font-medium flex items-center space-x-0.5 bg-[#FFFBEB] dark:bg-[#78350F]/30 px-1.5 py-0.5 rounded border border-[#FCD34D] dark:border-[#B45309] cursor-pointer"
           >
             <span>Cancel Replace</span>
             <X className="w-2.5 h-2.5 ml-0.5" />
@@ -1776,19 +1775,19 @@ export const Screen2Workspace: React.FC = () => {
       {isMemeSectionOpen && (
         <>
           {replacingMemeId && (
-            <div className="p-1.5 rounded-lg bg-[#FFFBEB] border border-[#FCD34D] text-[#92400E] text-[10px]">
+            <div className="p-1.5 rounded-lg bg-[#FFFBEB] dark:bg-[#78350F]/30 border border-[#FCD34D] dark:border-[#B45309] text-[#92400E] dark:text-[#FDE68A] text-[10px]">
               Select any meme below to replace the chosen clip
             </div>
           )}
 
           {/* Segmented Two-Option Toggle */}
-          <div className="flex rounded-lg bg-[#F7F6F2] p-0.5 border border-[#E5E2DC] text-[11px]">
+          <div className="flex rounded-lg bg-[#F7F6F2] dark:bg-[#1E1D1B] p-0.5 border border-[#E5E2DC] dark:border-[#2C2A27] text-[11px]">
             <button
               onClick={() => setMemeTab('library')}
               className={`flex-1 py-1 rounded-md font-medium transition-colors text-center cursor-pointer ${
                 memeTab === 'library'
-                  ? 'bg-white shadow-sm border border-[#E5E2DC] text-[#181715]'
-                  : 'text-[#66625B] hover:text-[#181715]'
+                  ? 'bg-white dark:bg-[#24221F] shadow-sm border border-[#E5E2DC] dark:border-[#2C2A27] text-[#181715] dark:text-[#F4F2EC]'
+                  : 'text-[#66625B] dark:text-[#A39E95] hover:text-[#181715] dark:hover:text-[#F4F2EC]'
               }`}
             >
               Choose a Meme ({MEME_LIBRARY.length})
@@ -1797,8 +1796,8 @@ export const Screen2Workspace: React.FC = () => {
               onClick={() => setMemeTab('custom')}
               className={`flex-1 py-1 rounded-md font-medium transition-colors text-center cursor-pointer ${
                 memeTab === 'custom'
-                  ? 'bg-white shadow-sm border border-[#E5E2DC] text-[#181715]'
-                  : 'text-[#66625B] hover:text-[#181715]'
+                  ? 'bg-white dark:bg-[#24221F] shadow-sm border border-[#E5E2DC] dark:border-[#2C2A27] text-[#181715] dark:text-[#F4F2EC]'
+                  : 'text-[#66625B] dark:text-[#A39E95] hover:text-[#181715] dark:hover:text-[#F4F2EC]'
               }`}
             >
               Insert Your Own ({userUploadedClips.length})
@@ -1810,18 +1809,18 @@ export const Screen2Workspace: React.FC = () => {
             <div className="space-y-2">
               {/* Search Input */}
               <div className="relative">
-                <Search className="w-3 h-3 absolute left-2 top-2 text-[#8E8A82]" />
+                <Search className="w-3 h-3 absolute left-2 top-2 text-[#8E8A82] dark:text-[#78736B]" />
                 <input
                   type="text"
                   value={memeSearch}
                   onChange={(e) => setMemeSearch(e.target.value)}
                   placeholder="Search memes (e.g. damn, rock, snoop)..."
-                  className="w-full bg-[#F7F6F2] border border-[#E5E2DC] rounded-lg pl-7 pr-7 py-1 text-[11px] text-[#181715] placeholder-[#8E8A82] focus:outline-none focus:border-[#D96B27]"
+                  className="w-full bg-[#F7F6F2] dark:bg-[#24221F] border border-[#E5E2DC] dark:border-[#2C2A27] rounded-lg pl-7 pr-7 py-1 text-[11px] text-[#181715] dark:text-[#F4F2EC] placeholder-[#8E8A82] dark:placeholder-[#78736B] focus:outline-none focus:border-[#D96B27] dark:focus:border-[#E8632A]"
                 />
                 {memeSearch && (
                   <button
                     onClick={() => setMemeSearch('')}
-                    className="absolute right-2 top-1.5 text-[#8E8A82] hover:text-[#181715] cursor-pointer"
+                    className="absolute right-2 top-1.5 text-[#8E8A82] dark:text-[#78736B] hover:text-[#181715] dark:hover:text-[#F4F2EC] cursor-pointer"
                   >
                     <X className="w-3 h-3" />
                   </button>
@@ -1831,18 +1830,18 @@ export const Screen2Workspace: React.FC = () => {
               {/* Meme List */}
               <div className="max-h-[165px] overflow-y-auto space-y-1.5 pr-1">
                 {filteredMemes.length === 0 ? (
-                  <div className="text-[11px] text-[#8E8A82] text-center py-4 italic">
+                  <div className="text-[11px] text-[#8E8A82] dark:text-[#78736B] text-center py-4 italic">
                     No memes match &quot;{memeSearch}&quot;
                   </div>
                 ) : (
                   filteredMemes.map((m) => (
                     <div
                       key={m.id}
-                      className="flex items-center justify-between p-1.5 rounded-lg bg-[#FAF9F5] hover:bg-[#F2EFEB] border border-[#E5E2DC] group transition-all"
+                      className="flex items-center justify-between p-1.5 rounded-lg bg-[#FAF9F5] dark:bg-[#1E1D1B] hover:bg-[#F2EFEB] dark:hover:bg-[#24221F] border border-[#E5E2DC] dark:border-[#2C2A27] group transition-all"
                     >
                       <div className="flex items-center space-x-2 min-w-0 flex-1">
                         {/* Hover Video Preview */}
-                        <div className="w-12 h-9 rounded bg-black overflow-hidden relative flex-shrink-0 border border-[#D8D4CC]">
+                        <div className="w-12 h-9 rounded bg-black overflow-hidden relative flex-shrink-0 border border-[#D8D4CC] dark:border-[#2C2A27]">
                           <video
                             src={m.url}
                             muted
@@ -1863,10 +1862,10 @@ export const Screen2Workspace: React.FC = () => {
                         </div>
 
                         <div className="min-w-0 flex-1 pr-1">
-                          <div className="text-[11px] font-medium text-[#181715] truncate">
+                          <div className="text-[11px] font-medium text-[#181715] dark:text-[#F4F2EC] truncate">
                             {m.title}
                           </div>
-                          <div className="text-[9px] text-[#66625B] truncate">
+                          <div className="text-[9px] text-[#66625B] dark:text-[#A39E95] truncate">
                             {m.keywords.slice(0, 3).join(', ')}
                           </div>
                         </div>
@@ -1897,7 +1896,7 @@ export const Screen2Workspace: React.FC = () => {
                               appliedMessage: `Replaced with "${m.title}".`
                             });
                           }}
-                          className="px-2 py-1 bg-[#D96B27] hover:bg-[#C25E1F] text-white rounded text-[10px] font-semibold transition-colors flex-shrink-0 shadow-sm cursor-pointer"
+                          className="px-2 py-1 bg-[#D96B27] dark:bg-[#E8632A] hover:bg-[#C25E1F] dark:hover:bg-[#F2743D] text-white rounded text-[10px] font-semibold transition-colors flex-shrink-0 shadow-sm cursor-pointer"
                         >
                           Replace
                         </button>
@@ -1924,7 +1923,7 @@ export const Screen2Workspace: React.FC = () => {
                               appliedMessage: `Inserted "${m.title}" at ${(currentProjectMs / 1000).toFixed(1)}s.`
                             });
                           }}
-                          className="px-2 py-1 bg-[#D96B27] hover:bg-[#C25E1F] text-white font-medium rounded text-[10px] flex items-center space-x-0.5 transition-colors flex-shrink-0 shadow-sm cursor-pointer"
+                          className="px-2 py-1 bg-[#D96B27] dark:bg-[#E8632A] hover:bg-[#C25E1F] dark:hover:bg-[#F2743D] text-white font-medium rounded text-[10px] flex items-center space-x-0.5 transition-colors flex-shrink-0 shadow-sm cursor-pointer"
                           title={`Insert at ${(currentProjectMs / 1000).toFixed(1)}s`}
                         >
                           <Plus className="w-2.5 h-2.5" />
@@ -1941,12 +1940,12 @@ export const Screen2Workspace: React.FC = () => {
           {/* Tab 2: Custom User Clips */}
           {memeTab === 'custom' && (
             <div className="space-y-2">
-              <div className="px-2 py-1.5 rounded-lg bg-[#F7F6F2] border border-[#E5E2DC] text-[10px] text-[#66625B] flex items-center justify-between font-mono">
+              <div className="px-2 py-1.5 rounded-lg bg-[#F7F6F2] dark:bg-[#1E1D1B] border border-[#E5E2DC] dark:border-[#2C2A27] text-[10px] text-[#66625B] dark:text-[#A39E95] flex items-center justify-between font-mono">
                 <span>1. Upload MP4</span>
-                <span className="text-[#8E8A82]">→</span>
+                <span className="text-[#8E8A82] dark:text-[#78736B]">→</span>
                 <span>2. Move playhead</span>
-                <span className="text-[#8E8A82]">→</span>
-                <span className="text-[#0F766E] font-semibold">3. Click Insert</span>
+                <span className="text-[#8E8A82] dark:text-[#78736B]">→</span>
+                <span className="text-[#0F766E] dark:text-[#5EEAD4] font-semibold">3. Click Insert</span>
               </div>
 
               <label
@@ -1957,12 +1956,12 @@ export const Screen2Workspace: React.FC = () => {
                   const droppedFile = e.dataTransfer.files?.[0];
                   if (droppedFile) processCustomMemeFile(droppedFile);
                 }}
-                className="border border-dashed border-[#E5E2DC] hover:border-[#D96B27] bg-[#FAF9F5] hover:bg-white rounded-lg py-2.5 px-3 flex items-center justify-center space-x-2 text-center cursor-pointer transition-colors group"
+                className="border border-dashed border-[#E5E2DC] dark:border-[#2C2A27] hover:border-[#D96B27] dark:hover:border-[#E8632A] bg-[#FAF9F5] dark:bg-[#1E1D1B] hover:bg-white dark:hover:bg-[#24221F] rounded-lg py-2.5 px-3 flex items-center justify-center space-x-2 text-center cursor-pointer transition-colors group"
               >
-                <Upload className="w-4 h-4 text-[#D96B27] group-hover:scale-110 transition-transform flex-shrink-0" />
+                <Upload className="w-4 h-4 text-[#D96B27] dark:text-[#E8632A] group-hover:scale-110 transition-transform flex-shrink-0" />
                 <div className="flex items-center space-x-1.5 text-xs min-w-0">
-                  <span className="font-medium text-[#181715] truncate">Drop or browse .mp4, .webm, or .mov clip</span>
-                  <span className="text-[10px] text-[#8E8A82] flex-shrink-0">(Max 100 MB • 3 min)</span>
+                  <span className="font-medium text-[#181715] dark:text-[#F4F2EC] truncate">Drop or browse .mp4, .webm, or .mov clip</span>
+                  <span className="text-[10px] text-[#8E8A82] dark:text-[#78736B] flex-shrink-0">(Max 100 MB • 3 min)</span>
                 </div>
                 <input
                   type="file"
@@ -1973,7 +1972,7 @@ export const Screen2Workspace: React.FC = () => {
               </label>
 
               {memeUploadError && (
-                <div className="p-2 rounded-lg bg-[#FEF2F2] border border-[#FCA5A5] text-[#B91C1C] text-xs flex items-center justify-between space-x-1.5">
+                <div className="p-2 rounded-lg bg-[#FEF2F2] dark:bg-[#450A0A]/40 border border-[#FCA5A5] dark:border-[#991B1B] text-[#B91C1C] dark:text-[#FCA5A5] text-xs flex items-center justify-between space-x-1.5">
                   <div className="flex items-center space-x-1.5 min-w-0">
                     <AlertCircle className="w-3.5 h-3.5 flex-shrink-0 text-[#EF4444]" />
                     <span className="leading-snug">{memeUploadError}</span>
@@ -1981,7 +1980,7 @@ export const Screen2Workspace: React.FC = () => {
                   <button
                     type="button"
                     onClick={() => setMemeUploadError(null)}
-                    className="text-[#B91C1C] hover:text-[#7F1D1D] p-0.5 flex-shrink-0 cursor-pointer"
+                    className="text-[#B91C1C] dark:text-[#FCA5A5] hover:text-[#7F1D1D] p-0.5 flex-shrink-0 cursor-pointer"
                     title="Dismiss"
                   >
                     <X className="w-3.5 h-3.5" />
@@ -1991,17 +1990,17 @@ export const Screen2Workspace: React.FC = () => {
 
               <div ref={customClipsListRef} className="max-h-[165px] overflow-y-auto space-y-1.5 pr-1">
                 {userUploadedClips.length === 0 ? (
-                  <div className="text-[10px] text-[#8E8A82] italic text-center py-4 bg-[#F7F6F2] rounded-lg border border-[#E5E2DC] p-2">
+                  <div className="text-[10px] text-[#8E8A82] dark:text-[#78736B] italic text-center py-4 bg-[#F7F6F2] dark:bg-[#1E1D1B] rounded-lg border border-[#E5E2DC] dark:border-[#2C2A27] p-2">
                     No custom clips yet. Upload an .mp4 clip to insert it into your video!
                   </div>
                 ) : (
                   userUploadedClips.map((clip) => (
                     <div
                       key={clip.id}
-                      className="flex items-center justify-between p-1.5 rounded-lg bg-[#FAF9F5] hover:bg-[#F2EFEB] border border-[#E5E2DC] group transition-all"
+                      className="flex items-center justify-between p-1.5 rounded-lg bg-[#FAF9F5] dark:bg-[#1E1D1B] hover:bg-[#F2EFEB] dark:hover:bg-[#24221F] border border-[#E5E2DC] dark:border-[#2C2A27] group transition-all"
                     >
                       <div className="flex items-center space-x-2 min-w-0 flex-1">
-                        <div className="w-12 h-9 rounded bg-black overflow-hidden relative flex-shrink-0 border border-[#D8D4CC]">
+                        <div className="w-12 h-9 rounded bg-black overflow-hidden relative flex-shrink-0 border border-[#D8D4CC] dark:border-[#2C2A27]">
                           <video
                             src={clip.blobUrl}
                             muted
@@ -2022,10 +2021,10 @@ export const Screen2Workspace: React.FC = () => {
                         </div>
 
                         <div className="min-w-0 flex-1 pr-1">
-                          <div className="text-[11px] font-medium text-[#181715] truncate">
+                          <div className="text-[11px] font-medium text-[#181715] dark:text-[#F4F2EC] truncate">
                             {clip.name}
                           </div>
-                          <div className="text-[9px] text-[#66625B] font-mono tabular-nums">
+                          <div className="text-[9px] text-[#66625B] dark:text-[#A39E95] font-mono tabular-nums">
                             {(clip.durationMs / 1000).toFixed(1)}s
                           </div>
                         </div>
@@ -2056,7 +2055,7 @@ export const Screen2Workspace: React.FC = () => {
                                 appliedMessage: `Replaced with custom clip "${clip.name}".`
                               });
                             }}
-                            className="px-2 py-1 bg-[#D96B27] hover:bg-[#C25E1F] text-white rounded text-[10px] font-semibold transition-colors shadow-sm cursor-pointer"
+                            className="px-2 py-1 bg-[#D96B27] dark:bg-[#E8632A] hover:bg-[#C25E1F] dark:hover:bg-[#F2743D] text-white rounded text-[10px] font-semibold transition-colors shadow-sm cursor-pointer"
                           >
                             Replace
                           </button>
@@ -2084,7 +2083,7 @@ export const Screen2Workspace: React.FC = () => {
                                   appliedMessage: `Inserted "${clip.name}" at ${(currentProjectMs / 1000).toFixed(1)}s.`
                                 });
                               }}
-                              className="px-1.5 py-1 bg-[#D96B27] hover:bg-[#C25E1F] text-white font-medium rounded text-[10px] flex items-center space-x-0.5 transition-colors shadow-sm cursor-pointer"
+                              className="px-1.5 py-1 bg-[#D96B27] dark:bg-[#E8632A] hover:bg-[#C25E1F] dark:hover:bg-[#F2743D] text-white font-medium rounded text-[10px] flex items-center space-x-0.5 transition-colors shadow-sm cursor-pointer"
                               title={`Insert at ${(currentProjectMs / 1000).toFixed(1)}s (splits clip at playhead)`}
                             >
                               <Plus className="w-2.5 h-2.5" />
@@ -2100,7 +2099,7 @@ export const Screen2Workspace: React.FC = () => {
                                   isCustom: true
                                 });
                               }}
-                              className="px-1.5 py-1 bg-white hover:bg-[#F7F6F2] text-[#181715] border border-[#E5E2DC] rounded text-[10px] font-medium transition-colors shadow-sm cursor-pointer"
+                              className="px-1.5 py-1 bg-white dark:bg-[#24221F] hover:bg-[#F7F6F2] dark:hover:bg-[#2E2B27] text-[#181715] dark:text-[#F4F2EC] border border-[#E5E2DC] dark:border-[#2C2A27] rounded text-[10px] font-medium transition-colors shadow-sm cursor-pointer"
                               title="Append to end of timeline"
                             >
                               <span>+ End</span>
@@ -2110,7 +2109,7 @@ export const Screen2Workspace: React.FC = () => {
 
                         <button
                           onClick={() => removeUploadedMeme(clip.id)}
-                          className="p-1 text-[#8E8A82] hover:text-[#DC2626] transition-colors rounded hover:bg-[#F2EFEB] cursor-pointer"
+                          className="p-1 text-[#8E8A82] dark:text-[#78736B] hover:text-[#DC2626] dark:hover:text-[#F87171] transition-colors rounded hover:bg-[#F2EFEB] dark:hover:bg-[#24221F] cursor-pointer"
                           title="Delete custom clip"
                         >
                           <Trash2 className="w-3 h-3" />
@@ -2132,7 +2131,7 @@ export const Screen2Workspace: React.FC = () => {
     <div className="flex-1 min-h-0 flex flex-col space-y-3">
       {/* Quick Prompt Chips */}
       <div className="space-y-1.5 shrink-0">
-        <span className="text-[10px] uppercase font-bold text-[#66625B] tracking-wider">Quick Prompts</span>
+        <span className="text-[10px] uppercase font-bold text-[#66625B] dark:text-[#A39E95] tracking-wider">Quick Prompts</span>
         <div className="flex flex-wrap gap-1.5">
           {[
             'Remove silence',
@@ -2143,7 +2142,7 @@ export const Screen2Workspace: React.FC = () => {
             <button
               key={chip}
               onClick={() => setPromptInput(chip)}
-              className="text-[11px] bg-[#F7F6F2] hover:bg-[#F2EFEB] hover:text-[#181715] text-[#66625B] px-2 py-1 rounded-md border border-[#E5E2DC] transition-colors cursor-pointer"
+              className="text-[11px] bg-[#F7F6F2] dark:bg-[#24221F] hover:bg-[#F2EFEB] dark:hover:bg-[#2E2B27] hover:text-[#181715] dark:hover:text-[#F4F2EC] text-[#66625B] dark:text-[#A39E95] px-2 py-1 rounded-md border border-[#E5E2DC] dark:border-[#2C2A27] transition-colors cursor-pointer"
             >
               {chip}
             </button>
@@ -2152,10 +2151,10 @@ export const Screen2Workspace: React.FC = () => {
       </div>
 
       {/* Silence Detection Trigger Card */}
-      <div className="p-2.5 rounded-xl bg-[#FFFBEB] border border-[#FCD34D] flex items-center justify-between shrink-0">
+      <div className="p-2.5 rounded-xl bg-[#FFFBEB] dark:bg-[#78350F]/30 border border-[#FCD34D] dark:border-[#B45309] flex items-center justify-between shrink-0">
         <div>
-          <span className="text-xs font-semibold text-[#92400E] block">Awkward Pauses</span>
-          <span className="text-[10px] text-[#B45309]">Scans audio for speech gaps</span>
+          <span className="text-xs font-semibold text-[#92400E] dark:text-[#FDE68A] block">Awkward Pauses</span>
+          <span className="text-[10px] text-[#B45309] dark:text-[#FCD34D]">Scans audio for speech gaps</span>
         </div>
         <button
           disabled={isDetectingSilences}
@@ -2167,21 +2166,21 @@ export const Screen2Workspace: React.FC = () => {
       </div>
 
       {/* Execution Log */}
-      <div className="flex-1 min-h-[130px] flex flex-col space-y-1.5 pt-1 border-t border-[#E5E2DC]">
-        <span className="text-[10px] uppercase font-bold text-[#66625B] tracking-wider shrink-0">Execution Log</span>
+      <div className="flex-1 min-h-[130px] flex flex-col space-y-1.5 pt-1 border-t border-[#E5E2DC] dark:border-[#2C2A27]">
+        <span className="text-[10px] uppercase font-bold text-[#66625B] dark:text-[#A39E95] tracking-wider shrink-0">Execution Log</span>
         <div className="flex-1 overflow-y-auto space-y-1.5 pr-1">
           {commandLogs.length === 0 ? (
-            <p className="text-[11px] text-[#8E8A82] italic">No AI commands executed yet.</p>
+            <p className="text-[11px] text-[#8E8A82] dark:text-[#78736B] italic">No AI commands executed yet.</p>
           ) : (
             commandLogs.map((log) => (
               <div
                 key={log.id}
                 className={`p-2 rounded-lg border text-[11px] space-y-1 shadow-sm ${
                   log.status === 'SUCCESS'
-                    ? 'bg-[#F0FDFA] border-[#99F6E4] text-[#0F766E]'
+                    ? 'bg-[#F0FDFA] dark:bg-[#14B8A6]/15 border-[#99F6E4] dark:border-[#2DD4BF]/30 text-[#0F766E] dark:text-[#5EEAD4]'
                     : log.status === 'CLARIFICATION' || log.status === 'WARNING' || log.parsedCommand.action === 'UNSUPPORTED_OPERATION'
-                    ? 'bg-[#FFFBEB] border-[#FCD34D] text-[#92400E]'
-                    : 'bg-[#FEF2F2] border-[#FCA5A5] text-[#B91C1C]'
+                    ? 'bg-[#FFFBEB] dark:bg-[#78350F]/30 border-[#FCD34D] dark:border-[#B45309] text-[#92400E] dark:text-[#FDE68A]'
+                    : 'bg-[#FEF2F2] dark:bg-[#450A0A]/40 border-[#FCA5A5] dark:border-[#991B1B] text-[#B91C1C] dark:text-[#FCA5A5]'
                 }`}
               >
                 <div className="font-semibold">{log.rawInput}</div>
@@ -2193,7 +2192,7 @@ export const Screen2Workspace: React.FC = () => {
       </div>
 
       {/* Mobile-integrated AI Input */}
-      <div className="shrink-0 pt-2 border-t border-[#E5E2DC] safe-bottom">
+      <div className="shrink-0 pt-2 border-t border-[#E5E2DC] dark:border-[#2C2A27] safe-bottom">
         <div className="relative">
           <input
             type="text"
@@ -2202,12 +2201,12 @@ export const Screen2Workspace: React.FC = () => {
             onKeyDown={(e) => e.key === 'Enter' && handleSendCommand()}
             placeholder='e.g. "Cut from 0:10 to 0:25"'
             disabled={isAiProcessing}
-            className="w-full bg-[#F7F6F2] border border-[#E5E2DC] rounded-lg pl-3 pr-9 py-2 text-xs text-[#181715] placeholder-[#8E8A82] focus:outline-none focus:border-[#D96B27]"
+            className="w-full bg-[#F7F6F2] dark:bg-[#24221F] border border-[#E5E2DC] dark:border-[#2C2A27] rounded-lg pl-3 pr-9 py-2 text-xs text-[#181715] dark:text-[#F4F2EC] placeholder-[#8E8A82] dark:placeholder-[#78736B] focus:outline-none focus:border-[#D96B27] dark:focus:border-[#E8632A]"
           />
           <button
             onClick={handleSendCommand}
             disabled={isAiProcessing || !promptInput.trim()}
-            className="absolute right-1.5 bottom-1.5 p-1.5 rounded-lg bg-[#D96B27] hover:bg-[#C25E1F] text-white disabled:opacity-40 transition-colors shadow-sm cursor-pointer"
+            className="absolute right-1.5 bottom-1.5 p-1.5 rounded-lg bg-[#D96B27] dark:bg-[#E8632A] hover:bg-[#C25E1F] dark:hover:bg-[#F2743D] text-white disabled:opacity-40 transition-colors shadow-sm cursor-pointer"
           >
             <Send className="w-3 h-3" />
           </button>
@@ -2220,62 +2219,62 @@ export const Screen2Workspace: React.FC = () => {
   const renderAudioSection = () => (
     <div className="flex-1 min-h-0 overflow-y-auto space-y-3 text-xs">
       {/* Speaker Voice Enhancement Card */}
-      <div className="p-3 rounded-xl bg-white border border-[#E5E2DC] shadow-sm space-y-2">
+      <div className="p-3 rounded-xl bg-white dark:bg-[#1E1D1B] border border-[#E5E2DC] dark:border-[#2C2A27] shadow-sm space-y-2">
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-2">
-            <Sparkles className={`w-4 h-4 ${voiceEnhanceEnabled ? 'text-[#0F766E]' : 'text-[#8E8A82]'}`} />
-            <span className="font-semibold text-[#181715]">Speaker Voice Enhancement</span>
+            <Sparkles className={`w-4 h-4 ${voiceEnhanceEnabled ? 'text-[#0F766E] dark:text-[#5EEAD4]' : 'text-[#8E8A82] dark:text-[#78736B]'}`} />
+            <span className="font-semibold text-[#181715] dark:text-[#F4F2EC]">Speaker Voice Enhancement</span>
           </div>
           <button
             onClick={handleToggleVoiceEnhance}
             className={`px-2.5 py-1 rounded-lg text-xs font-medium border transition-all cursor-pointer ${
               voiceEnhanceEnabled
-                ? 'bg-[#F0FDFA] border-[#0D9488] text-[#0F766E]'
-                : 'bg-white border-[#E5E2DC] text-[#66625B] hover:text-[#181715]'
+                ? 'bg-[#F0FDFA] dark:bg-[#14B8A6]/15 border-[#0D9488] dark:border-[#2DD4BF]/40 text-[#0F766E] dark:text-[#5EEAD4]'
+                : 'bg-white dark:bg-[#24221F] border-[#E5E2DC] dark:border-[#2C2A27] text-[#66625B] dark:text-[#A39E95] hover:text-[#181715] dark:hover:text-[#F4F2EC]'
             }`}
           >
             {voiceEnhanceEnabled ? 'ON' : 'OFF'}
           </button>
         </div>
-        <p className="text-[11px] text-[#66625B]">
+        <p className="text-[11px] text-[#66625B] dark:text-[#A39E95]">
           100Hz HPF + 320Hz room-echo cut + 3.2kHz vocal clarity boost + anti-hiss shelf + light leveling.
         </p>
       </div>
 
       {/* Reduce Low Hum (Basic) Card */}
-      <div className="p-3 rounded-xl bg-white border border-[#E5E2DC] shadow-sm space-y-2">
+      <div className="p-3 rounded-xl bg-white dark:bg-[#1E1D1B] border border-[#E5E2DC] dark:border-[#2C2A27] shadow-sm space-y-2">
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-2">
-            <Wand2 className={`w-4 h-4 ${noiseRemovalEnabled ? 'text-[#0F766E]' : 'text-[#8E8A82]'}`} />
-            <span className="font-semibold text-[#181715]">Reduce Low Hum (Basic)</span>
+            <Wand2 className={`w-4 h-4 ${noiseRemovalEnabled ? 'text-[#0F766E] dark:text-[#5EEAD4]' : 'text-[#8E8A82] dark:text-[#78736B]'}`} />
+            <span className="font-semibold text-[#181715] dark:text-[#F4F2EC]">Reduce Low Hum (Basic)</span>
           </div>
           <button
             onClick={handleToggleNoiseRemoval}
             className={`px-2.5 py-1 rounded-lg text-xs font-medium border transition-all cursor-pointer ${
               noiseRemovalEnabled
-                ? 'bg-[#F0FDFA] border-[#0D9488] text-[#0F766E]'
-                : 'bg-white border-[#E5E2DC] text-[#66625B] hover:text-[#181715]'
+                ? 'bg-[#F0FDFA] dark:bg-[#14B8A6]/15 border-[#0D9488] dark:border-[#2DD4BF]/40 text-[#0F766E] dark:text-[#5EEAD4]'
+                : 'bg-white dark:bg-[#24221F] border-[#E5E2DC] dark:border-[#2C2A27] text-[#66625B] dark:text-[#A39E95] hover:text-[#181715] dark:hover:text-[#F4F2EC]'
             }`}
           >
             {noiseRemovalEnabled ? 'ON' : 'OFF'}
           </button>
         </div>
-        <p className="text-[11px] text-[#66625B]">
+        <p className="text-[11px] text-[#66625B] dark:text-[#A39E95]">
           Cascaded 180Hz HPF, 250Hz motor cut, 6.2kHz lowpass & adaptive noise gate for steady background hum.
         </p>
       </div>
 
       {/* Background Music Card */}
-      <div className="p-3 rounded-xl bg-white border border-[#E5E2DC] shadow-sm space-y-2.5">
+      <div className="p-3 rounded-xl bg-white dark:bg-[#1E1D1B] border border-[#E5E2DC] dark:border-[#2C2A27] shadow-sm space-y-2.5">
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-2">
-            <Music className="w-4 h-4 text-[#0F766E]" />
-            <span className="font-semibold text-[#181715]">Background Music</span>
+            <Music className="w-4 h-4 text-[#0F766E] dark:text-[#5EEAD4]" />
+            <span className="font-semibold text-[#181715] dark:text-[#F4F2EC]">Background Music</span>
           </div>
           {bgMusic && (
             <button
               onClick={() => removeBgMusic()}
-              className="p-1 text-[#8E8A82] hover:text-[#DC2626] transition-colors cursor-pointer"
+              className="p-1 text-[#8E8A82] dark:text-[#78736B] hover:text-[#DC2626] dark:hover:text-[#F87171] transition-colors cursor-pointer"
               title="Remove track"
             >
               <Trash2 className="w-3.5 h-3.5" />
@@ -2286,10 +2285,10 @@ export const Screen2Workspace: React.FC = () => {
         {bgMusic ? (
           <div className="space-y-2">
             <div className="flex items-center justify-between text-[11px]">
-              <span className="font-medium text-[#181715] truncate" title={bgMusic.name}>
+              <span className="font-medium text-[#181715] dark:text-[#F4F2EC] truncate" title={bgMusic.name}>
                 {bgMusic.name}
               </span>
-              <span className="text-[#66625B] font-mono shrink-0">
+              <span className="text-[#66625B] dark:text-[#A39E95] font-mono shrink-0">
                 ({(bgMusic.durationMs / 1000).toFixed(1)}s loop)
               </span>
             </div>
@@ -2297,13 +2296,13 @@ export const Screen2Workspace: React.FC = () => {
             <div className="flex items-center space-x-2">
               <button
                 onClick={() => toggleBgMusicMute()}
-                className="text-[#66625B] hover:text-[#181715] p-1 cursor-pointer"
+                className="text-[#66625B] dark:text-[#A39E95] hover:text-[#181715] dark:hover:text-[#F4F2EC] p-1 cursor-pointer"
                 title={bgMusic.isMuted || bgMusic.volume === 0 ? "Unmute" : "Mute"}
               >
                 {bgMusic.isMuted || bgMusic.volume === 0 ? (
                   <VolumeX className="w-4 h-4 text-[#DC2626]" />
                 ) : (
-                  <Volume2 className="w-4 h-4 text-[#0F766E]" />
+                  <Volume2 className="w-4 h-4 text-[#0F766E] dark:text-[#5EEAD4]" />
                 )}
               </button>
               <input
@@ -2313,16 +2312,16 @@ export const Screen2Workspace: React.FC = () => {
                 step="0.05"
                 value={bgMusic.isMuted ? 0 : bgMusic.volume}
                 onChange={(e) => setBgMusicVolume(parseFloat(e.target.value))}
-                className="flex-1 h-1.5 bg-[#E5E2DC] accent-[#0F766E] rounded-lg cursor-pointer"
+                className="flex-1 h-1.5 bg-[#E5E2DC] dark:bg-[#2C2A27] accent-[#0F766E] rounded-lg cursor-pointer"
               />
-              <span className="text-[11px] font-mono tabular-nums text-[#66625B] w-8 text-right">
+              <span className="text-[11px] font-mono tabular-nums text-[#66625B] dark:text-[#A39E95] w-8 text-right">
                 {bgMusic.isMuted ? '0%' : `${Math.round(bgMusic.volume * 100)}%`}
               </span>
             </div>
 
             <button
               onClick={() => bgMusicInputRef.current?.click()}
-              className="w-full py-1.5 bg-[#F7F6F2] hover:bg-[#F2EFEB] border border-[#E5E2DC] text-[#181715] rounded-lg text-xs font-medium transition-colors cursor-pointer"
+              className="w-full py-1.5 bg-[#F7F6F2] dark:bg-[#24221F] hover:bg-[#F2EFEB] dark:hover:bg-[#2E2B27] border border-[#E5E2DC] dark:border-[#2C2A27] text-[#181715] dark:text-[#F4F2EC] rounded-lg text-xs font-medium transition-colors cursor-pointer"
             >
               Replace Track (.mp3, .wav, .m4a)
             </button>
@@ -2330,18 +2329,18 @@ export const Screen2Workspace: React.FC = () => {
         ) : (
           <button
             onClick={() => bgMusicInputRef.current?.click()}
-            className="w-full py-3 border border-dashed border-[#E5E2DC] hover:border-[#0F766E] bg-[#FAF9F5] hover:bg-[#F0FDFA] rounded-xl flex items-center justify-center space-x-2 text-xs text-[#66625B] hover:text-[#0F766E] transition-all group cursor-pointer"
+            className="w-full py-3 border border-dashed border-[#E5E2DC] dark:border-[#2C2A27] hover:border-[#0F766E] bg-[#FAF9F5] dark:bg-[#1E1D1B] hover:bg-[#F0FDFA] dark:hover:bg-[#14B8A6]/10 rounded-xl flex items-center justify-center space-x-2 text-xs text-[#66625B] dark:text-[#A39E95] hover:text-[#0F766E] dark:hover:text-[#5EEAD4] transition-all group cursor-pointer"
           >
-            <Music className="w-4 h-4 text-[#8E8A82] group-hover:text-[#0F766E] transition-colors" />
+            <Music className="w-4 h-4 text-[#8E8A82] dark:text-[#78736B] group-hover:text-[#0F766E] dark:group-hover:text-[#5EEAD4] transition-colors" />
             <span>+ Add Background Music track (up to 30 MB)</span>
           </button>
         )}
       </div>
 
       {/* Playback Preview Speed Card */}
-      <div className="p-3 rounded-xl bg-white border border-[#E5E2DC] shadow-sm space-y-2">
+      <div className="p-3 rounded-xl bg-white dark:bg-[#1E1D1B] border border-[#E5E2DC] dark:border-[#2C2A27] shadow-sm space-y-2">
         <div className="flex items-center justify-between">
-          <span className="font-semibold text-[#181715]">Preview Speed</span>
+          <span className="font-semibold text-[#181715] dark:text-[#F4F2EC]">Preview Speed</span>
           <div className="flex items-center space-x-1.5">
             {([1, 2, 5] as const).map((s) => (
               <button
@@ -2351,7 +2350,7 @@ export const Screen2Workspace: React.FC = () => {
                 className={`px-2.5 py-1 rounded-md text-xs font-mono font-medium transition-colors cursor-pointer ${
                   previewSpeed === s
                     ? 'bg-[#0F766E] text-white shadow-xs'
-                    : 'bg-[#F7F6F2] border border-[#E5E2DC] text-[#66625B] hover:text-[#181715]'
+                    : 'bg-[#F7F6F2] dark:bg-[#24221F] border border-[#E5E2DC] dark:border-[#2C2A27] text-[#66625B] dark:text-[#A39E95] hover:text-[#181715] dark:hover:text-[#F4F2EC]'
                 }`}
               >
                 {s}x
@@ -2359,7 +2358,7 @@ export const Screen2Workspace: React.FC = () => {
             ))}
           </div>
         </div>
-        <p className="text-[11px] text-[#8E8A82]">
+        <p className="text-[11px] text-[#8E8A82] dark:text-[#78736B]">
           Preview speed only — export keeps 1x speed
         </p>
       </div>
@@ -2367,16 +2366,16 @@ export const Screen2Workspace: React.FC = () => {
   );
 
   return (
-    <div className="h-[100dvh] w-full bg-[#F7F6F2] text-[#181715] flex flex-col overflow-hidden select-none">
+    <div className="h-[100dvh] w-full bg-[#F7F6F2] dark:bg-[#0E0E0D] text-[#181715] dark:text-[#F4F2EC] flex flex-col overflow-hidden select-none">
       {/* Top Header */}
-      <header className="h-12 md:h-14 border-b border-[#E5E2DC] bg-white px-2.5 sm:px-3 md:px-4 flex items-center justify-between z-20 shrink-0">
+      <header className="h-12 md:h-14 border-b border-[#E5E2DC] dark:border-[#2C2A27] bg-white dark:bg-[#171615] px-2.5 sm:px-3 md:px-4 flex items-center justify-between z-20 shrink-0">
         <div className="flex items-center space-x-2.5 md:space-x-3 min-w-0">
-          <div className="w-7 h-7 md:w-8 md:h-8 rounded-lg bg-[#D96B27] text-white flex items-center justify-center font-bold text-xs md:text-sm shrink-0 shadow-sm">
+          <div className="w-7 h-7 md:w-8 md:h-8 rounded-lg bg-[#D96B27] dark:bg-[#E8632A] text-white flex items-center justify-center font-bold text-xs md:text-sm shrink-0 shadow-sm">
             <Scissors className="w-4 h-4 text-white" />
           </div>
           <div className="min-w-0">
-            <h2 className="text-xs md:text-sm font-semibold tracking-wide text-[#181715] truncate max-w-[150px] sm:max-w-[240px] md:max-w-none">{project.title}</h2>
-            <div className="flex items-center space-x-2 text-[10px] md:text-[11px] text-[#66625B] tabular-nums font-mono">
+            <h2 className="text-xs md:text-sm font-semibold tracking-wide text-[#181715] dark:text-[#F4F2EC] truncate max-w-[150px] sm:max-w-[240px] md:max-w-none">{project.title}</h2>
+            <div className="flex items-center space-x-2 text-[10px] md:text-[11px] text-[#66625B] dark:text-[#A39E95] tabular-nums font-mono">
               <span>{curProjSec}s / {totalProjSec}s</span>
             </div>
           </div>
@@ -2389,19 +2388,19 @@ export const Screen2Workspace: React.FC = () => {
             <button
               onClick={() => setIsLeftOpen(!isLeftOpen)}
               className={`px-2 py-1 rounded-md text-xs font-medium border flex items-center space-x-1 transition-colors ${
-                isLeftOpen ? 'bg-[#F2EFEB] text-[#181715] border-[#D8D4CC]' : 'bg-white text-[#66625B] border-[#E5E2DC]'
+                isLeftOpen ? 'bg-[#F2EFEB] dark:bg-[#24221F] text-[#181715] dark:text-[#F4F2EC] border-[#D8D4CC] dark:border-[#383531]' : 'bg-white dark:bg-[#1E1D1B] text-[#66625B] dark:text-[#A39E95] border-[#E5E2DC] dark:border-[#2C2A27]'
               }`}
             >
-              <FileText className="w-3.5 h-3.5 text-[#D96B27]" />
+              <FileText className="w-3.5 h-3.5 text-[#D96B27] dark:text-[#E8632A]" />
               <span>Transcript</span>
             </button>
             <button
               onClick={() => setIsRightOpen(!isRightOpen)}
               className={`px-2 py-1 rounded-md text-xs font-medium border flex items-center space-x-1 transition-colors ${
-                isRightOpen ? 'bg-[#F2EFEB] text-[#181715] border-[#D8D4CC]' : 'bg-white text-[#66625B] border-[#E5E2DC]'
+                isRightOpen ? 'bg-[#F2EFEB] dark:bg-[#24221F] text-[#181715] dark:text-[#F4F2EC] border-[#D8D4CC] dark:border-[#383531]' : 'bg-white dark:bg-[#1E1D1B] text-[#66625B] dark:text-[#A39E95] border-[#E5E2DC] dark:border-[#2C2A27]'
               }`}
             >
-              <Sparkles className="w-3.5 h-3.5 text-[#D96B27]" />
+              <Sparkles className="w-3.5 h-3.5 text-[#D96B27] dark:text-[#E8632A]" />
               <span>AI & Memes</span>
             </button>
           </div>
@@ -2412,13 +2411,13 @@ export const Screen2Workspace: React.FC = () => {
             title="Speaker Voice Enhancement: 100Hz HPF + 320Hz room-echo cut + 3.2kHz vocal clarity boost + anti-hiss shelf + light leveling"
             className={`px-2.5 py-1 rounded-lg text-xs font-medium flex items-center space-x-1.5 border transition-all cursor-pointer ${
               voiceEnhanceEnabled
-                ? 'bg-[#F0FDFA] border-[#0D9488] text-[#0F766E]'
-                : 'bg-white border-[#E5E2DC] text-[#66625B] hover:text-[#181715] hover:bg-[#F7F6F2]'
+                ? 'bg-[#F0FDFA] dark:bg-[#14B8A6]/15 border-[#0D9488] dark:border-[#2DD4BF]/40 text-[#0F766E] dark:text-[#5EEAD4]'
+                : 'bg-white dark:bg-[#1E1D1B] border-[#E5E2DC] dark:border-[#2C2A27] text-[#66625B] dark:text-[#A39E95] hover:text-[#181715] dark:hover:text-[#F4F2EC] hover:bg-[#F7F6F2] dark:hover:bg-[#262421]'
             }`}
           >
-            <Sparkles className={`w-3.5 h-3.5 ${voiceEnhanceEnabled ? 'text-[#0F766E]' : 'text-[#8E8A82]'}`} />
+            <Sparkles className={`w-3.5 h-3.5 ${voiceEnhanceEnabled ? 'text-[#0F766E] dark:text-[#5EEAD4]' : 'text-[#8E8A82] dark:text-[#78736B]'}`} />
             <span>Voice Enhance</span>
-            <span className={`text-[10px] px-1 py-0.5 rounded font-mono tabular-nums font-bold ${voiceEnhanceEnabled ? 'bg-[#CCFBF1] text-[#0F766E]' : 'bg-[#F2EFEB] text-[#8E8A82]'}`}>
+            <span className={`text-[10px] px-1 py-0.5 rounded font-mono tabular-nums font-bold ${voiceEnhanceEnabled ? 'bg-[#CCFBF1] dark:bg-[#14B8A6]/25 text-[#0F766E] dark:text-[#5EEAD4]' : 'bg-[#F2EFEB] dark:bg-[#24221F] text-[#8E8A82] dark:text-[#78736B]'}`}>
               {voiceEnhanceEnabled ? 'ON' : 'OFF'}
             </span>
           </button>
@@ -2429,33 +2428,36 @@ export const Screen2Workspace: React.FC = () => {
             title="Reduce Low Hum (Basic): Cascaded 180Hz HPF, 250Hz motor cut, 6.2kHz lowpass & adaptive noise gate"
             className={`px-2.5 py-1 rounded-lg text-xs font-medium flex items-center space-x-1.5 border transition-all cursor-pointer ${
               noiseRemovalEnabled
-                ? 'bg-[#F0FDFA] border-[#0D9488] text-[#0F766E]'
-                : 'bg-white border-[#E5E2DC] text-[#66625B] hover:text-[#181715] hover:bg-[#F7F6F2]'
+                ? 'bg-[#F0FDFA] dark:bg-[#14B8A6]/15 border-[#0D9488] dark:border-[#2DD4BF]/40 text-[#0F766E] dark:text-[#5EEAD4]'
+                : 'bg-white dark:bg-[#1E1D1B] border-[#E5E2DC] dark:border-[#2C2A27] text-[#66625B] dark:text-[#A39E95] hover:text-[#181715] dark:hover:text-[#F4F2EC] hover:bg-[#F7F6F2] dark:hover:bg-[#262421]'
             }`}
           >
-            <Wand2 className={`w-3.5 h-3.5 ${noiseRemovalEnabled ? 'text-[#0F766E]' : 'text-[#8E8A82]'}`} />
+            <Wand2 className={`w-3.5 h-3.5 ${noiseRemovalEnabled ? 'text-[#0F766E] dark:text-[#5EEAD4]' : 'text-[#8E8A82] dark:text-[#78736B]'}`} />
             <span>Reduce Low Hum (Basic)</span>
-            <span className={`text-[10px] px-1 py-0.5 rounded font-mono tabular-nums font-bold ${noiseRemovalEnabled ? 'bg-[#CCFBF1] text-[#0F766E]' : 'bg-[#F2EFEB] text-[#8E8A82]'}`}>
+            <span className={`text-[10px] px-1 py-0.5 rounded font-mono tabular-nums font-bold ${noiseRemovalEnabled ? 'bg-[#CCFBF1] dark:bg-[#14B8A6]/25 text-[#0F766E] dark:text-[#5EEAD4]' : 'bg-[#F2EFEB] dark:bg-[#24221F] text-[#8E8A82] dark:text-[#78736B]'}`}>
               {noiseRemovalEnabled ? 'ON' : 'OFF'}
             </span>
           </button>
 
-          <div className="h-4 w-[1px] bg-[#E5E2DC] mx-1" />
+          <div className="h-4 w-[1px] bg-[#E5E2DC] dark:bg-[#2C2A27] mx-1" />
+
+          <ThemeToggle compact />
 
           <button
             onClick={() => setScreen('EXPORT')}
-            className="flex items-center space-x-1.5 bg-[#D96B27] hover:bg-[#C25E1F] text-white font-medium px-4 py-1.5 rounded-lg text-xs transition-colors shadow-sm active:scale-95 cursor-pointer"
+            className="flex items-center space-x-1.5 bg-[#D96B27] dark:bg-[#E8632A] hover:bg-[#C25E1F] dark:hover:bg-[#F2743D] text-white font-medium px-4 py-1.5 rounded-lg text-xs transition-colors shadow-sm active:scale-95 cursor-pointer"
           >
             <span>Export Video</span>
             <ArrowRight className="w-3.5 h-3.5" />
           </button>
         </div>
 
-        {/* Mobile Top Export Button */}
+        {/* Mobile Top Controls: Theme Toggle & Export Button */}
         <div className="flex md:hidden items-center space-x-2">
+          <ThemeToggle compact />
           <button
             onClick={() => setScreen('EXPORT')}
-            className="flex items-center space-x-1 bg-[#D96B27] hover:bg-[#C25E1F] text-white font-medium px-3 py-1 rounded-md text-xs transition-colors shadow-sm active:scale-95 cursor-pointer"
+            className="flex items-center space-x-1 bg-[#D96B27] dark:bg-[#E8632A] hover:bg-[#C25E1F] dark:hover:bg-[#F2743D] text-white font-medium px-3 py-1 rounded-md text-xs transition-colors shadow-sm active:scale-95 cursor-pointer"
           >
             <span>Export</span>
             <ArrowRight className="w-3 h-3" />
@@ -2467,19 +2469,19 @@ export const Screen2Workspace: React.FC = () => {
       <div className="flex-1 min-h-0 flex flex-col md:flex-row overflow-hidden relative">
         {/* Left Collapsible Panel: Transcript (Desktop) */}
         <div
-          className={`hidden md:flex flex-col border-r border-[#E5E2DC] bg-white transition-all duration-200 z-10 ${
+          className={`hidden md:flex flex-col border-r border-[#E5E2DC] dark:border-[#2C2A27] bg-white dark:bg-[#171615] transition-all duration-200 z-10 ${
             isLeftOpen ? 'w-72 lg:w-80' : 'w-10'
           }`}
         >
-          <div className="h-10 shrink-0 border-b border-[#E5E2DC] flex items-center justify-between px-3">
+          <div className="h-10 shrink-0 border-b border-[#E5E2DC] dark:border-[#2C2A27] flex items-center justify-between px-3">
             {isLeftOpen ? (
-              <span className="text-xs font-semibold text-[#181715] tracking-wide">
+              <span className="text-xs font-semibold text-[#181715] dark:text-[#F4F2EC] tracking-wide">
                 Transcript
               </span>
             ) : null}
             <button
               onClick={() => setIsLeftOpen(!isLeftOpen)}
-              className="text-[#66625B] hover:text-[#181715] p-1 cursor-pointer"
+              className="text-[#66625B] dark:text-[#A39E95] hover:text-[#181715] dark:hover:text-[#F4F2EC] p-1 cursor-pointer"
             >
               {isLeftOpen ? <ChevronLeft className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
             </button>
@@ -2490,10 +2492,10 @@ export const Screen2Workspace: React.FC = () => {
           ) : (
             <button
               onClick={() => setIsLeftOpen(true)}
-              className="flex-1 flex flex-col items-center justify-start pt-6 gap-2 text-[#66625B] hover:text-[#181715] hover:bg-[#F7F6F2] transition cursor-pointer select-none"
+              className="flex-1 flex flex-col items-center justify-start pt-6 gap-2 text-[#66625B] dark:text-[#A39E95] hover:text-[#181715] dark:hover:text-[#F4F2EC] hover:bg-[#F7F6F2] dark:hover:bg-[#1E1D1B] transition cursor-pointer select-none"
               title="Open Transcript panel"
             >
-              <FileText className="w-4 h-4 text-[#D96B27]" />
+              <FileText className="w-4 h-4 text-[#D96B27] dark:text-[#E8632A]" />
               <span className="text-[11px] font-semibold [writing-mode:vertical-lr] tracking-wider uppercase">
                 Transcript
               </span>
@@ -2502,10 +2504,10 @@ export const Screen2Workspace: React.FC = () => {
         </div>
 
         {/* Center: Dual-Video Preview Player (Desktop & Mobile) */}
-        <div className="flex flex-col md:flex-1 items-center justify-center p-2 md:p-4 bg-[#F7F6F2] overflow-y-auto md:overflow-hidden shrink-0 md:shrink w-full">
+        <div className="flex flex-col md:flex-1 items-center justify-center p-2 md:p-4 bg-[#F7F6F2] dark:bg-[#0E0E0D] overflow-y-auto md:overflow-hidden shrink-0 md:shrink w-full">
           {/* Inline Workspace Error Banner */}
           {workspaceBannerError && (
-            <div className="w-full max-w-3xl mb-2 px-3 py-2 rounded-xl bg-[#FEF2F2] border border-[#FCA5A5] text-[#991B1B] text-xs flex items-center justify-between gap-2 shadow-sm animate-in fade-in">
+            <div className="w-full max-w-3xl mb-2 px-3 py-2 rounded-xl bg-[#FEF2F2] dark:bg-[#450A0A]/40 border border-[#FCA5A5] dark:border-[#991B1B] text-[#991B1B] dark:text-[#FCA5A5] text-xs flex items-center justify-between gap-2 shadow-sm animate-in fade-in">
               <div className="flex items-center gap-2 min-w-0">
                 <AlertCircle className="w-4 h-4 flex-shrink-0 text-[#EF4444]" />
                 <span className="truncate">{workspaceBannerError}</span>
@@ -2513,7 +2515,7 @@ export const Screen2Workspace: React.FC = () => {
               <button
                 type="button"
                 onClick={() => setWorkspaceBannerError(null)}
-                className="text-[#991B1B] hover:text-[#7F1D1D] p-0.5 rounded transition-colors cursor-pointer"
+                className="text-[#991B1B] dark:text-[#FCA5A5] hover:text-[#7F1D1D] p-0.5 rounded transition-colors cursor-pointer"
                 title="Dismiss"
               >
                 <X className="w-3.5 h-3.5" />
@@ -2528,9 +2530,9 @@ export const Screen2Workspace: React.FC = () => {
             const selectedSilences = silenceItems.filter(it => it.meta?.silenceSelected !== false).length;
 
             return (
-              <div className="w-full max-w-3xl mb-2 bg-[#FFFBEB] border border-[#FCD34D] rounded-xl px-3.5 py-2 flex flex-wrap sm:flex-nowrap items-center justify-between text-xs gap-2 shadow-sm">
-                <div className="flex items-center space-x-2 text-[#92400E] min-w-0">
-                  <ShieldAlert className="w-4 h-4 flex-shrink-0 text-[#D97706]" />
+              <div className="w-full max-w-3xl mb-2 bg-[#FFFBEB] dark:bg-[#78350F]/30 border border-[#FCD34D] dark:border-[#B45309] rounded-xl px-3.5 py-2 flex flex-wrap sm:flex-nowrap items-center justify-between text-xs gap-2 shadow-sm">
+                <div className="flex items-center space-x-2 text-[#92400E] dark:text-[#FDE68A] min-w-0">
+                  <ShieldAlert className="w-4 h-4 flex-shrink-0 text-[#D97706] dark:text-[#FBBF24]" />
                   <span className="truncate sm:whitespace-normal">
                     <strong>Awkward Pauses Detected:</strong> Review amber intervals on timeline or click to clean up:
                   </span>
@@ -2542,7 +2544,7 @@ export const Screen2Workspace: React.FC = () => {
                       e.stopPropagation();
                       clearAllSilences();
                     }}
-                    className="bg-white hover:bg-[#F7F6F2] text-[#66625B] hover:text-[#181715] border border-[#E5E2DC] px-2.5 py-1 rounded-lg text-xs font-medium transition-colors cursor-pointer"
+                    className="bg-white dark:bg-[#1E1D1B] hover:bg-[#F7F6F2] dark:hover:bg-[#262421] text-[#66625B] dark:text-[#A39E95] hover:text-[#181715] dark:hover:text-[#F4F2EC] border border-[#E5E2DC] dark:border-[#2C2A27] px-2.5 py-1 rounded-lg text-xs font-medium transition-colors cursor-pointer"
                   >
                     Cancel / Clear
                   </button>
@@ -2553,7 +2555,7 @@ export const Screen2Workspace: React.FC = () => {
                       applySelectedSilenceCuts();
                     }}
                     disabled={selectedSilences === 0}
-                    className="bg-[#D96B27] hover:bg-[#C25E1F] disabled:opacity-40 disabled:cursor-not-allowed text-white font-semibold px-3 py-1 rounded-lg text-xs transition-colors shadow-sm cursor-pointer"
+                    className="bg-[#D96B27] dark:bg-[#E8632A] hover:bg-[#C25E1F] dark:hover:bg-[#F2743D] disabled:opacity-40 disabled:cursor-not-allowed text-white font-semibold px-3 py-1 rounded-lg text-xs transition-colors shadow-sm cursor-pointer"
                   >
                     Apply Cuts ({selectedSilences}/{totalSilences})
                   </button>
@@ -2563,7 +2565,7 @@ export const Screen2Workspace: React.FC = () => {
           })()}
 
           {/* Dual-Video Canvas Frame */}
-          <div className="relative w-full max-w-3xl h-[25dvh] min-h-[155px] max-h-[215px] md:h-auto md:aspect-video bg-[#0B0B0A] rounded-xl overflow-hidden border border-[#D8D4CC] flex items-center justify-center shadow-sm">
+          <div className="relative w-full max-w-3xl h-[25dvh] min-h-[155px] max-h-[215px] md:h-auto md:aspect-video bg-[#0B0B0A] dark:bg-[#070706] rounded-xl overflow-hidden border border-[#D8D4CC] dark:border-[#2E2C28] flex items-center justify-center shadow-sm">
             {/* Playhead-driven Frame-accurate Transition Stage (Spec 1) */}
             <div
               ref={transitionStageRef}
@@ -2612,7 +2614,7 @@ export const Screen2Workspace: React.FC = () => {
               className="absolute inset-0 cursor-pointer flex items-center justify-center group z-30"
             >
               {!isPlaying && (
-                <div className="w-14 h-14 md:w-16 md:h-16 rounded-full bg-[#D96B27] text-white flex items-center justify-center shadow-lg transform group-hover:scale-105 transition-all">
+                <div className="w-14 h-14 md:w-16 md:h-16 rounded-full bg-[#D96B27] dark:bg-[#E8632A] text-white flex items-center justify-center shadow-lg transform group-hover:scale-105 transition-all">
                   <Play className="w-7 h-7 md:w-8 md:h-8 fill-white translate-x-0.5" />
                 </div>
               )}
@@ -2624,23 +2626,23 @@ export const Screen2Workspace: React.FC = () => {
             <div className="flex items-center space-x-2 md:space-x-3">
               <button
                 onClick={togglePlayPause}
-                className="w-9 h-9 min-w-[36px] min-h-[36px] rounded-lg bg-[#D96B27] hover:bg-[#C25E1F] text-white flex items-center justify-center shadow-sm transition-all active:scale-95 cursor-pointer"
+                className="w-9 h-9 min-w-[36px] min-h-[36px] rounded-lg bg-[#D96B27] dark:bg-[#E8632A] hover:bg-[#C25E1F] dark:hover:bg-[#F2743D] text-white flex items-center justify-center shadow-sm transition-all active:scale-95 cursor-pointer"
               >
                 {isPlaying ? <Pause className="w-4 h-4 fill-white" /> : <Play className="w-4 h-4 fill-white translate-x-0.5" />}
               </button>
 
               <button
                 onClick={() => handleSeek(0)}
-                className="p-2 min-h-[36px] min-w-[36px] flex items-center justify-center text-[#66625B] hover:text-[#181715] transition-colors cursor-pointer"
+                className="p-2 min-h-[36px] min-w-[36px] flex items-center justify-center text-[#66625B] dark:text-[#A39E95] hover:text-[#181715] dark:hover:text-[#F4F2EC] transition-colors cursor-pointer"
                 title="Restart"
               >
                 <RotateCcw className="w-4 h-4" />
               </button>
 
-              <div className="text-[11px] md:text-xs font-mono tabular-nums text-[#181715]">
-                <span className="font-bold text-[#181715]">{curProjSec}s</span>
-                <span className="text-[#8E8A82]"> / </span>
-                <span className="text-[#66625B]">{totalProjSec}s</span>
+              <div className="text-[11px] md:text-xs font-mono tabular-nums text-[#181715] dark:text-[#F4F2EC]">
+                <span className="font-bold text-[#181715] dark:text-[#F4F2EC]">{curProjSec}s</span>
+                <span className="text-[#8E8A82] dark:text-[#78736B]"> / </span>
+                <span className="text-[#66625B] dark:text-[#A39E95]">{totalProjSec}s</span>
               </div>
             </div>
 
@@ -2648,10 +2650,10 @@ export const Screen2Workspace: React.FC = () => {
             <div className="flex items-center space-x-1.5 md:space-x-2">
               <button
                 onClick={splitAtPlayhead}
-                className="px-2.5 py-1.5 min-h-[36px] bg-white hover:bg-[#F7F6F2] border border-[#E5E2DC] text-[#181715] rounded-lg text-xs font-medium flex items-center space-x-1.5 transition-colors shadow-sm cursor-pointer"
+                className="px-2.5 py-1.5 min-h-[36px] bg-white dark:bg-[#1E1D1B] hover:bg-[#F7F6F2] dark:hover:bg-[#262421] border border-[#E5E2DC] dark:border-[#2C2A27] text-[#181715] dark:text-[#F4F2EC] rounded-lg text-xs font-medium flex items-center space-x-1.5 transition-colors shadow-sm cursor-pointer"
                 title="Split at playhead position (S)"
               >
-                <Scissors className="w-3.5 h-3.5 text-[#D96B27]" />
+                <Scissors className="w-3.5 h-3.5 text-[#D96B27] dark:text-[#E8632A]" />
                 <span className="hidden sm:inline">Split (S)</span>
                 <span className="sm:hidden">Split</span>
               </button>
@@ -2659,19 +2661,19 @@ export const Screen2Workspace: React.FC = () => {
               <button
                 onClick={deleteSelected}
                 disabled={!selectedItemId}
-                className="px-2.5 py-1.5 min-h-[36px] bg-[#FEF2F2] hover:bg-[#FEE2E2] border border-[#FCA5A5] text-[#DC2626] rounded-lg text-xs font-medium flex items-center space-x-1.5 transition-colors disabled:opacity-30 disabled:cursor-not-allowed shadow-sm cursor-pointer"
+                className="px-2.5 py-1.5 min-h-[36px] bg-[#FEF2F2] dark:bg-[#450A0A]/40 hover:bg-[#FEE2E2] dark:hover:bg-[#5E0F0F]/50 border border-[#FCA5A5] dark:border-[#991B1B] text-[#DC2626] dark:text-[#FCA5A5] rounded-lg text-xs font-medium flex items-center space-x-1.5 transition-colors disabled:opacity-30 disabled:cursor-not-allowed shadow-sm cursor-pointer"
                 title="Delete selected clip"
               >
                 <Trash2 className="w-3.5 h-3.5" />
                 <span className="hidden sm:inline">Delete</span>
               </button>
 
-              <div className="h-4 w-[1px] bg-[#E5E2DC] mx-0.5 md:mx-1" />
+              <div className="h-4 w-[1px] bg-[#E5E2DC] dark:bg-[#2C2A27] mx-0.5 md:mx-1" />
 
               <button
                 onClick={undo}
                 disabled={undoStack.length === 0}
-                className="p-2 min-h-[36px] min-w-[36px] flex items-center justify-center text-[#66625B] hover:text-[#181715] disabled:opacity-30 transition-colors cursor-pointer"
+                className="p-2 min-h-[36px] min-w-[36px] flex items-center justify-center text-[#66625B] dark:text-[#A39E95] hover:text-[#181715] dark:hover:text-[#F4F2EC] disabled:opacity-30 transition-colors cursor-pointer"
                 title="Undo"
               >
                 <RotateCcw className="w-4 h-4" />
@@ -2680,7 +2682,7 @@ export const Screen2Workspace: React.FC = () => {
               <button
                 onClick={redo}
                 disabled={redoStack.length === 0}
-                className="p-2 min-h-[36px] min-w-[36px] flex items-center justify-center text-[#66625B] hover:text-[#181715] disabled:opacity-30 transition-colors cursor-pointer"
+                className="p-2 min-h-[36px] min-w-[36px] flex items-center justify-center text-[#66625B] dark:text-[#A39E95] hover:text-[#181715] dark:hover:text-[#F4F2EC] disabled:opacity-30 transition-colors cursor-pointer"
                 title="Redo"
               >
                 <RotateCw className="w-4 h-4" />
@@ -2691,20 +2693,20 @@ export const Screen2Workspace: React.FC = () => {
 
         {/* Right Collapsible Panel: AI Command Hub (Desktop) */}
         <div
-          className={`hidden md:flex flex-col border-l border-[#E5E2DC] bg-white h-full min-h-0 overflow-hidden transition-all duration-200 z-10 ${
+          className={`hidden md:flex flex-col border-l border-[#E5E2DC] dark:border-[#2C2A27] bg-white dark:bg-[#171615] h-full min-h-0 overflow-hidden transition-all duration-200 z-10 ${
             isRightOpen ? 'w-72 lg:w-80' : 'w-10'
           }`}
         >
-          <div className="h-10 shrink-0 border-b border-[#E5E2DC] flex items-center justify-between px-3">
+          <div className="h-10 shrink-0 border-b border-[#E5E2DC] dark:border-[#2C2A27] flex items-center justify-between px-3">
             <button
               onClick={() => setIsRightOpen(!isRightOpen)}
-              className="text-[#66625B] hover:text-[#181715] p-1 cursor-pointer"
+              className="text-[#66625B] dark:text-[#A39E95] hover:text-[#181715] dark:hover:text-[#F4F2EC] p-1 cursor-pointer"
             >
               {isRightOpen ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
             </button>
             {isRightOpen && (
-              <span className="text-xs font-semibold text-[#181715] flex items-center space-x-1">
-                <Sparkles className="w-3.5 h-3.5 text-[#D96B27]" />
+              <span className="text-xs font-semibold text-[#181715] dark:text-[#F4F2EC] flex items-center space-x-1">
+                <Sparkles className="w-3.5 h-3.5 text-[#D96B27] dark:text-[#E8632A]" />
                 <span>AI Command Hub</span>
               </span>
             )}
@@ -2716,7 +2718,7 @@ export const Screen2Workspace: React.FC = () => {
               <div className="flex-1 min-h-0 overflow-y-auto space-y-3 px-3 py-2 flex flex-col">
                 {/* Quick Prompt Chips */}
                 <div className="space-y-1.5 shrink-0">
-                  <span className="text-[10px] uppercase font-bold text-[#66625B] tracking-wider">Quick Prompts</span>
+                  <span className="text-[10px] uppercase font-bold text-[#66625B] dark:text-[#A39E95] tracking-wider">Quick Prompts</span>
                   <div className="flex flex-wrap gap-1.5">
                     {[
                       'Remove silence',
@@ -2727,7 +2729,7 @@ export const Screen2Workspace: React.FC = () => {
                       <button
                         key={chip}
                         onClick={() => setPromptInput(chip)}
-                        className="text-[11px] bg-[#F7F6F2] hover:bg-[#F2EFEB] hover:text-[#181715] text-[#66625B] px-2 py-1 rounded-md border border-[#E5E2DC] transition-colors cursor-pointer"
+                        className="text-[11px] bg-[#F7F6F2] dark:bg-[#24221F] hover:bg-[#F2EFEB] dark:hover:bg-[#2E2B27] hover:text-[#181715] dark:hover:text-[#F4F2EC] text-[#66625B] dark:text-[#A39E95] px-2 py-1 rounded-md border border-[#E5E2DC] dark:border-[#2C2A27] transition-colors cursor-pointer"
                       >
                         {chip}
                       </button>
@@ -2741,21 +2743,21 @@ export const Screen2Workspace: React.FC = () => {
                 </div>
 
                 {/* Command Execution Log */}
-                <div className="flex-1 min-h-[115px] flex flex-col space-y-1.5 pt-1 border-t border-[#E5E2DC] bg-[#FAF9F6] px-3 py-2 rounded-lg">
-                  <span className="text-[10px] uppercase font-bold text-[#66625B] tracking-wider shrink-0">Execution Log</span>
+                <div className="flex-1 min-h-[115px] flex flex-col space-y-1.5 pt-1 border-t border-[#E5E2DC] dark:border-[#2C2A27] bg-[#FAF9F6] dark:bg-[#1E1D1B] px-3 py-2 rounded-lg">
+                  <span className="text-[10px] uppercase font-bold text-[#66625B] dark:text-[#A39E95] tracking-wider shrink-0">Execution Log</span>
                   <div className="flex-1 overflow-y-auto space-y-1.5 pr-1">
                     {commandLogs.length === 0 ? (
-                      <p className="text-[11px] text-[#8E8A82] italic">Commands and cut confirmations appear here.</p>
+                      <p className="text-[11px] text-[#8E8A82] dark:text-[#78736B] italic">Commands and cut confirmations appear here.</p>
                     ) : (
                       commandLogs.map((log) => (
                         <div
                           key={log.id}
                           className={`p-2 rounded-lg border text-[11px] space-y-1 shadow-sm ${
                             log.status === 'SUCCESS'
-                              ? 'bg-[#F0FDFA] border-[#99F6E4] text-[#0F766E]'
+                              ? 'bg-[#F0FDFA] dark:bg-[#14B8A6]/15 border-[#99F6E4] dark:border-[#2DD4BF]/30 text-[#0F766E] dark:text-[#5EEAD4]'
                               : log.status === 'CLARIFICATION' || log.status === 'WARNING' || log.parsedCommand.action === 'UNSUPPORTED_OPERATION'
-                              ? 'bg-[#FFFBEB] border-[#FCD34D] text-[#92400E]'
-                              : 'bg-[#FEF2F2] border-[#FCA5A5] text-[#B91C1C]'
+                              ? 'bg-[#FFFBEB] dark:bg-[#78350F]/30 border-[#FCD34D] dark:border-[#B45309] text-[#92400E] dark:text-[#FDE68A]'
+                              : 'bg-[#FEF2F2] dark:bg-[#450A0A]/40 border-[#FCA5A5] dark:border-[#991B1B] text-[#B91C1C] dark:text-[#FCA5A5]'
                           }`}
                         >
                           <div className="font-semibold">{log.rawInput}</div>
@@ -2768,7 +2770,7 @@ export const Screen2Workspace: React.FC = () => {
               </div>
 
               {/* Permanently Pinned AI Command Input Bar (Footer) */}
-              <div className="shrink-0 border-t border-[#E5E2DC] bg-white p-2.5">
+              <div className="shrink-0 border-t border-[#E5E2DC] dark:border-[#2C2A27] bg-white dark:bg-[#171615] p-2.5">
                 <div className="relative">
                   <input
                     type="text"
@@ -2777,12 +2779,12 @@ export const Screen2Workspace: React.FC = () => {
                     onKeyDown={(e) => e.key === 'Enter' && handleSendCommand()}
                     placeholder='e.g. "Cut from 0:10 to 0:25"'
                     disabled={isAiProcessing}
-                    className="w-full bg-[#F7F6F2] border border-[#E5E2DC] rounded-lg pl-3 pr-9 py-2 text-xs text-[#181715] placeholder-[#8E8A82] focus:outline-none focus:border-[#D96B27]"
+                    className="w-full bg-[#F7F6F2] dark:bg-[#24221F] border border-[#E5E2DC] dark:border-[#2C2A27] rounded-lg pl-3 pr-9 py-2 text-xs text-[#181715] dark:text-[#F4F2EC] placeholder-[#8E8A82] dark:placeholder-[#78736B] focus:outline-none focus:border-[#D96B27] dark:focus:border-[#E8632A]"
                   />
                   <button
                     onClick={handleSendCommand}
                     disabled={isAiProcessing || !promptInput.trim()}
-                    className="absolute right-1.5 bottom-1.5 p-1.5 rounded-lg bg-[#D96B27] hover:bg-[#C25E1F] text-white disabled:opacity-40 transition-colors shadow-sm cursor-pointer"
+                    className="absolute right-1.5 bottom-1.5 p-1.5 rounded-lg bg-[#D96B27] dark:bg-[#E8632A] hover:bg-[#C25E1F] dark:hover:bg-[#F2743D] text-white disabled:opacity-40 transition-colors shadow-sm cursor-pointer"
                   >
                     <Send className="w-3 h-3" />
                   </button>
@@ -2792,10 +2794,10 @@ export const Screen2Workspace: React.FC = () => {
           ) : (
             <button
               onClick={() => setIsRightOpen(true)}
-              className="flex-1 flex flex-col items-center justify-start pt-6 gap-2 text-[#66625B] hover:text-[#181715] hover:bg-[#F7F6F2] transition cursor-pointer select-none"
+              className="flex-1 flex flex-col items-center justify-start pt-6 gap-2 text-[#66625B] dark:text-[#A39E95] hover:text-[#181715] dark:hover:text-[#F4F2EC] hover:bg-[#F7F6F2] dark:hover:bg-[#1E1D1B] transition cursor-pointer select-none"
               title="Open AI & Memes panel"
             >
-              <Sparkles className="w-4 h-4 text-[#D96B27]" />
+              <Sparkles className="w-4 h-4 text-[#D96B27] dark:text-[#E8632A]" />
               <span className="text-[11px] font-semibold [writing-mode:vertical-lr] tracking-wider uppercase">
                 AI & Memes
               </span>
@@ -2805,13 +2807,13 @@ export const Screen2Workspace: React.FC = () => {
       </div>
 
       {/* Bottom Timeline Section (Spec 1 & Spec 2) */}
-      <footer className="h-[104px] md:h-52 border-t border-[#E5E2DC] bg-white flex flex-col p-1.5 md:p-3 z-20 shrink-0">
+      <footer className="h-[104px] md:h-52 border-t border-[#E5E2DC] dark:border-[#2C2A27] bg-white dark:bg-[#171615] flex flex-col p-1.5 md:p-3 z-20 shrink-0">
         {/* Timeline Toolbar */}
         <div className="flex flex-wrap items-center justify-between pb-1.5 md:pb-2 text-xs gap-1.5 md:gap-2">
           <div className="flex items-center space-x-2 md:space-x-3 overflow-x-auto no-scrollbar">
             {/* Playback Speed Controls */}
             <div className="flex items-center space-x-1 md:space-x-1.5">
-              <span className="text-[#66625B] text-[11px] font-medium hidden sm:inline">Speed:</span>
+              <span className="text-[#66625B] dark:text-[#A39E95] text-[11px] font-medium hidden sm:inline">Speed:</span>
               {([1, 2, 5] as const).map((s) => (
                 <button
                   key={s}
@@ -2819,31 +2821,31 @@ export const Screen2Workspace: React.FC = () => {
                   className={`px-1.5 md:px-2 py-0.5 rounded text-[11px] font-mono tabular-nums font-medium transition-colors cursor-pointer ${
                     previewSpeed === s
                       ? 'bg-[#0F766E] text-white shadow-sm'
-                      : 'bg-white border border-[#E5E2DC] text-[#66625B] hover:bg-[#F7F6F2]'
+                      : 'bg-white dark:bg-[#24221F] border border-[#E5E2DC] dark:border-[#2C2A27] text-[#66625B] dark:text-[#A39E95] hover:bg-[#F7F6F2] dark:hover:bg-[#2E2B27]'
                   }`}
                 >
                   {s}x
                 </button>
               ))}
-              <span className="text-[10px] text-[#8E8A82] hidden lg:inline">Preview speed only. Export keeps normal speed.</span>
+              <span className="text-[10px] text-[#8E8A82] dark:text-[#78736B] hidden lg:inline">Preview speed only. Export keeps normal speed.</span>
             </div>
 
             {/* Timeline Zoom Controls */}
-            <div className="flex items-center space-x-1 md:space-x-1.5 pl-2 md:pl-3 border-l border-[#E5E2DC]">
-              <span className="text-[#66625B] text-[11px] font-medium hidden sm:inline">Zoom:</span>
+            <div className="flex items-center space-x-1 md:space-x-1.5 pl-2 md:pl-3 border-l border-[#E5E2DC] dark:border-[#2C2A27]">
+              <span className="text-[#66625B] dark:text-[#A39E95] text-[11px] font-medium hidden sm:inline">Zoom:</span>
               <button
                 onClick={zoomOut}
                 disabled={timelineZoom <= 1}
-                className="w-5 h-5 flex items-center justify-center rounded bg-white hover:bg-[#F7F6F2] border border-[#E5E2DC] text-[#181715] text-xs font-bold disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer"
+                className="w-5 h-5 flex items-center justify-center rounded bg-white dark:bg-[#24221F] hover:bg-[#F7F6F2] dark:hover:bg-[#2E2B27] border border-[#E5E2DC] dark:border-[#2C2A27] text-[#181715] dark:text-[#F4F2EC] text-xs font-bold disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer"
                 title="Zoom Out Timeline (-)"
               >
                 -
               </button>
-              <span className="text-[11px] font-mono tabular-nums text-[#181715] w-6 md:w-7 text-center">{timelineZoom}x</span>
+              <span className="text-[11px] font-mono tabular-nums text-[#181715] dark:text-[#F4F2EC] w-6 md:w-7 text-center">{timelineZoom}x</span>
               <button
                 onClick={zoomIn}
                 disabled={timelineZoom >= 5}
-                className="w-5 h-5 flex items-center justify-center rounded bg-white hover:bg-[#F7F6F2] border border-[#E5E2DC] text-[#181715] text-xs font-bold disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer"
+                className="w-5 h-5 flex items-center justify-center rounded bg-white dark:bg-[#24221F] hover:bg-[#F7F6F2] dark:hover:bg-[#2E2B27] border border-[#E5E2DC] dark:border-[#2C2A27] text-[#181715] dark:text-[#F4F2EC] text-xs font-bold disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer"
                 title="Zoom In Timeline (+)"
               >
                 +
@@ -2851,11 +2853,11 @@ export const Screen2Workspace: React.FC = () => {
             </div>
 
             {/* Silence Detection Button */}
-            <div className="hidden sm:flex items-center space-x-1.5 pl-2 md:pl-3 border-l border-[#E5E2DC]">
+            <div className="hidden sm:flex items-center space-x-1.5 pl-2 md:pl-3 border-l border-[#E5E2DC] dark:border-[#2C2A27]">
               <button
                 disabled={isDetectingSilences}
                 onClick={handleDetectSilences}
-                className="px-2 py-0.5 bg-[#FFFBEB] hover:bg-[#FEF3C7] border border-[#FCD34D] text-[#92400E] rounded text-[11px] font-medium transition-colors flex items-center space-x-1.5 disabled:opacity-50 disabled:cursor-not-allowed shadow-sm cursor-pointer"
+                className="px-2 py-0.5 bg-[#FFFBEB] dark:bg-[#78350F]/30 hover:bg-[#FEF3C7] dark:hover:bg-[#78350F]/50 border border-[#FCD34D] dark:border-[#B45309] text-[#92400E] dark:text-[#FDE68A] rounded text-[11px] font-medium transition-colors flex items-center space-x-1.5 disabled:opacity-50 disabled:cursor-not-allowed shadow-sm cursor-pointer"
                 title="Scans audio for awkward silences"
               >
                 <span>{isDetectingSilences ? 'Detecting...' : 'Detect Silences'}</span>
@@ -2863,13 +2865,13 @@ export const Screen2Workspace: React.FC = () => {
             </div>
 
             {/* Add Clip & Add Music buttons */}
-            <div className="flex items-center space-x-1 md:space-x-1.5 pl-2 md:pl-3 border-l border-[#E5E2DC]">
+            <div className="flex items-center space-x-1 md:space-x-1.5 pl-2 md:pl-3 border-l border-[#E5E2DC] dark:border-[#2C2A27]">
               <button
                 onClick={() => addClipInputRef.current?.click()}
-                className="px-2 py-0.5 bg-white hover:bg-[#F7F6F2] text-[#181715] border border-[#E5E2DC] rounded text-[11px] font-medium transition-colors flex items-center space-x-1 shadow-sm cursor-pointer"
+                className="px-2 py-0.5 bg-white dark:bg-[#24221F] hover:bg-[#F7F6F2] dark:hover:bg-[#2E2B27] text-[#181715] dark:text-[#F4F2EC] border border-[#E5E2DC] dark:border-[#2C2A27] rounded text-[11px] font-medium transition-colors flex items-center space-x-1 shadow-sm cursor-pointer"
                 title="Add an extra video clip to the end of the timeline (up to 3 min / 100 MB)"
               >
-                <Plus className="w-3 h-3 text-[#D96B27]" />
+                <Plus className="w-3 h-3 text-[#D96B27] dark:text-[#E8632A]" />
                 <span className="hidden sm:inline">+ Add Clip</span>
                 <span className="sm:hidden">+ Clip</span>
               </button>
@@ -2882,10 +2884,10 @@ export const Screen2Workspace: React.FC = () => {
               />
               <button
                 onClick={() => bgMusicInputRef.current?.click()}
-                className="px-2 py-0.5 bg-white hover:bg-[#F7F6F2] text-[#0F766E] border border-[#E5E2DC] rounded text-[11px] font-medium transition-colors flex items-center space-x-1 shadow-sm cursor-pointer"
+                className="px-2 py-0.5 bg-white dark:bg-[#24221F] hover:bg-[#F7F6F2] dark:hover:bg-[#2E2B27] text-[#0F766E] dark:text-[#5EEAD4] border border-[#E5E2DC] dark:border-[#2C2A27] rounded text-[11px] font-medium transition-colors flex items-center space-x-1 shadow-sm cursor-pointer"
                 title="Add background music track (.mp3, .wav, .m4a, .aac, .ogg up to 30 MB)"
               >
-                <Music className="w-3 h-3 text-[#0F766E]" />
+                <Music className="w-3 h-3 text-[#0F766E] dark:text-[#5EEAD4]" />
                 <span className="hidden sm:inline">+ Add Music</span>
                 <span className="sm:hidden">+ Music</span>
               </button>
@@ -2900,17 +2902,17 @@ export const Screen2Workspace: React.FC = () => {
 
             {/* Thumbnail Generation Progress */}
             {thumbnailProgress && !thumbnailProgress.done && (
-              <div className="flex items-center space-x-1.5 px-2 py-0.5 rounded-full bg-[#F0FDFA] border border-[#99F6E4] text-[#0F766E] text-[10px] animate-pulse">
-                <div className="w-1.5 h-1.5 rounded-full bg-[#0F766E] animate-ping" />
+              <div className="flex items-center space-x-1.5 px-2 py-0.5 rounded-full bg-[#F0FDFA] dark:bg-[#14B8A6]/15 border border-[#99F6E4] dark:border-[#2DD4BF]/40 text-[#0F766E] dark:text-[#5EEAD4] text-[10px] animate-pulse">
+                <div className="w-1.5 h-1.5 rounded-full bg-[#0F766E] dark:bg-[#5EEAD4] animate-ping" />
                 <span>Generating frames {thumbnailProgress.current}/{thumbnailProgress.total}</span>
               </div>
             )}
           </div>
 
           {/* Legend */}
-          <div className="hidden lg:flex items-center space-x-4 text-[11px] text-[#66625B]">
+          <div className="hidden lg:flex items-center space-x-4 text-[11px] text-[#66625B] dark:text-[#A39E95]">
             <div className="flex items-center space-x-1.5">
-              <span className="w-2.5 h-2.5 rounded-sm bg-[#3A3833] border border-[#45423C] inline-block" />
+              <span className="w-2.5 h-2.5 rounded-sm bg-[#3A3833] dark:bg-[#2A2825] border border-[#45423C] dark:border-[#383531] inline-block" />
               <span>Active Clip</span>
             </div>
             <div className="flex items-center space-x-1.5">
@@ -2922,7 +2924,7 @@ export const Screen2Workspace: React.FC = () => {
               <span>Meme Insert</span>
             </div>
             <div className="flex items-center space-x-1.5">
-              <span className="w-2.5 h-2.5 rounded-sm bg-[#0F766E] inline-block" />
+              <span className="w-2.5 h-2.5 rounded-sm bg-[#0F766E] dark:bg-[#5EEAD4] inline-block" />
               <span>Music</span>
             </div>
           </div>
@@ -2931,7 +2933,7 @@ export const Screen2Workspace: React.FC = () => {
         {/* Timeline Track Area (Horizontally Scrollable) */}
         <div
           ref={timelineContainerRef}
-          className="flex-1 bg-[#F7F6F2] rounded-xl border border-[#E5E2DC] relative overflow-x-auto overflow-y-hidden p-1.5 md:p-2"
+          className="flex-1 bg-[#F7F6F2] dark:bg-[#141312] rounded-xl border border-[#E5E2DC] dark:border-[#2C2A27] relative overflow-x-auto overflow-y-hidden p-1.5 md:p-2"
         >
           {/* Inner scalable track container */}
           <div
@@ -2952,15 +2954,15 @@ export const Screen2Workspace: React.FC = () => {
                 }}
                 className="absolute top-0 transform -translate-x-1/2 z-40 pointer-events-none flex flex-col items-center"
               >
-                <div className="bg-[#181715] border border-[#D96B27] text-white font-mono tabular-nums text-[10px] font-bold px-1.5 py-0.5 rounded shadow-lg whitespace-nowrap">
+                <div className="bg-[#181715] dark:bg-[#070706] border border-[#D96B27] dark:border-[#E8632A] text-white font-mono tabular-nums text-[10px] font-bold px-1.5 py-0.5 rounded shadow-lg whitespace-nowrap">
                   {formatReadout(isScrubbing ? currentProjectMs : (hoverTimeMs ?? currentProjectMs))}
                 </div>
-                <div className="w-0 h-0 border-x-4 border-x-transparent border-t-4 border-t-[#D96B27]" />
+                <div className="w-0 h-0 border-x-4 border-x-transparent border-t-4 border-t-[#D96B27] dark:border-t-[#E8632A]" />
               </div>
             )}
 
             {/* Thin Time Ruler Row */}
-            <div className="w-full h-4 md:h-5 border-b border-[#E5E2DC] relative font-mono tabular-nums text-[9px] text-[#8E8A82] select-none pointer-events-none">
+            <div className="w-full h-4 md:h-5 border-b border-[#E5E2DC] dark:border-[#2C2A27] relative font-mono tabular-nums text-[9px] text-[#8E8A82] dark:text-[#78736B] select-none pointer-events-none">
               {/* Minor Ticks */}
               {Array.from({ length: minorTickCount + 1 }).map((_, i) => {
                 const tickSec = i * rulerMinorStepSec;
@@ -2971,7 +2973,7 @@ export const Screen2Workspace: React.FC = () => {
                   <div
                     key={`minor_${i}`}
                     style={{ left: `${leftPct}%` }}
-                    className="absolute bottom-0 h-1.5 w-[1px] bg-[#E5E2DC] transform -translate-x-1/2"
+                    className="absolute bottom-0 h-1.5 w-[1px] bg-[#E5E2DC] dark:bg-[#2C2A27] transform -translate-x-1/2"
                   />
                 );
               })}
@@ -2990,8 +2992,8 @@ export const Screen2Workspace: React.FC = () => {
                     style={{ left: `${leftPct}%` }}
                     className="absolute top-0 bottom-0 flex flex-col items-center transform -translate-x-1/2"
                   >
-                    <span className="leading-none text-[8.5px] text-[#8E8A82] font-mono tabular-nums">{mm}:{ss}</span>
-                    <div className="h-2 w-[1px] bg-[#D8D4CC] mt-auto" />
+                    <span className="leading-none text-[8.5px] text-[#8E8A82] dark:text-[#78736B] font-mono tabular-nums">{mm}:{ss}</span>
+                    <div className="h-2 w-[1px] bg-[#D8D4CC] dark:bg-[#383531] mt-auto" />
                   </div>
                 );
               })}
@@ -3096,24 +3098,24 @@ export const Screen2Workspace: React.FC = () => {
                       draggedItemId === item.id ? 'opacity-50' : 'opacity-100'
                     } ${
                       isSelected
-                        ? 'ring-2 ring-[#D96B27] border-transparent shadow-md'
-                        : 'border border-[#E5E2DC]'
+                        ? 'ring-2 ring-[#D96B27] dark:ring-[#E8632A] border-transparent shadow-md'
+                        : 'border border-[#E5E2DC] dark:border-[#2C2A27]'
                     } ${
                       isSilence
                         ? isSilenceSelected
-                          ? 'bg-[#FEF3C7] border border-[#F59E0B] text-[#92400E] hover:bg-[#FDE68A]'
-                          : 'border-dashed border-[#D8D4CC] bg-[#F2EFEB] text-[#8E8A82] hover:bg-[#E5E2DC]'
+                          ? 'bg-[#FEF3C7] dark:bg-[#78350F]/40 border border-[#F59E0B] dark:border-[#B45309] text-[#92400E] dark:text-[#FDE68A] hover:bg-[#FDE68A] dark:hover:bg-[#78350F]/60'
+                          : 'border-dashed border-[#D8D4CC] dark:border-[#383531] bg-[#F2EFEB] dark:bg-[#1E1D1B] text-[#8E8A82] dark:text-[#78736B] hover:bg-[#E5E2DC] dark:hover:bg-[#262421]'
                         : isMeme
                         ? replacingMemeId === item.id
-                          ? 'bg-[#FFF1F2] text-[#BE123C] ring-2 ring-[#D96B27] animate-pulse shadow-lg border border-[#FDA4AF]'
-                          : 'bg-[#FFF1F2] border border-[#FDA4AF] text-[#BE123C] hover:bg-[#FFE4E6]'
-                        : 'bg-[#252422] text-[#F7F6F2] border border-[#3D3A35] hover:border-[#524E47]'
+                          ? 'bg-[#FFF1F2] dark:bg-[#4C0519]/40 text-[#BE123C] dark:text-[#FDA4AF] ring-2 ring-[#D96B27] dark:ring-[#E8632A] animate-pulse shadow-lg border border-[#FDA4AF] dark:border-[#9F1239]'
+                          : 'bg-[#FFF1F2] dark:bg-[#4C0519]/40 border border-[#FDA4AF] dark:border-[#9F1239] text-[#BE123C] dark:text-[#FDA4AF] hover:bg-[#FFE4E6] dark:hover:bg-[#4C0519]/60'
+                        : 'bg-[#252422] dark:bg-[#1B1A18] text-[#F7F6F2] border border-[#3D3A35] dark:border-[#2E2C28] hover:border-[#524E47] dark:hover:border-[#423F3A]'
                     }`}
                   >
                     {/* Touch Reorder Buttons on Selected Active Clip */}
                     {isSelected && isDraggable && nonDeletedItems.length >= 2 && (
                       <div
-                        className="absolute -top-3.5 left-1/2 -translate-x-1/2 flex items-center bg-[#181715] text-white rounded shadow-md z-40 px-1 py-0.5 gap-1 border border-[#3A3833]"
+                        className="absolute -top-3.5 left-1/2 -translate-x-1/2 flex items-center bg-[#181715] dark:bg-[#070706] text-white rounded shadow-md z-40 px-1 py-0.5 gap-1 border border-[#3A3833] dark:border-[#2E2C28]"
                         onClick={(e) => e.stopPropagation()}
                       >
                         <button
@@ -3123,12 +3125,12 @@ export const Screen2Workspace: React.FC = () => {
                             e.stopPropagation();
                             if (prevActiveItem) reorderTimelineItem(item.id, prevActiveItem.id, 'before');
                           }}
-                          className="text-[10px] font-bold hover:text-[#D96B27] disabled:opacity-25 px-1 cursor-pointer"
+                          className="text-[10px] font-bold hover:text-[#D96B27] dark:hover:text-[#E8632A] disabled:opacity-25 px-1 cursor-pointer"
                           title="Move clip left"
                         >
                           ←
                         </button>
-                        <span className="text-[8px] text-[#8E8A82]">|</span>
+                        <span className="text-[8px] text-[#8E8A82] dark:text-[#78736B]">|</span>
                         <button
                           type="button"
                           disabled={!nextActiveItem}
@@ -3136,7 +3138,7 @@ export const Screen2Workspace: React.FC = () => {
                             e.stopPropagation();
                             if (nextActiveItem) reorderTimelineItem(item.id, nextActiveItem.id, 'after');
                           }}
-                          className="text-[10px] font-bold hover:text-[#D96B27] disabled:opacity-25 px-1 cursor-pointer"
+                          className="text-[10px] font-bold hover:text-[#D96B27] dark:hover:text-[#E8632A] disabled:opacity-25 px-1 cursor-pointer"
                           title="Move clip right"
                         >
                           →
@@ -3146,10 +3148,10 @@ export const Screen2Workspace: React.FC = () => {
 
                     {/* Amber Drop Indicator Lines */}
                     {dropTarget?.id === item.id && dropTarget.position === 'before' && (
-                      <div className="absolute left-0 top-0 bottom-0 w-[3px] bg-[#D96B27] z-40 shadow-[0_0_8px_rgba(217,107,39,0.9)] pointer-events-none rounded-l" />
+                      <div className="absolute left-0 top-0 bottom-0 w-[3px] bg-[#D96B27] dark:bg-[#E8632A] z-40 shadow-[0_0_8px_rgba(217,107,39,0.9)] pointer-events-none rounded-l" />
                     )}
                     {dropTarget?.id === item.id && dropTarget.position === 'after' && (
-                      <div className="absolute right-0 top-0 bottom-0 w-[3px] bg-[#D96B27] z-40 shadow-[0_0_8px_rgba(217,107,39,0.9)] pointer-events-none rounded-r" />
+                      <div className="absolute right-0 top-0 bottom-0 w-[3px] bg-[#D96B27] dark:bg-[#E8632A] z-40 shadow-[0_0_8px_rgba(217,107,39,0.9)] pointer-events-none rounded-r" />
                     )}
 
                     {/* Meme Thumbnail Frame */}
@@ -3193,7 +3195,7 @@ export const Screen2Workspace: React.FC = () => {
                       <div className="flex items-center min-w-0 mr-1 overflow-hidden">
                         {isDraggable && (
                           <span
-                            className="cursor-grab active:cursor-grabbing text-[#8E8A82] hover:text-white mr-1 flex-shrink-0"
+                            className="cursor-grab active:cursor-grabbing text-[#8E8A82] dark:text-[#78736B] hover:text-white mr-1 flex-shrink-0"
                             title="Grab and drag to move clip before or after other clips"
                           >
                             <GripVertical className="w-3 h-3" />
@@ -3221,8 +3223,8 @@ export const Screen2Workspace: React.FC = () => {
                             onClick={() => toggleSilenceSelected(item.id)}
                             className={`p-1 rounded transition-colors cursor-pointer ${
                               isSilenceSelected
-                                ? 'bg-[#D96B27] text-white hover:bg-[#C25E1F]'
-                                : 'bg-white text-[#66625B] hover:text-[#181715] border border-[#E5E2DC]'
+                                ? 'bg-[#D96B27] dark:bg-[#E8632A] text-white hover:bg-[#C25E1F] dark:hover:bg-[#F2743D]'
+                                : 'bg-white dark:bg-[#24221F] text-[#66625B] dark:text-[#A39E95] hover:text-[#181715] dark:hover:text-[#F4F2EC] border border-[#E5E2DC] dark:border-[#2C2A27]'
                             }`}
                             title={isSilenceSelected ? 'Checked for cut (click to uncheck and keep pause)' : 'Unchecked (click to check for cut)'}
                           >
@@ -3234,7 +3236,7 @@ export const Screen2Workspace: React.FC = () => {
                           </button>
                           <button
                             onClick={() => keepSilencePause(item.id)}
-                            className="p-1 bg-white hover:bg-[#F7F6F2] text-[#66625B] border border-[#E5E2DC] rounded cursor-pointer"
+                            className="p-1 bg-white dark:bg-[#24221F] hover:bg-[#F7F6F2] dark:hover:bg-[#2E2B27] text-[#66625B] dark:text-[#A39E95] border border-[#E5E2DC] dark:border-[#2C2A27] rounded cursor-pointer"
                             title="Remove from suggestions (Keep Pause)"
                           >
                             <X className="w-3 h-3" />
@@ -3256,8 +3258,8 @@ export const Screen2Workspace: React.FC = () => {
                             }}
                             className={`px-1.5 py-0.5 rounded text-[9px] font-medium transition-colors cursor-pointer ${
                               replacingMemeId === item.id
-                                ? 'bg-[#D96B27] text-white font-bold shadow'
-                                : 'bg-white hover:bg-[#FFF1F2] text-[#BE123C] border border-[#FDA4AF]'
+                                ? 'bg-[#D96B27] dark:bg-[#E8632A] text-white font-bold shadow'
+                                : 'bg-white dark:bg-[#24221F] hover:bg-[#FFF1F2] dark:hover:bg-[#4C0519]/50 text-[#BE123C] dark:text-[#FDA4AF] border border-[#FDA4AF] dark:border-[#9F1239]'
                             }`}
                             title="Replace this meme with another from library or upload"
                           >
@@ -3265,7 +3267,7 @@ export const Screen2Workspace: React.FC = () => {
                           </button>
                           <button
                             onClick={() => removeMemeClip(item.id)}
-                            className="p-1 bg-white hover:bg-[#FEF2F2] text-[#BE123C] hover:text-[#DC2626] rounded border border-[#FDA4AF] transition-colors cursor-pointer"
+                            className="p-1 bg-white dark:bg-[#24221F] hover:bg-[#FEF2F2] dark:hover:bg-[#450A0A]/40 text-[#BE123C] dark:text-[#FDA4AF] hover:text-[#DC2626] dark:hover:text-[#F87171] rounded border border-[#FDA4AF] dark:border-[#9F1239] transition-colors cursor-pointer"
                             title="Remove this meme and restore continuous video"
                           >
                             <Trash2 className="w-2.5 h-2.5" />
@@ -3274,7 +3276,7 @@ export const Screen2Workspace: React.FC = () => {
                       )}
                     </div>
 
-                    <div className="relative z-10 flex items-center justify-between text-[10px] text-[#A19E97] font-mono tabular-nums drop-shadow-sm">
+                    <div className="relative z-10 flex items-center justify-between text-[10px] text-[#A19E97] dark:text-[#78736B] font-mono tabular-nums drop-shadow-sm">
                       <span>{(item.durationMs / 1000).toFixed(1)}s</span>
                       {item.transitionOut && item.transitionOut.type !== 'none' && (
                         <span className="bg-black/60 px-1 rounded uppercase text-[9px] text-white">
@@ -3296,13 +3298,13 @@ export const Screen2Workspace: React.FC = () => {
                       }}
                       className={`absolute right-0 top-1/2 -translate-y-1/2 translate-x-1/2 w-4 h-4 rounded-full flex items-center justify-center text-[8px] z-30 shadow cursor-pointer transition-all ${
                         item.transitionOut && item.transitionOut.type !== 'none'
-                          ? 'bg-[#D96B27] border border-white text-white hover:bg-[#C25E1F] scale-110'
-                          : 'bg-white border border-[#E5E2DC] hover:border-[#D96B27] text-[#66625B] hover:text-[#D96B27]'
+                          ? 'bg-[#D96B27] dark:bg-[#E8632A] border border-white dark:border-[#171615] text-white hover:bg-[#C25E1F] dark:hover:bg-[#F2743D] scale-110'
+                          : 'bg-white dark:bg-[#24221F] border border-[#E5E2DC] dark:border-[#2C2A27] hover:border-[#D96B27] dark:hover:border-[#E8632A] text-[#66625B] dark:text-[#A39E95] hover:text-[#D96B27] dark:hover:text-[#E8632A]'
                       }`}
                       title={`Click to toggle clip transition (Fade / None) - Current: ${item.transitionOut?.type || 'none'}`}
                     >
                       {item.transitionOut && item.transitionOut.type !== 'none' && (
-                        <span className="absolute -top-4 left-1/2 -translate-x-1/2 px-1 py-0.5 rounded bg-[#D96B27] text-white font-bold text-[8px] uppercase tracking-wider shadow whitespace-nowrap pointer-events-none">
+                        <span className="absolute -top-4 left-1/2 -translate-x-1/2 px-1 py-0.5 rounded bg-[#D96B27] dark:bg-[#E8632A] text-white font-bold text-[8px] uppercase tracking-wider shadow whitespace-nowrap pointer-events-none">
                           {item.transitionOut.type}
                         </span>
                       )}
@@ -3316,13 +3318,13 @@ export const Screen2Workspace: React.FC = () => {
             {/* Background Music Track (Slim Track Bar) */}
             <div className="w-full h-7 md:h-8 mt-1 md:mt-2 flex items-center">
               {bgMusic ? (
-                <div className="w-full h-full bg-[#F0FDFA] border border-[#99F6E4] rounded-lg px-2.5 flex items-center justify-between text-xs transition-all shadow-sm">
+                <div className="w-full h-full bg-[#F0FDFA] dark:bg-[#14B8A6]/10 border border-[#99F6E4] dark:border-[#2DD4BF]/30 rounded-lg px-2.5 flex items-center justify-between text-xs transition-all shadow-sm">
                   <div className="flex items-center space-x-2 min-w-0 mr-3">
-                    <Music className="w-3.5 h-3.5 text-[#0F766E] shrink-0" />
-                    <span className="font-medium text-[#0F766E] truncate text-[11px]" title={bgMusic.name}>
+                    <Music className="w-3.5 h-3.5 text-[#0F766E] dark:text-[#5EEAD4] shrink-0" />
+                    <span className="font-medium text-[#0F766E] dark:text-[#5EEAD4] truncate text-[11px]" title={bgMusic.name}>
                       {bgMusic.name}
                     </span>
-                    <span className="text-[10px] text-[#66625B] font-mono shrink-0">
+                    <span className="text-[10px] text-[#66625B] dark:text-[#A39E95] font-mono shrink-0">
                       ({(bgMusic.durationMs / 1000).toFixed(1)}s loop)
                     </span>
                   </div>
@@ -3332,13 +3334,13 @@ export const Screen2Workspace: React.FC = () => {
                     <div className="flex items-center space-x-1.5">
                       <button
                         onClick={() => toggleBgMusicMute()}
-                        className="text-[#66625B] hover:text-[#181715] transition-colors p-0.5 cursor-pointer"
+                        className="text-[#66625B] dark:text-[#A39E95] hover:text-[#181715] dark:hover:text-[#F4F2EC] transition-colors p-0.5 cursor-pointer"
                         title={bgMusic.isMuted || bgMusic.volume === 0 ? "Unmute music" : "Mute music"}
                       >
                         {bgMusic.isMuted || bgMusic.volume === 0 ? (
                           <VolumeX className="w-3.5 h-3.5 text-[#DC2626]" />
                         ) : (
-                          <Volume2 className="w-3.5 h-3.5 text-[#0F766E]" />
+                          <Volume2 className="w-3.5 h-3.5 text-[#0F766E] dark:text-[#5EEAD4]" />
                         )}
                       </button>
                       <input
@@ -3348,10 +3350,10 @@ export const Screen2Workspace: React.FC = () => {
                         step="0.05"
                         value={bgMusic.isMuted ? 0 : bgMusic.volume}
                         onChange={(e) => setBgMusicVolume(parseFloat(e.target.value))}
-                        className="w-12 md:w-16 h-1 bg-[#E5E2DC] accent-[#0F766E] rounded-lg cursor-pointer"
+                        className="w-12 md:w-16 h-1 bg-[#E5E2DC] dark:bg-[#2C2A27] accent-[#0F766E] rounded-lg cursor-pointer"
                         title={`Music Volume: ${Math.round(bgMusic.volume * 100)}%`}
                       />
-                      <span className="text-[10px] font-mono tabular-nums text-[#66625B] w-6 md:w-7">
+                      <span className="text-[10px] font-mono tabular-nums text-[#66625B] dark:text-[#A39E95] w-6 md:w-7">
                         {bgMusic.isMuted ? '0%' : `${Math.round(bgMusic.volume * 100)}%`}
                       </span>
                     </div>
@@ -3359,7 +3361,7 @@ export const Screen2Workspace: React.FC = () => {
                     {/* Replace Button */}
                     <button
                       onClick={() => bgMusicInputRef.current?.click()}
-                      className="px-2 py-0.5 bg-white hover:bg-[#F7F6F2] border border-[#E5E2DC] text-[#181715] rounded text-[10px] font-medium transition-colors shadow-sm cursor-pointer"
+                      className="px-2 py-0.5 bg-white dark:bg-[#24221F] hover:bg-[#F7F6F2] dark:hover:bg-[#2E2B27] border border-[#E5E2DC] dark:border-[#2C2A27] text-[#181715] dark:text-[#F4F2EC] rounded text-[10px] font-medium transition-colors shadow-sm cursor-pointer"
                       title="Replace music track"
                     >
                       Replace
@@ -3368,7 +3370,7 @@ export const Screen2Workspace: React.FC = () => {
                     {/* Remove Button */}
                     <button
                       onClick={() => removeBgMusic()}
-                      className="p-1 text-[#8E8A82] hover:text-[#DC2626] transition-colors cursor-pointer"
+                      className="p-1 text-[#8E8A82] dark:text-[#78736B] hover:text-[#DC2626] dark:hover:text-[#F87171] transition-colors cursor-pointer"
                       title="Remove background music track"
                     >
                       <Trash2 className="w-3 h-3" />
@@ -3378,10 +3380,10 @@ export const Screen2Workspace: React.FC = () => {
               ) : (
                 <button
                   onClick={() => bgMusicInputRef.current?.click()}
-                  className="w-full h-full border border-dashed border-[#E5E2DC] hover:border-[#0F766E] bg-white hover:bg-[#F0FDFA] rounded-lg px-3 flex items-center justify-center space-x-2 text-[11px] text-[#66625B] hover:text-[#0F766E] transition-all group cursor-pointer"
+                  className="w-full h-full border border-dashed border-[#E5E2DC] dark:border-[#2C2A27] hover:border-[#0F766E] bg-white dark:bg-[#171615] hover:bg-[#F0FDFA] dark:hover:bg-[#14B8A6]/10 rounded-lg px-3 flex items-center justify-center space-x-2 text-[11px] text-[#66625B] dark:text-[#A39E95] hover:text-[#0F766E] dark:hover:text-[#5EEAD4] transition-all group cursor-pointer"
                   title="Click to add a background music track (.mp3, .wav, .m4a, .aac, .ogg)"
                 >
-                  <Music className="w-3 h-3 text-[#8E8A82] group-hover:text-[#0F766E] transition-colors" />
+                  <Music className="w-3 h-3 text-[#8E8A82] dark:text-[#78736B] group-hover:text-[#0F766E] dark:group-hover:text-[#5EEAD4] transition-colors" />
                   <span>+ Add Background Music track (.mp3, .wav, .m4a, up to 30 MB)</span>
                 </button>
               )}
@@ -3391,15 +3393,15 @@ export const Screen2Workspace: React.FC = () => {
       </footer>
 
       {/* Mobile 4-Tab Tool Drawer */}
-      <div className="flex md:hidden flex-1 min-h-0 flex-col bg-white border-t border-[#E5E2DC]">
+      <div className="flex md:hidden flex-1 min-h-0 flex-col bg-white dark:bg-[#171615] border-t border-[#E5E2DC] dark:border-[#2C2A27]">
         {/* Drawer Tabs Header */}
-        <div className="flex items-center border-b border-[#E5E2DC] bg-[#FAF9F5] text-xs font-medium shrink-0">
+        <div className="flex items-center border-b border-[#E5E2DC] dark:border-[#2C2A27] bg-[#FAF9F5] dark:bg-[#1E1D1B] text-xs font-medium shrink-0">
           <button
             onClick={() => setMobileDrawerTab('ai')}
             className={`flex-1 min-h-[40px] py-2 flex items-center justify-center gap-1 border-b-2 transition-colors cursor-pointer ${
               mobileDrawerTab === 'ai'
-                ? 'border-[#D96B27] text-[#D96B27] font-semibold bg-white'
-                : 'border-transparent text-[#66625B] hover:text-[#181715]'
+                ? 'border-[#D96B27] dark:border-[#E8632A] text-[#D96B27] dark:text-[#E8632A] font-semibold bg-white dark:bg-[#171615]'
+                : 'border-transparent text-[#66625B] dark:text-[#A39E95] hover:text-[#181715] dark:hover:text-[#F4F2EC]'
             }`}
           >
             <Sparkles className="w-3.5 h-3.5" />
@@ -3409,8 +3411,8 @@ export const Screen2Workspace: React.FC = () => {
             onClick={() => setMobileDrawerTab('clips')}
             className={`flex-1 min-h-[40px] py-2 flex items-center justify-center gap-1 border-b-2 transition-colors cursor-pointer ${
               mobileDrawerTab === 'clips'
-                ? 'border-[#D96B27] text-[#D96B27] font-semibold bg-white'
-                : 'border-transparent text-[#66625B] hover:text-[#181715]'
+                ? 'border-[#D96B27] dark:border-[#E8632A] text-[#D96B27] dark:text-[#E8632A] font-semibold bg-white dark:bg-[#171615]'
+                : 'border-transparent text-[#66625B] dark:text-[#A39E95] hover:text-[#181715] dark:hover:text-[#F4F2EC]'
             }`}
           >
             <Film className="w-3.5 h-3.5" />
@@ -3420,8 +3422,8 @@ export const Screen2Workspace: React.FC = () => {
             onClick={() => setMobileDrawerTab('audio')}
             className={`flex-1 min-h-[40px] py-2 flex items-center justify-center gap-1 border-b-2 transition-colors cursor-pointer ${
               mobileDrawerTab === 'audio'
-                ? 'border-[#0F766E] text-[#0F766E] font-semibold bg-white'
-                : 'border-transparent text-[#66625B] hover:text-[#181715]'
+                ? 'border-[#0F766E] dark:border-[#2DD4BF] text-[#0F766E] dark:text-[#5EEAD4] font-semibold bg-white dark:bg-[#171615]'
+                : 'border-transparent text-[#66625B] dark:text-[#A39E95] hover:text-[#181715] dark:hover:text-[#F4F2EC]'
             }`}
           >
             <Music className="w-3.5 h-3.5" />
@@ -3431,8 +3433,8 @@ export const Screen2Workspace: React.FC = () => {
             onClick={() => setMobileDrawerTab('transcript')}
             className={`flex-1 min-h-[40px] py-2 flex items-center justify-center gap-1 border-b-2 transition-colors cursor-pointer ${
               mobileDrawerTab === 'transcript'
-                ? 'border-[#D96B27] text-[#D96B27] font-semibold bg-white'
-                : 'border-transparent text-[#66625B] hover:text-[#181715]'
+                ? 'border-[#D96B27] dark:border-[#E8632A] text-[#D96B27] dark:text-[#E8632A] font-semibold bg-white dark:bg-[#171615]'
+                : 'border-transparent text-[#66625B] dark:text-[#A39E95] hover:text-[#181715] dark:hover:text-[#F4F2EC]'
             }`}
           >
             <Wand2 className="w-3.5 h-3.5" />
