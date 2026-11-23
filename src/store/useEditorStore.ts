@@ -1659,6 +1659,15 @@ export const useEditorStore = create<EditorState>((set, get) => ({
           appliedMessage: 'No speech segments detected to form chapters.'
         });
       }
+    } else if (action === 'ASSISTANT_ADVICE') {
+      store.addCommandLog({
+        id: `cmd_${Date.now()}`,
+        rawInput,
+        timestamp: Date.now(),
+        parsedCommand: command,
+        status: 'SUCCESS',
+        appliedMessage: payload.message || explanation
+      });
     } else if (action === 'AMBIGUOUS_NEED_CLARIFICATION') {
       store.addCommandLog({
         id: `cmd_${Date.now()}`,

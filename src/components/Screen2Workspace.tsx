@@ -1172,7 +1172,8 @@ export const Screen2Workspace: React.FC = () => {
         query,
         currentProjectMs,
         project.totalProjectDurationMs,
-        project
+        project,
+        Boolean(bgMusic)
       );
       await applyAICommand(command, query);
     } catch (err: unknown) {
@@ -2172,21 +2173,41 @@ export const Screen2Workspace: React.FC = () => {
           {commandLogs.length === 0 ? (
             <p className="text-[11px] text-[#8E8A82] dark:text-[#78736B] italic">No AI commands executed yet.</p>
           ) : (
-            commandLogs.map((log) => (
-              <div
-                key={log.id}
-                className={`p-2 rounded-lg border text-[11px] space-y-1 shadow-sm ${
-                  log.status === 'SUCCESS'
-                    ? 'bg-[#F0FDFA] dark:bg-[#14B8A6]/15 border-[#99F6E4] dark:border-[#2DD4BF]/30 text-[#0F766E] dark:text-[#5EEAD4]'
-                    : log.status === 'CLARIFICATION' || log.status === 'WARNING' || log.parsedCommand.action === 'UNSUPPORTED_OPERATION'
-                    ? 'bg-[#FFFBEB] dark:bg-[#78350F]/30 border-[#FCD34D] dark:border-[#B45309] text-[#92400E] dark:text-[#FDE68A]'
-                    : 'bg-[#FEF2F2] dark:bg-[#450A0A]/40 border-[#FCA5A5] dark:border-[#991B1B] text-[#B91C1C] dark:text-[#FCA5A5]'
-                }`}
-              >
-                <div className="font-semibold">{log.rawInput}</div>
-                <div className="text-[10px] opacity-80">{log.appliedMessage}</div>
-              </div>
-            ))
+            commandLogs.map((log) => {
+              if (log.parsedCommand.action === 'ASSISTANT_ADVICE') {
+                return (
+                  <div
+                    key={log.id}
+                    className="p-2.5 rounded-lg border text-[11px] space-y-1.5 shadow-sm bg-[#0F766E]/8 border-[#0F766E]/25 text-[#181715] dark:bg-[#14B8A6]/12 dark:border-[#2DD4BF]/30 dark:text-[#F4F2EC]"
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="font-semibold">{log.rawInput}</span>
+                      <span className="text-[9px] uppercase tracking-wider font-bold px-1.5 py-0.5 rounded bg-[#0F766E]/15 text-[#0F766E] dark:bg-[#14B8A6]/20 dark:text-[#5EEAD4] flex items-center gap-1">
+                        <Sparkles className="w-2.5 h-2.5" /> AI Assistant
+                      </span>
+                    </div>
+                    <div className="text-[10px] leading-relaxed whitespace-pre-line break-words text-[#3F3C37] dark:text-[#D1CDC7]">
+                      {log.appliedMessage}
+                    </div>
+                  </div>
+                );
+              }
+              return (
+                <div
+                  key={log.id}
+                  className={`p-2 rounded-lg border text-[11px] space-y-1 shadow-sm ${
+                    log.status === 'SUCCESS'
+                      ? 'bg-[#F0FDFA] dark:bg-[#14B8A6]/15 border-[#99F6E4] dark:border-[#2DD4BF]/30 text-[#0F766E] dark:text-[#5EEAD4]'
+                      : log.status === 'CLARIFICATION' || log.status === 'WARNING' || log.parsedCommand.action === 'UNSUPPORTED_OPERATION'
+                      ? 'bg-[#FFFBEB] dark:bg-[#78350F]/30 border-[#FCD34D] dark:border-[#B45309] text-[#92400E] dark:text-[#FDE68A]'
+                      : 'bg-[#FEF2F2] dark:bg-[#450A0A]/40 border-[#FCA5A5] dark:border-[#991B1B] text-[#B91C1C] dark:text-[#FCA5A5]'
+                  }`}
+                >
+                  <div className="font-semibold">{log.rawInput}</div>
+                  <div className="text-[10px] opacity-80 whitespace-pre-line break-words">{log.appliedMessage}</div>
+                </div>
+              );
+            })
           )}
         </div>
       </div>
@@ -2199,7 +2220,7 @@ export const Screen2Workspace: React.FC = () => {
             value={promptInput}
             onChange={(e) => setPromptInput(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && handleSendCommand()}
-            placeholder='e.g. "Cut from 0:10 to 0:25"'
+            placeholder='Try "Cut 0:05 to 0:10" or "Suggest BGM for a vlog"...'
             disabled={isAiProcessing}
             className="w-full bg-[#F7F6F2] dark:bg-[#24221F] border border-[#E5E2DC] dark:border-[#2C2A27] rounded-lg pl-3 pr-9 py-2 text-xs text-[#181715] dark:text-[#F4F2EC] placeholder-[#8E8A82] dark:placeholder-[#78736B] focus:outline-none focus:border-[#D96B27] dark:focus:border-[#E8632A]"
           />
@@ -2749,21 +2770,41 @@ export const Screen2Workspace: React.FC = () => {
                     {commandLogs.length === 0 ? (
                       <p className="text-[11px] text-[#8E8A82] dark:text-[#78736B] italic">Commands and cut confirmations appear here.</p>
                     ) : (
-                      commandLogs.map((log) => (
-                        <div
-                          key={log.id}
-                          className={`p-2 rounded-lg border text-[11px] space-y-1 shadow-sm ${
-                            log.status === 'SUCCESS'
-                              ? 'bg-[#F0FDFA] dark:bg-[#14B8A6]/15 border-[#99F6E4] dark:border-[#2DD4BF]/30 text-[#0F766E] dark:text-[#5EEAD4]'
-                              : log.status === 'CLARIFICATION' || log.status === 'WARNING' || log.parsedCommand.action === 'UNSUPPORTED_OPERATION'
-                              ? 'bg-[#FFFBEB] dark:bg-[#78350F]/30 border-[#FCD34D] dark:border-[#B45309] text-[#92400E] dark:text-[#FDE68A]'
-                              : 'bg-[#FEF2F2] dark:bg-[#450A0A]/40 border-[#FCA5A5] dark:border-[#991B1B] text-[#B91C1C] dark:text-[#FCA5A5]'
-                          }`}
-                        >
-                          <div className="font-semibold">{log.rawInput}</div>
-                          <div className="text-[10px] opacity-80">{log.appliedMessage}</div>
-                        </div>
-                      ))
+                      commandLogs.map((log) => {
+                        if (log.parsedCommand.action === 'ASSISTANT_ADVICE') {
+                          return (
+                            <div
+                              key={log.id}
+                              className="p-2.5 rounded-lg border text-[11px] space-y-1.5 shadow-sm bg-[#0F766E]/8 border-[#0F766E]/25 text-[#181715] dark:bg-[#14B8A6]/12 dark:border-[#2DD4BF]/30 dark:text-[#F4F2EC]"
+                            >
+                              <div className="flex items-center justify-between">
+                                <span className="font-semibold">{log.rawInput}</span>
+                                <span className="text-[9px] uppercase tracking-wider font-bold px-1.5 py-0.5 rounded bg-[#0F766E]/15 text-[#0F766E] dark:bg-[#14B8A6]/20 dark:text-[#5EEAD4] flex items-center gap-1">
+                                  <Sparkles className="w-2.5 h-2.5" /> AI Assistant
+                                </span>
+                              </div>
+                              <div className="text-[10px] leading-relaxed whitespace-pre-line break-words text-[#3F3C37] dark:text-[#D1CDC7]">
+                                {log.appliedMessage}
+                              </div>
+                            </div>
+                          );
+                        }
+                        return (
+                          <div
+                            key={log.id}
+                            className={`p-2 rounded-lg border text-[11px] space-y-1 shadow-sm ${
+                              log.status === 'SUCCESS'
+                                ? 'bg-[#F0FDFA] dark:bg-[#14B8A6]/15 border-[#99F6E4] dark:border-[#2DD4BF]/30 text-[#0F766E] dark:text-[#5EEAD4]'
+                                : log.status === 'CLARIFICATION' || log.status === 'WARNING' || log.parsedCommand.action === 'UNSUPPORTED_OPERATION'
+                                ? 'bg-[#FFFBEB] dark:bg-[#78350F]/30 border-[#FCD34D] dark:border-[#B45309] text-[#92400E] dark:text-[#FDE68A]'
+                                : 'bg-[#FEF2F2] dark:bg-[#450A0A]/40 border-[#FCA5A5] dark:border-[#991B1B] text-[#B91C1C] dark:text-[#FCA5A5]'
+                            }`}
+                          >
+                            <div className="font-semibold">{log.rawInput}</div>
+                            <div className="text-[10px] opacity-80 whitespace-pre-line break-words">{log.appliedMessage}</div>
+                          </div>
+                        );
+                      })
                     )}
                   </div>
                 </div>
@@ -2777,7 +2818,7 @@ export const Screen2Workspace: React.FC = () => {
                     value={promptInput}
                     onChange={(e) => setPromptInput(e.target.value)}
                     onKeyDown={(e) => e.key === 'Enter' && handleSendCommand()}
-                    placeholder='e.g. "Cut from 0:10 to 0:25"'
+                    placeholder='Try "Cut 0:05 to 0:10" or "Suggest BGM for a vlog"...'
                     disabled={isAiProcessing}
                     className="w-full bg-[#F7F6F2] dark:bg-[#24221F] border border-[#E5E2DC] dark:border-[#2C2A27] rounded-lg pl-3 pr-9 py-2 text-xs text-[#181715] dark:text-[#F4F2EC] placeholder-[#8E8A82] dark:placeholder-[#78736B] focus:outline-none focus:border-[#D96B27] dark:focus:border-[#E8632A]"
                   />

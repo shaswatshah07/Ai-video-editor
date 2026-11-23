@@ -41,7 +41,17 @@ export const UnsupportedPayloadSchema = z.object({
   message: z.string()
 });
 
+export const AssistantAdvicePayloadSchema = z.object({
+  message: z.string(),
+  source: z.enum(['gemini', 'local']).optional()
+});
+
 export const AICommandSchema = z.discriminatedUnion('action', [
+  z.object({
+    action: z.literal('ASSISTANT_ADVICE'),
+    payload: AssistantAdvicePayloadSchema,
+    explanation: z.string()
+  }),
   z.object({
     action: z.literal('TRIM_SECTION'),
     payload: TrimSectionPayloadSchema,

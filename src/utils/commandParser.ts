@@ -35,7 +35,6 @@ function parseTimeStringToMs(raw: string): number | null {
  * Extracts target timestamp from an explicit time ("at 0:15", "at 10s", "at 3 s", "around 10s").
  */
 function extractTargetTimestamp(lower: string, currentProjectMs: number, _project?: ProjectEDL | null): number {
-  // Explicit timestamp ("at 0:15", "at 15s", "at 3 s", "around 10s")
   const atMatch = lower.match(/(?:at|around)\s+([0-9:.]+\s*s?)/i);
   if (atMatch) {
     const parsed = parseTimeStringToMs(atMatch[1]);
@@ -47,8 +46,6 @@ function extractTargetTimestamp(lower: string, currentProjectMs: number, _projec
 
 /**
  * Explicit regex matchers for each built-in meme in MEME_LIBRARY.
- * Disambiguates specific memes while preventing generic keywords (e.g. 'good', 'boom', 'what')
- * from triggering accidental meme insertions on unrelated queries.
  */
 interface MemeMatcher {
   id: string;
@@ -70,22 +67,59 @@ const MEME_SPECIFIC_MATCHERS: MemeMatcher[] = [
 ];
 
 /**
- * Deterministic local regex parser matching approved operations and strictly rejecting unsupported ones.
- * Evaluates unsupported editing requests FIRST so they can never be hijacked by loose regexes.
+ * Detects whether the query is asking for creative creator, BGM, or video pacing advice.
  */
-export function parseLocalCommand(
-  rawInput: string,
-  currentProjectMs = 0,
-  _totalDurationMs = 30000,
-  project?: ProjectEDL | null
-): AICommand {
-  const text = rawInput.trim();
-  const lower = text.toLowerCase();
+function checkCreatorAdvice(lower: string): AICommand | null {
+  const isMusicAdvice =
+    /\b(music|bgm|soundtrack|song|beat|track|audio\s*track)\b/i.test(lower) &&
+    /\b(suggest|suggestion|recommend|recommendation|idea|ideas|what|best|good|which|choose|pick|advice|find|need|suitable)\b/i.test(lower);
+  const isDirectBgmQuery =
+    /^(?:suggest|recommend|find|what)\s+(?:a\s+|some\s+)?(?:bgm|music|song|beat)\b/i.test(lower) ||
+    /\b(?:bgm|music)\s+for\b/i.test(lower) ||
+    /\b(?:pacing|tempo)\s+advice\b/i.test(lower);
 
-  // ====================================================================
-  // STEP 1: STRICT UNSUPPORTED-FEATURE GUARDS (Evaluated FIRST)
-  // ====================================================================
+  if (!isMusicAdvice && !isDirectBgmQuery) {
+    return null;
+  }
 
+  let genre = 'Chill Lo-Fi / Acoustic Groove (95–110 BPM)';
+  let mood = 'warm, rhythmic, and universally creator-friendly';
+  let tip = "Click '+ Add Music' in the top bar, select your audio track, and set the slider to 15–20% volume so your voice stays crisp and upfront.";
+
+  if (/\b(gaming|gameplay|action|streamer|shooter|rpg|fps|speedrun)\b/i.test(lower)) {
+    genre = 'Synthwave / Cyberpunk or Bass-heavy Electronic (125–135 BPM)';
+    mood = 'high-energy, driving, and keeps viewers engaged during fast gameplay';
+    tip = "Click '+ Add Music' in the top bar to load your track. Keep BGM volume at 15–20% so in-game dialogue and your commentary stay front and center!";
+  } else if (/\b(vlog|travel|daily|story|lifestyle|chill|aesthetic|cooking|cafe)\b/i.test(lower)) {
+    genre = 'Chill Lo-Fi Beats or Upbeat Acoustic Pop (100–115 BPM)';
+    mood = 'relaxing, modern, and adds emotional warmth without competing with talking';
+    tip = "Click '+ Add Music' in the top bar to load your MP3/WAV. Keep volume around 18% for a clean, professional mix.";
+  } else if (/\b(tech|tutorial|unboxing|coding|review|software|explain|guide|education|how-to)\b/i.test(lower)) {
+    genre = 'Minimal Ambient Electronic or Chillhop (90–110 BPM)';
+    mood = 'steady, non-intrusive rhythm that aids focus and eliminates awkward dead silence';
+    tip = "Click '+ Add Music' in the top bar. Set volume around 15% to maintain perfect speech clarity during explanations.";
+  } else if (/\b(workout|gym|fitness|hype|fast|trailer|montage)\b/i.test(lower)) {
+    genre = 'High-Energy Trap or Upbeat EDM (128–145 BPM)';
+    mood = 'powerful, aggressive rhythm that sets a fast visual pace';
+    tip = "Click '+ Add Music' in the top bar. Use the Split (S) shortcut to align your visual cuts directly to the musical beat!";
+  }
+
+  const message = `• Recommended Genre: ${genre} — ${mood}.\n• Free Royalty-Free Sources: YouTube Audio Library (free, no copyright strikes), Pixabay Music, or Free Music Archive.\n• Fastcutz Workflow Tip: ${tip}`;
+
+  return {
+    action: 'ASSISTANT_ADVICE',
+    payload: {
+      message,
+      source: 'local'
+    },
+    explanation: 'Creator & Background Music recommendation for your video.'
+  };
+}
+
+/**
+ * Checks if query explicitly triggers strict unsupported feature guards.
+ */
+function isUnsupportedFeatureQuery(lower: string, text: string): AICommand | null {
   // 1. Sound Effects / SFX
   if (
     /\b(sound\s*effect|sfx|whoosh|vine\s*boom|boom\s*sound|ding|audio\s*effect|sound\s*clip)s?\b/i.test(lower)
@@ -94,7 +128,7 @@ export function parseLocalCommand(
       action: 'UNSUPPORTED_OPERATION',
       payload: {
         feature: 'Sound Effects (SFX)',
-        message: 'Sound effects (SFX) are currently not available in Fastcutz.ai. You can add background music using \'+ Add Music\' or insert a meme reaction clip instead.'
+        message: "Sound effects (SFX) are currently not available in Fastcutz.ai. You can add background music using '+ Add Music' or insert a meme reaction clip instead."
       },
       explanation: 'Sound effects (SFX) are currently not available in Fastcutz.ai.'
     };
@@ -115,7 +149,6 @@ export function parseLocalCommand(
   }
 
   // 3. Visual Effects & Filters
-  // Guard: if user specifies audio noise/sound removal, don't trigger visual background filter
   const isAudioCleaning = /\b(noise|audio|sound|hiss|hum)\b/i.test(lower);
   if (
     /\b(blur|glitch|shake|vignette|black\s*and\s*white|grayscale|vintage|filter|filters|color\s*grade|color\s*grading|lut|brightness|contrast|saturation|green\s*screen|chroma\s*key|3d|glow)\b/i.test(lower) ||
@@ -132,7 +165,6 @@ export function parseLocalCommand(
   }
 
   // 4. Text / Titles / Burned-in Captions / Stickers
-  // Guard: if user explicitly asks to generate transcript or speech-to-text, allow it
   const isTranscriptRequest = /\b(transcript|speech\s*to\s*text)\b/i.test(lower);
   if (
     !isTranscriptRequest &&
@@ -142,7 +174,7 @@ export function parseLocalCommand(
       action: 'UNSUPPORTED_OPERATION',
       payload: {
         feature: 'Text, Titles & Captions',
-        message: 'Adding text, stickers, or burned-in captions is currently not available in Fastcutz.ai.'
+        message: 'Adding text, stickers, or burned-in captions is currently not available in Fastcutz.ai. You can export a synchronized transcript from the Transcript tab.'
       },
       explanation: 'Adding text, stickers, or burned-in captions is currently not available in Fastcutz.ai.'
     };
@@ -184,17 +216,13 @@ export function parseLocalCommand(
       action: 'UNSUPPORTED_OPERATION',
       payload: {
         feature: 'Voiceover & Advanced Audio',
-        message: 'Voiceover and advanced audio effects are currently not available in Fastcutz.ai. You can use Voice Enhance, Reduce Low Hum (Basic), or \'+ Add Music\' instead.'
+        message: "Voiceover and advanced audio effects are currently not available in Fastcutz.ai. You can use Voice Enhance, Reduce Low Hum (Basic), or '+ Add Music' instead."
       },
       explanation: 'Voiceover and advanced audio effects are currently not available in Fastcutz.ai.'
     };
   }
 
-  // ====================================================================
-  // STEP 2: SUPPORTED EDITING ACTIONS
-  // ====================================================================
-
-  // Check for phrase-based cutting without timestamps: e.g. "cut from hello to world", "cut when I say...", "cut word ..."
+  // 8. Transcript phrase cutting without timestamps
   const hasDigit = /\d/.test(lower);
   const isCutWord = /\b(cut|trim|delete|remove|splice)\b/i.test(lower);
   const hasPhraseCutMarkers =
@@ -207,11 +235,65 @@ export function parseLocalCommand(
       action: 'UNSUPPORTED_OPERATION',
       payload: {
         feature: 'transcript_phrase_cut',
-        message: 'Transcript phrase cutting is not available in Fastcutz.ai. Please use timestamps instead (for example: \'Cut from 0:10 to 0:25\').'
+        message: "Transcript phrase cutting is not available in Fastcutz.ai. Please use timestamps instead (for example: 'Cut from 0:10 to 0:25')."
       },
-      explanation: 'Transcript phrase cutting is not available in Fastcutz.ai. Please use timestamps instead (for example: \'Cut from 0:10 to 0:25\').'
+      explanation: "Transcript phrase cutting is not available in Fastcutz.ai. Please use timestamps instead (for example: 'Cut from 0:10 to 0:25')."
     };
   }
+
+  // 9. Unknown/unsupported meme request (e.g. "insert meme rickroll")
+  const hasMemeWord = /\b(meme|reaction)\b/i.test(lower);
+  const hasUserClipWord = /\b(my\s+meme|my\s+uploaded\s+clip|uploaded\s+meme|my\s+clip|my\s+custom\s+clip|own\s+meme|custom\s+meme|user\s+clip)\b/i.test(lower);
+  const matchedSpecificMeme = MEME_SPECIFIC_MATCHERS.some((m) => m.regex.test(lower));
+
+  if (hasMemeWord && !hasUserClipWord && !matchedSpecificMeme) {
+    const cleaned = lower
+      .replace(/(?:insert|add|put|place|play|drop|include)\s+/gi, '')
+      .replace(/(?:at|around|on|near)\s+[0-9:.]+\s*s?/gi, '')
+      .replace(/\b(a|an|the|funny|hilarious|random|good|cool|quick|short|video|clip|reaction|meme|reaction clip|here|there|now|this|spot|point)\b/gi, ' ')
+      .trim();
+
+    const remainingTokens = cleaned.split(/\s+/).filter(Boolean);
+    if (remainingTokens.length > 0) {
+      const requestedName = remainingTokens.join(' ');
+      return {
+        action: 'UNSUPPORTED_OPERATION',
+        payload: {
+          feature: `Meme '${requestedName}'`,
+          message: `Meme '${requestedName}' is not in the built-in library. Choose one from 'Choose a Meme' or upload your own .mp4 under 'Insert Your Own'.`
+        },
+        explanation: `Meme '${requestedName}' is not in the built-in library.`
+      };
+    }
+  }
+
+  // 10. Generic editing effects catch-all
+  const hasEditIntent =
+    /\b(effect|effects|animation|animate|animated|keyframe|keyframes|mask|masking|track|tracking|stabilize|stabilization|upscale|sharpen|highlight)\b/i.test(lower);
+  if (hasEditIntent) {
+    return {
+      action: 'UNSUPPORTED_OPERATION',
+      payload: {
+        feature: text,
+        message: 'That editing feature is currently not available in Fastcutz.ai. Supported commands: cutting/trimming timestamps, inserting memes, adding Fade/Wipe transitions, Voice Enhance, and Reduce Low Hum (Basic).'
+      },
+      explanation: 'That editing feature is currently not available in Fastcutz.ai.'
+    };
+  }
+
+  return null;
+}
+
+/**
+ * Parses directly supported timeline edits.
+ */
+function parseSupportedAction(
+  rawInput: string,
+  currentProjectMs = 0,
+  _totalDurationMs = 30000,
+  project?: ProjectEDL | null
+): AICommand | null {
+  const lower = rawInput.trim().toLowerCase();
 
   // 1. TRIM / CUT SECTION (Ranges: "cut from 0:10 to 0:15", "trim 5s to 12s", "delete from 10 to 20")
   const trimRegex = /(?:cut|trim|delete|remove)\s+(?:from|between)?\s*([0-9:.]+\s*s?)\s*(?:to|-|and)\s*([0-9:.]+\s*s?)/i;
@@ -269,10 +351,10 @@ export function parseLocalCommand(
     };
   }
 
-  // 3. MEME INSERTION (Strict Intent Rule: only fires on explicit meme/reaction or specific meme alias)
+  // 3. MEME INSERTION
   const hasMemeWord = /\b(meme|reaction)\b/i.test(lower);
   const hasUserClipWord = /\b(my\s+meme|my\s+uploaded\s+clip|uploaded\s+meme|my\s+clip|my\s+custom\s+clip|own\s+meme|custom\s+meme|user\s+clip)\b/i.test(lower);
-  const matchedSpecificMeme = MEME_SPECIFIC_MATCHERS.find(m => m.regex.test(lower));
+  const matchedSpecificMeme = MEME_SPECIFIC_MATCHERS.find((m) => m.regex.test(lower));
 
   if (hasUserClipWord) {
     const targetMs = extractTargetTimestamp(lower, currentProjectMs, project);
@@ -299,28 +381,6 @@ export function parseLocalCommand(
   }
 
   if (hasMemeWord) {
-    // User requested a meme or reaction, but no known library alias matched.
-    // Determine whether this is a generic meme request or a request for an unlisted meme name.
-    const cleaned = lower
-      .replace(/(?:insert|add|put|place|play|drop|include)\s+/gi, '')
-      .replace(/(?:at|around|on|near)\s+[0-9:.]+\s*s?/gi, '')
-      .replace(/\b(a|an|the|funny|hilarious|random|good|cool|quick|short|video|clip|reaction|meme|reaction clip|here|there|now|this|spot|point)\b/gi, ' ')
-      .trim();
-
-    const remainingTokens = cleaned.split(/\s+/).filter(Boolean);
-    if (remainingTokens.length > 0) {
-      const requestedName = remainingTokens.join(' ');
-      return {
-        action: 'UNSUPPORTED_OPERATION',
-        payload: {
-          feature: `Meme '${requestedName}'`,
-          message: `Meme '${requestedName}' is not in the built-in library. Choose one from 'Choose a Meme' or upload your own .mp4 under 'Insert Your Own'.`
-        },
-        explanation: `Meme '${requestedName}' is not in the built-in library.`
-      };
-    }
-
-    // Generic meme request (e.g. "insert a meme at 0:08", "add funny meme at 5s")
     const targetMs = extractTargetTimestamp(lower, currentProjectMs, project);
     const defaultMeme = MEME_LIBRARY[0];
     return {
@@ -334,7 +394,7 @@ export function parseLocalCommand(
   }
 
   // 4. TRANSITIONS
-  if (lower.includes('transition') || lower.includes('fade') || lower.includes('wipe') || lower.includes('dissolve')) {
+  if (lower.includes('transition') || lower.includes('fade') || lower.includes('wipe') || lower.includes('dissolve') || lower.includes('slideup')) {
     let type: 'fade' | 'dissolve' | 'wipeleft' | 'wiperight' | 'slideup' = 'fade';
     if (lower.includes('dissolve')) type = 'dissolve';
     else if (lower.includes('wipeleft') || lower.includes('wipe left')) type = 'wipeleft';
@@ -430,33 +490,70 @@ export function parseLocalCommand(
     };
   }
 
-  // ====================================================================
-  // STEP 3: GENERIC EDITING-INTENT CATCH-ALL
-  // ====================================================================
-  // If the query contains editing words but no supported action matched,
-  // return a clear unsupported notice instead of a generic "didn't catch that".
-  const hasEditIntent =
-    /\b(effect|effects|edit|editing|animation|animate|animated|keyframe|keyframes|mask|masking|track|tracking|stabilize|stabilization|upscale|sharpen|highlight)\b/i.test(lower) ||
-    /(?:put|add|apply|insert)\s+.+\s+(?:at|around)\s+[0-9:.]+/i.test(lower);
+  return null;
+}
 
-  if (hasEditIntent) {
-    return {
-      action: 'UNSUPPORTED_OPERATION',
-      payload: {
-        feature: text,
-        message: 'That editing feature is currently not available in Fastcutz.ai. Supported commands: cutting/trimming timestamps, inserting memes, adding Fade/Wipe transitions, Voice Enhance, and Reduce Low Hum (Basic).'
-      },
-      explanation: 'That editing feature is currently not available in Fastcutz.ai.'
-    };
+/**
+ * Evaluates whether a command is an instant, deterministic timeline edit (<5ms).
+ * Excludes queries that ask for advice or trigger unsupported features.
+ */
+function parseInstantSupportedCommand(
+  rawInput: string,
+  currentProjectMs = 0,
+  totalDurationMs = 30000,
+  project?: ProjectEDL | null
+): AICommand | null {
+  const lower = rawInput.trim().toLowerCase();
+
+  // If the query asks for creator/BGM advice, it should pass to Tier 2 (Gemini) or Tier 3
+  if (checkCreatorAdvice(lower)) {
+    return null;
   }
 
-  // ====================================================================
-  // STEP 4: AMBIGUOUS EDIT PROMPTS (without timestamps)
-  // ====================================================================
+  // If the query touches an unsupported feature, it should pass to Tier 2 (Gemini) or Tier 3
+  if (isUnsupportedFeatureQuery(lower, rawInput.trim())) {
+    return null;
+  }
+
+  // Check supported timeline edits
+  return parseSupportedAction(rawInput, currentProjectMs, totalDurationMs, project);
+}
+
+/**
+ * Deterministic local parser matching approved operations, creator advice, and unsupported guards.
+ */
+export function parseLocalCommand(
+  rawInput: string,
+  currentProjectMs = 0,
+  totalDurationMs = 30000,
+  project?: ProjectEDL | null
+): AICommand {
+  const text = rawInput.trim();
+  const lower = text.toLowerCase();
+
+  // 1. Creator & BGM advice check
+  const adviceCmd = checkCreatorAdvice(lower);
+  if (adviceCmd) {
+    return adviceCmd;
+  }
+
+  // 2. Unsupported feature guards
+  const unsupportedCmd = isUnsupportedFeatureQuery(lower, text);
+  if (unsupportedCmd) {
+    return unsupportedCmd;
+  }
+
+  // 3. Supported timeline actions
+  const supportedCmd = parseSupportedAction(rawInput, currentProjectMs, totalDurationMs, project);
+  if (supportedCmd) {
+    return supportedCmd;
+  }
+
+  // 4. Ambiguous edit prompts
   const ambiguousTriggers = [
     'boring', 'bad', 'shorter', 'improve', 'fix', 'better', 'cool', 'good', 'clean up'
   ];
-  if (ambiguousTriggers.some(t => lower.includes(t))) {
+  if (ambiguousTriggers.some((t) => lower.includes(t))) {
     return {
       action: 'AMBIGUOUS_NEED_CLARIFICATION',
       payload: {
@@ -467,30 +564,42 @@ export function parseLocalCommand(
     };
   }
 
-  // ====================================================================
-  // STEP 5: FALLBACK (Strictly for non-editing chat or unrecognized gibberish)
-  // ====================================================================
+  // 5. Fallback for unrecognized phrasing
   return {
     action: 'AMBIGUOUS_NEED_CLARIFICATION',
     payload: {
-      message: `I didn't quite catch that. Try commands like: "Cut from 0:10 to 0:25", "Remove silence", "Insert meme at 0:15", or "Enhance voice".`
+      message: 'I didn\'t quite catch that. Try commands like: "Cut from 0:10 to 0:25", "Remove silence", "Suggest BGM for a vlog", or "Enhance voice".'
     },
     explanation: 'Unrecognized phrasing: offered suggestions.'
   };
 }
 
 /**
- * Primary command parser: attempts /api/command with a 4s timeout,
- * and immediately falls back to parseLocalCommand on any error or missing key.
+ * Primary 3-Tier command parser:
+ * - Tier 1: Instant local supported edits (<5ms) without network latency
+ * - Tier 2: Live Gemini API (/api/command) with 8000ms timeout for smart refusals and creator advice
+ * - Tier 3: Local fallback for offline / localhost / timeout
  */
 export async function parseCommandWithFallback(
   rawInput: string,
   currentProjectMs = 0,
   totalDurationMs = 30000,
-  project?: ProjectEDL | null
+  project?: ProjectEDL | null,
+  hasBgMusic = false
 ): Promise<AICommand> {
+  // ====================================================================
+  // TIER 1: INSTANT LOCAL SUPPORTED EDITS (<5ms)
+  // ====================================================================
+  const instantCmd = parseInstantSupportedCommand(rawInput, currentProjectMs, totalDurationMs, project);
+  if (instantCmd) {
+    return instantCmd;
+  }
+
+  // ====================================================================
+  // TIER 2: LIVE GEMINI API (/api/command with 8000ms timeout)
+  // ====================================================================
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 4000);
+  const timeoutId = setTimeout(() => controller.abort(), 8000);
 
   try {
     const res = await fetch('/api/command', {
@@ -499,7 +608,10 @@ export async function parseCommandWithFallback(
       body: JSON.stringify({
         prompt: rawInput,
         currentProjectMs,
-        totalDurationMs
+        totalDurationMs,
+        clipCount: project?.items?.length || 0,
+        hasBgMusic,
+        availableMemes: MEME_LIBRARY.map((m) => m.id)
       }),
       signal: controller.signal
     });
@@ -516,11 +628,13 @@ export async function parseCommandWithFallback(
       }
     }
   } catch {
-    // Timeout or network error - gracefully fall back
+    // Timeout or network error - proceed seamlessly to Tier 3
   } finally {
     clearTimeout(timeoutId);
   }
 
-  // Deterministic local regex fallback
+  // ====================================================================
+  // TIER 3: LOCAL FALLBACK
+  // ====================================================================
   return parseLocalCommand(rawInput, currentProjectMs, totalDurationMs, project);
 }
