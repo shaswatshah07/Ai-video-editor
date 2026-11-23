@@ -215,7 +215,7 @@ export const Screen3Export: React.FC = () => {
 
               <button
                 onClick={handleDownload}
-                className="flex items-center space-x-2 bg-[#D96B27] hover:bg-[#C25A1B] text-white font-semibold px-5 py-2.5 rounded-lg text-xs transition-all active:scale-95 shadow-sm"
+                className="flex items-center justify-center space-x-2 bg-[#D96B27] hover:bg-[#C25A1B] text-white font-semibold px-5 py-2.5 rounded-lg text-xs transition-all active:scale-95 shadow-sm w-full sm:w-auto min-h-[44px]"
               >
                 <Download className="w-4 h-4" />
                 <span>Download MP4</span>
@@ -236,20 +236,24 @@ export const Screen3Export: React.FC = () => {
             )}
 
             {/* Edit Summary Card */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-2">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 sm:gap-3 pt-2">
               <div className="bg-[#F7F6F2] border border-[#E5E2DC] p-3 rounded-xl text-center">
-                <span className="text-[10px] uppercase font-bold text-[#8E8A82] tracking-wider">Cuts Applied</span>
-                <p className="text-base font-bold text-[#D96B27] tabular-nums">{cutsCount} Cuts</p>
+                <span className="text-[10px] uppercase font-bold text-[#66625B] tracking-wider">Cuts Applied</span>
+                <p className="text-base font-bold text-[#181715] font-mono tabular-nums">
+                  {cutsCount} {cutsCount === 1 ? 'Cut' : 'Cuts'}
+                </p>
               </div>
 
               <div className="bg-[#F7F6F2] border border-[#E5E2DC] p-3 rounded-xl text-center">
-                <span className="text-[10px] uppercase font-bold text-[#8E8A82] tracking-wider">Source Clips</span>
-                <p className="text-base font-bold text-[#0F766E] tabular-nums">{activeClipsCount} Segments</p>
+                <span className="text-[10px] uppercase font-bold text-[#66625B] tracking-wider">Source Clips</span>
+                <p className="text-base font-bold text-[#181715] font-mono tabular-nums">
+                  {activeClipsCount} {activeClipsCount === 1 ? 'Segment' : 'Segments'}
+                </p>
               </div>
 
               <div className="bg-[#F7F6F2] border border-[#E5E2DC] p-3 rounded-xl text-center">
-                <span className="text-[10px] uppercase font-bold text-[#8E8A82] tracking-wider">Memes Spliced</span>
-                <p className="text-base font-bold text-[#D96B27] tabular-nums">
+                <span className="text-[10px] uppercase font-bold text-[#66625B] tracking-wider">Memes Spliced</span>
+                <p className="text-base font-bold text-[#181715] font-mono tabular-nums">
                   {(() => {
                     const count = exportResult?.memesSplicedCount !== undefined ? exportResult.memesSplicedCount : actualMemesCount;
                     return `${count} ${count === 1 ? 'Meme' : 'Memes'}`;
@@ -258,8 +262,8 @@ export const Screen3Export: React.FC = () => {
               </div>
 
               <div className="bg-[#F7F6F2] border border-[#E5E2DC] p-3 rounded-xl text-center">
-                <span className="text-[10px] uppercase font-bold text-[#8E8A82] tracking-wider">Music Track</span>
-                <p className={`text-base font-bold tabular-nums truncate ${exportResult?.bgMusicBaked ? 'text-[#0F766E]' : 'text-[#8E8A82]'}`} title={exportResult?.bgMusicName}>
+                <span className="text-[10px] uppercase font-bold text-[#66625B] tracking-wider">Music Track</span>
+                <p className={`text-base font-bold font-mono tabular-nums truncate ${exportResult?.bgMusicBaked ? 'text-[#181715]' : 'text-[#8E8A82]'}`} title={exportResult?.bgMusicName}>
                   {exportResult?.bgMusicBaked ? `${Math.round((exportResult.bgMusicVolume ?? 1) * 100)}%` : 'None'}
                 </p>
               </div>

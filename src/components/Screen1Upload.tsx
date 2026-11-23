@@ -1092,7 +1092,7 @@ export const Screen1Upload: React.FC = () => {
       <div
         key={instanceKey}
         ref={(el) => { frameRefs.current[instanceKey] = el; }}
-        className="w-[200px] sm:w-[220px] md:w-[250px] h-[78px] md:h-[92px] shrink-0 relative select-none"
+        className="w-[175px] sm:w-[225px] md:w-[250px] h-[68px] sm:h-[84px] md:h-[92px] shrink-0 relative select-none"
       >
         {/* State 1: Normal Interactive Frame (Scissors hover & click) */}
         {!state && (
@@ -1275,18 +1275,18 @@ export const Screen1Upload: React.FC = () => {
       </section>
 
       {/* Middle Interactive Demo Stage: Cupboard (Left) -> Docking Pod / Fastcutz Robot (Center-Left) -> Computer Monitor (Right) */}
-      <section className="relative w-full max-w-6xl mx-auto h-[135px] sm:h-[145px] md:h-[160px] mt-2 mb-0 px-3 sm:px-4 flex items-end">
+      <section className="relative w-full max-w-6xl mx-auto h-[115px] sm:h-[150px] md:h-[160px] mt-1 sm:mt-2 mb-0 px-2 sm:px-4 flex items-end">
         {/* Left Side: Clickable "MEME" Filing Cabinet / Cupboard */}
         <button
           onClick={handleFetchMeme}
           disabled={botPhase !== 'idle'}
-          className={`absolute left-2 sm:left-6 md:left-8 bottom-2 z-20 flex flex-col items-center group focus:outline-none ${
+          className={`absolute left-1 sm:left-6 md:left-8 bottom-1 sm:bottom-2 z-20 flex flex-col items-center group focus:outline-none scale-[0.78] sm:scale-100 origin-bottom-left sm:origin-bottom ${
             botPhase !== 'idle' ? 'cursor-not-allowed opacity-90' : 'cursor-pointer'
           }`}
           title="Click to fetch a meme reaction"
         >
           {/* Cupboard SVG */}
-          <div className="w-[72px] sm:w-[84px] md:w-[88px] h-[82px] sm:h-[94px] md:h-[98px] transition-transform group-hover:scale-[1.02]">
+          <div className="w-[68px] sm:w-[84px] md:w-[88px] h-[76px] sm:h-[94px] md:h-[98px] transition-transform group-hover:scale-[1.02]">
             <svg
               viewBox="0 0 88 98"
               className="w-full h-full drop-shadow-[0_2px_8px_rgba(0,0,0,0.1)]"
@@ -1343,7 +1343,7 @@ export const Screen1Upload: React.FC = () => {
 
           {/* Action Label Badge */}
           <span
-            className={`mt-1 text-[9px] sm:text-[10px] font-mono px-2 sm:px-2.5 py-0.5 rounded-full border transition-all shadow-xs ${
+            className={`mt-0.5 sm:mt-1 text-[8.5px] sm:text-[10px] font-mono px-1.5 sm:px-2.5 py-0.5 rounded-full border transition-all shadow-xs whitespace-nowrap ${
               botPhase === 'searching'
                 ? 'bg-[#FEF3C7] border-[#F59E0B] text-[#92400E]'
                 : botPhase !== 'idle'
@@ -1356,24 +1356,24 @@ export const Screen1Upload: React.FC = () => {
         </button>
 
         {/* Center-Left: Fixed Docking Pod (Permanently anchored flush on top of Upload Dropbox) */}
-        <div className="absolute left-[48%] sm:left-[30%] -translate-x-1/2 bottom-0 z-10 pointer-events-none select-none">
+        <div className="absolute left-[46%] sm:left-[30%] -translate-x-1/2 bottom-0 z-10 pointer-events-none select-none scale-[0.78] sm:scale-100 origin-bottom">
           <StationaryDockingPod />
         </div>
 
         {/* Traveling Cute Fastcutz Robot */}
         <div
-          className={`absolute z-30 transition-all ${robotTransitionDuration} ease-in-out pointer-events-none select-none ${
+          className={`absolute z-30 transition-all ${robotTransitionDuration} ease-in-out pointer-events-none select-none scale-[0.78] sm:scale-100 origin-bottom ${
             botPhase === 'idle'
-              ? 'left-[48%] sm:left-[30%] -translate-x-1/2 bottom-[12px]'
+              ? 'left-[46%] sm:left-[30%] -translate-x-1/2 bottom-[10px] sm:bottom-[12px]'
               : botPhase === 'to-cupboard'
-              ? 'left-[48px] sm:left-[98px] md:left-[118px] -translate-x-1/2 bottom-[20px] -translate-y-2'
+              ? 'left-[40px] sm:left-[98px] md:left-[118px] -translate-x-1/2 bottom-[16px] sm:bottom-[20px] -translate-y-1 sm:-translate-y-2'
               : botPhase === 'searching'
-              ? 'left-[48px] sm:left-[98px] md:left-[118px] -translate-x-1/2 bottom-[18px]'
+              ? 'left-[40px] sm:left-[98px] md:left-[118px] -translate-x-1/2 bottom-[14px] sm:bottom-[18px]'
               : botPhase === 'to-computer'
-              ? 'left-[calc(100%-48px)] sm:left-[calc(100%-140px)] md:left-[calc(100%-170px)] -translate-x-1/2 bottom-[22px]'
+              ? 'left-[calc(100%-42px)] sm:left-[calc(100%-140px)] md:left-[calc(100%-170px)] -translate-x-1/2 bottom-[18px] sm:bottom-[22px]'
               : botPhase === 'inserting'
-              ? 'left-[calc(100%-48px)] sm:left-[calc(100%-140px)] md:left-[calc(100%-170px)] -translate-x-1/2 bottom-[18px]'
-              : /* returning */ 'left-[48%] sm:left-[30%] -translate-x-1/2 bottom-[12px]'
+              ? 'left-[calc(100%-42px)] sm:left-[calc(100%-140px)] md:left-[calc(100%-170px)] -translate-x-1/2 bottom-[14px] sm:bottom-[18px]'
+              : /* returning */ 'left-[46%] sm:left-[30%] -translate-x-1/2 bottom-[10px] sm:bottom-[12px]'
           }`}
         >
           {/* Floating Status & Speech Bubbles */}
@@ -1405,8 +1405,8 @@ export const Screen1Upload: React.FC = () => {
         </div>
 
         {/* Right Side: Studio Computer / Timeline Monitor */}
-        <div className="absolute right-2 sm:right-6 md:right-8 bottom-2 z-20 flex flex-col items-center pointer-events-none select-none">
-          <div className={`w-[84px] sm:w-[100px] md:w-[104px] h-[72px] sm:h-[84px] md:h-[88px] ${botPhase === 'inserting' ? 'animate-computer-pop' : ''}`}>
+        <div className="absolute right-1 sm:right-6 md:right-8 bottom-1 sm:bottom-2 z-20 flex flex-col items-center pointer-events-none select-none scale-[0.78] sm:scale-100 origin-bottom-right sm:origin-bottom">
+          <div className={`w-[80px] sm:w-[100px] md:w-[104px] h-[68px] sm:h-[84px] md:h-[88px] ${botPhase === 'inserting' ? 'animate-computer-pop' : ''}`}>
             <svg
               viewBox="0 0 104 88"
               className="w-full h-full drop-shadow-[0_2px_8px_rgba(0,0,0,0.1)]"
@@ -1481,7 +1481,7 @@ export const Screen1Upload: React.FC = () => {
         <StudioPottedPlants />
 
         {/* Main Content Area: Lowered Upload Dropbox & Mode Selection */}
-        <main className="max-w-6xl mx-auto w-full px-4 sm:px-6 pb-16 grid grid-cols-1 md:grid-cols-12 gap-6 items-start mt-1 relative z-10">
+        <main className="max-w-6xl mx-auto w-full px-4 sm:px-6 pb-12 sm:pb-16 grid grid-cols-1 md:grid-cols-12 gap-4 md:gap-6 items-start mt-1 relative z-10">
           {/* Left Column: Drag & Drop Dropzone */}
           <div className="md:col-span-7 space-y-4">
             <div
@@ -1533,9 +1533,11 @@ export const Screen1Upload: React.FC = () => {
                   <div className="relative z-20">
                     <button
                       type="button"
-                      onClick={handleLoadSampleClip}
+                      onClick={(e) => {
+                        handleLoadSampleClip(e);
+                      }}
                       disabled={isLoadingSample || isProcessing}
-                      className="mt-3 inline-flex items-center gap-1.5 rounded-full border border-[#E5E2DC] bg-[#F7F6F2] px-3.5 py-1 text-xs text-[#D96B27] font-medium hover:border-[#D96B27] hover:bg-white transition cursor-pointer disabled:opacity-50 shadow-xs"
+                      className="mt-3 inline-flex items-center gap-1.5 rounded-full border border-[#E5E2DC] bg-[#F7F6F2] px-3.5 py-1 text-xs text-[#D96B27] font-medium hover:border-[#D96B27] hover:bg-white transition cursor-pointer disabled:opacity-50 shadow-xs min-h-[36px]"
                     >
                       {isLoadingSample ? (
                         <>
@@ -1620,7 +1622,7 @@ export const Screen1Upload: React.FC = () => {
               <button
                 onClick={() => handleStartEditing(true)}
                 disabled={!selectedFile || isProcessing}
-                className="w-full flex items-center justify-center space-x-2 bg-[#D96B27] hover:bg-[#C25A1B] text-white font-semibold py-2.5 px-4 rounded-lg text-sm transition-all disabled:opacity-40 disabled:cursor-not-allowed shadow-xs active:scale-[0.99]"
+                className="w-full flex items-center justify-center space-x-2 bg-[#D96B27] hover:bg-[#C25A1B] text-white font-semibold py-2.5 px-4 rounded-lg text-sm transition-all disabled:opacity-40 disabled:cursor-not-allowed shadow-xs active:scale-[0.99] min-h-[44px]"
               >
                 <span>Start Auto Edit</span>
                 <ArrowRight className="w-4 h-4" />
@@ -1636,7 +1638,7 @@ export const Screen1Upload: React.FC = () => {
               <button
                 onClick={() => handleStartEditing(false)}
                 disabled={!selectedFile || isProcessing}
-                className="px-4 py-2 bg-[#F0EEE9] hover:bg-[#E7E4DD] border border-[#E5E2DC] text-[#181715] text-xs font-semibold rounded-lg transition-colors disabled:opacity-40"
+                className="px-4 py-2 bg-[#F0EEE9] hover:bg-[#E7E4DD] border border-[#E5E2DC] text-[#181715] text-xs font-semibold rounded-lg transition-colors disabled:opacity-40 min-h-[44px] flex items-center justify-center"
               >
                 Custom Edit
               </button>

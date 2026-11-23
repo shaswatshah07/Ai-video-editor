@@ -4,7 +4,7 @@ import {
   Sparkles, Send, Upload, ChevronRight, ChevronLeft, ChevronDown, ArrowRight,
   Check, X, Wand2, ShieldAlert, Download,
   Loader2, AlertCircle, RefreshCw, Search, Plus, Film, GripVertical,
-  Music, Volume2, VolumeX
+  Music, Volume2, VolumeX, FileText
 } from 'lucide-react';
 import { useEditorStore } from '../store/useEditorStore';
 import { mapProjectToSource, mapSourceToProjectMs } from '../utils/timelineMath';
@@ -161,8 +161,8 @@ export const Screen2Workspace: React.FC = () => {
   const [promptInput, setPromptInput] = useState<string>('');
   const [isAiProcessing, setIsAiProcessing] = useState<boolean>(false);
   const [isDetectingSilences, setIsDetectingSilences] = useState<boolean>(false);
-  const [isLeftOpen, setIsLeftOpen] = useState<boolean>(true);
-  const [isRightOpen, setIsRightOpen] = useState<boolean>(true);
+  const [isLeftOpen, setIsLeftOpen] = useState<boolean>(() => typeof window !== 'undefined' && window.innerWidth >= 1024);
+  const [isRightOpen, setIsRightOpen] = useState<boolean>(() => typeof window !== 'undefined' && window.innerWidth >= 1024);
   const [activeMemePlaying, setActiveMemePlaying] = useState<boolean>(false);
   const [isSecondaryReady, setIsSecondaryReady] = useState<boolean>(false);
   const loadedSecondaryUrlRef = useRef<string | null>(null);
@@ -263,6 +263,7 @@ export const Screen2Workspace: React.FC = () => {
   // Editable transcript word state
   const [editingWordId, setEditingWordId] = useState<string | null>(null);
   const [editingWordText, setEditingWordText] = useState<string>('');
+  const [selectedWordId, setSelectedWordId] = useState<string | null>(null);
 
   // Workspace inline banner error
   const [workspaceBannerError, setWorkspaceBannerError] = useState<string | null>(null);
@@ -1424,95 +1425,108 @@ export const Screen2Workspace: React.FC = () => {
   const renderTranscriptSection = () => (
     <div className="flex-1 overflow-y-auto p-3 space-y-3 text-xs">
       <div className="space-y-3">
-        {/* Quality & Mode Controls Bar */}
-        <div className="p-2.5 rounded-xl bg-[#F7F6F2] border border-[#E5E2DC] space-y-2">
-          {/* Quality Selector */}
-          <div className="flex items-center justify-between text-[11px]">
-            <span className="text-[#66625B] font-medium">Quality:</span>
-            <select
-              value={transcriptQuality}
-              onChange={(e) => setTranscriptQuality(e.target.value as any)}
-              disabled={transcriptionStatus === 'downloading_model' || transcriptionStatus === 'transcribing' || transcriptMode === 'transcribe_hinglish'}
-              className="bg-white border border-[#E5E2DC] text-[#181715] text-[11px] rounded px-2 py-1 focus:outline-none focus:border-[#D96B27] cursor-pointer disabled:opacity-50"
-            >
-              <option value="accurate">Accurate (Small, ~285 MB)</option>
-              <option value="fast">Fast (Base, ~75 MB)</option>
-            </select>
-          </div>
-
-          {/* Mode Selector */}
-          <div className="flex items-center justify-between text-[11px]">
-            <span className="text-[#66625B] font-medium">Mode:</span>
-            <select
-              value={transcriptMode}
-              onChange={(e) => setTranscriptMode(e.target.value as any)}
-              disabled={transcriptionStatus === 'downloading_model' || transcriptionStatus === 'transcribing'}
-              className="bg-white border border-[#E5E2DC] text-[#181715] text-[11px] rounded px-2 py-1 max-w-[175px] truncate focus:outline-none focus:border-[#D96B27] cursor-pointer disabled:opacity-50"
-            >
-              <option value="transcribe_hinglish">Hinglish (Mixed Hindi + English)</option>
-              <option value="translate_en">English (translated)</option>
-              <option value="transcribe_en">English (as spoken)</option>
-            </select>
-          </div>
-
-          <p className="text-[10px] text-[#8E8A82]">
-            First use downloads the model ({transcriptMode === 'transcribe_hinglish' ? 'about 72 MB' : transcriptQuality === 'accurate' ? 'about 285 MB' : 'about 75 MB'}), only once.
-          </p>
-
-          <div className="flex items-center space-x-2 pt-1">
-            <button
-              type="button"
-              onClick={() => generateTranscript(transcriptQuality, transcriptMode)}
-              disabled={transcriptionStatus === 'downloading_model' || transcriptionStatus === 'transcribing'}
-              className="flex-1 bg-[#D96B27] hover:bg-[#C25E1F] disabled:opacity-50 text-white font-medium py-1.5 px-3 rounded-lg text-xs flex items-center justify-center space-x-1.5 shadow-sm transition-all cursor-pointer"
-            >
-              {transcriptionStatus === 'downloading_model' ? (
-                <>
-                  <Loader2 className="w-3.5 h-3.5 animate-spin text-white" />
-                  <span>Loading model... {transcriptionDownloadPercent}%</span>
-                </>
-              ) : transcriptionStatus === 'transcribing' ? (
-                <>
-                  <Loader2 className="w-3.5 h-3.5 animate-spin text-white" />
-                  <span>Transcribing...</span>
-                </>
-              ) : project.transcript.length > 0 && !project.isDemoSample ? (
-                <>
-                  <RefreshCw className="w-3.5 h-3.5" />
-                  <span>Regenerate</span>
-                </>
-              ) : (
-                <>
-                  <Sparkles className="w-3.5 h-3.5" />
-                  <span>Generate Transcript</span>
-                </>
-              )}
-            </button>
-
-            {(transcriptionStatus === 'downloading_model' || transcriptionStatus === 'transcribing') && (
+        {/* Quality & Mode Controls OR Single Loading Card */}
+        {transcriptionStatus === 'downloading_model' || transcriptionStatus === 'transcribing' ? (
+          <div className="p-3.5 rounded-xl bg-white border border-[#E5E2DC] space-y-2.5 shadow-sm">
+            <div className="flex items-center justify-between text-xs text-[#181715] font-medium">
+              <span className="flex items-center space-x-2">
+                <Loader2 className="w-4 h-4 animate-spin text-[#D96B27]" />
+                <span className="font-semibold">
+                  {transcriptionStatus === 'downloading_model'
+                    ? `Downloading Whisper Model... (${transcriptionDownloadPercent}%)`
+                    : 'Transcribing Audio...'}
+                </span>
+              </span>
               <button
                 type="button"
                 onClick={cancelTranscription}
-                title="Cancel transcription"
-                className="bg-white hover:bg-[#FEF2F2] text-[#66625B] hover:text-[#DC2626] px-2.5 py-1.5 rounded-lg text-xs font-medium border border-[#E5E2DC] transition-colors flex items-center space-x-1 cursor-pointer"
+                className="text-xs text-[#66625B] hover:text-[#DC2626] px-2.5 py-1 rounded-md bg-[#F7F6F2] hover:bg-[#FEF2F2] border border-[#E5E2DC] transition-colors cursor-pointer font-medium"
               >
-                <X className="w-3.5 h-3.5" />
-                <span>Cancel</span>
+                Cancel
               </button>
+            </div>
+            {transcriptionStatus === 'downloading_model' ? (
+              <div className="w-full bg-[#E5E2DC] rounded-full h-2 overflow-hidden">
+                <div
+                  className="bg-[#D96B27] h-2 rounded-full transition-all duration-200"
+                  style={{ width: `${transcriptionDownloadPercent}%` }}
+                />
+              </div>
+            ) : (
+              <div className="w-full bg-[#E5E2DC] rounded-full h-2 overflow-hidden">
+                <div className="bg-[#D96B27] h-2 rounded-full w-2/3 animate-pulse" />
+              </div>
             )}
+            <p className="text-[11px] text-[#8E8A82]">
+              First use downloads the model (~75 MB) once and caches it locally.
+            </p>
+          </div>
+        ) : (
+          <div className="p-2.5 rounded-xl bg-[#F7F6F2] border border-[#E5E2DC] space-y-2">
+            {/* Quality Selector */}
+            <div className="flex items-center justify-between text-[11px]">
+              <span className="text-[#66625B] font-medium">Quality:</span>
+              <select
+                value={transcriptQuality}
+                onChange={(e) => setTranscriptQuality(e.target.value as any)}
+                disabled={transcriptMode === 'transcribe_hinglish'}
+                className="bg-white border border-[#E5E2DC] text-[#181715] text-[11px] rounded px-2 py-1 focus:outline-none focus:border-[#D96B27] cursor-pointer disabled:opacity-50"
+              >
+                <option value="accurate">Accurate (Small, ~285 MB)</option>
+                <option value="fast">Fast (Base, ~75 MB)</option>
+              </select>
+            </div>
 
-            {project.transcript.length > 0 && (
+            {/* Mode Selector */}
+            <div className="flex items-center justify-between text-[11px]">
+              <span className="text-[#66625B] font-medium">Mode:</span>
+              <select
+                value={transcriptMode}
+                onChange={(e) => setTranscriptMode(e.target.value as any)}
+                className="bg-white border border-[#E5E2DC] text-[#181715] text-[11px] rounded px-2 py-1 max-w-[175px] truncate focus:outline-none focus:border-[#D96B27] cursor-pointer disabled:opacity-50"
+              >
+                <option value="transcribe_hinglish">Hinglish (Mixed Hindi + English)</option>
+                <option value="translate_en">English (translated)</option>
+                <option value="transcribe_en">English (as spoken)</option>
+              </select>
+            </div>
+
+            <p className="text-[10px] text-[#8E8A82]">
+              First use downloads the model ({transcriptMode === 'transcribe_hinglish' ? 'about 72 MB' : transcriptQuality === 'accurate' ? 'about 285 MB' : 'about 75 MB'}), only once.
+            </p>
+
+            <div className="flex items-center space-x-2 pt-1">
               <button
                 type="button"
-                onClick={() => downloadTranscriptAsTxt(project.transcript, `${project.title.replace(/\.[^/.]+$/, '')}_transcript.txt`)}
-                title="Download transcript as .txt"
-                className="bg-white hover:bg-[#F7F6F2] text-[#66625B] p-1.5 rounded-lg border border-[#E5E2DC] transition-colors cursor-pointer"
+                onClick={() => generateTranscript(transcriptQuality, transcriptMode)}
+                className="flex-1 bg-[#D96B27] hover:bg-[#C25E1F] text-white font-medium py-1.5 px-3 rounded-lg text-xs flex items-center justify-center space-x-1.5 shadow-sm transition-all cursor-pointer"
               >
-                <Download className="w-3.5 h-3.5" />
+                {project.transcript.length > 0 && !project.isDemoSample ? (
+                  <>
+                    <RefreshCw className="w-3.5 h-3.5" />
+                    <span>Regenerate</span>
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="w-3.5 h-3.5" />
+                    <span>Generate Transcript</span>
+                  </>
+                )}
               </button>
-            )}
+
+              {project.transcript.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => downloadTranscriptAsTxt(project.transcript, `${project.title.replace(/\.[^/.]+$/, '')}_transcript.txt`)}
+                  title="Download transcript as .txt"
+                  className="bg-white hover:bg-[#F7F6F2] text-[#66625B] p-1.5 rounded-lg border border-[#E5E2DC] transition-colors cursor-pointer"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
           </div>
-        </div>
+        )}
 
         {/* Fallback Notice if Small model fell back to Base */}
         {transcriptionFallbackNotice && (
@@ -1530,56 +1544,7 @@ export const Screen2Workspace: React.FC = () => {
           </div>
         )}
 
-        {/* Status Banner: Downloading Model */}
-        {transcriptionStatus === 'downloading_model' && (
-          <div className="p-3 rounded-xl bg-white border border-[#E5E2DC] space-y-2 shadow-sm">
-            <div className="flex items-center justify-between text-xs text-[#181715] font-medium">
-              <span className="flex items-center space-x-1.5">
-                <Loader2 className="w-3.5 h-3.5 animate-spin text-[#D96B27]" />
-                <span>Downloading Whisper Model</span>
-              </span>
-              <div className="flex items-center space-x-2">
-                <span className="tabular-nums font-mono text-[#66625B]">{transcriptionDownloadPercent}%</span>
-                <button
-                  type="button"
-                  onClick={cancelTranscription}
-                  className="text-[10px] text-[#66625B] hover:text-[#DC2626] px-1.5 py-0.5 rounded bg-[#F7F6F2] border border-[#E5E2DC] transition-colors cursor-pointer"
-                >
-                  Cancel
-                </button>
-              </div>
-            </div>
-            <div className="w-full bg-[#E5E2DC] rounded-full h-1.5 overflow-hidden">
-              <div
-                className="bg-[#D96B27] h-1.5 rounded-full transition-all duration-200"
-                style={{ width: `${transcriptionDownloadPercent}%` }}
-              />
-            </div>
-            <p className="text-[10px] text-[#8E8A82]">
-              First use downloads the model ({transcriptMode === 'transcribe_hinglish' ? 'about 72 MB' : transcriptQuality === 'accurate' ? 'about 285 MB' : 'about 75 MB'}), only once.
-            </p>
-          </div>
-        )}
 
-        {/* Status Banner: Transcribing */}
-        {transcriptionStatus === 'transcribing' && (
-          <div className="p-3 rounded-xl bg-white border border-[#E5E2DC] flex items-center justify-between shadow-sm">
-            <div className="flex items-center space-x-2.5">
-              <Loader2 className="w-4 h-4 animate-spin text-[#D96B27] flex-shrink-0" />
-              <div>
-                <p className="text-xs font-medium text-[#181715]">Transcribing speech...</p>
-                <p className="text-[10px] text-[#66625B]">Running Whisper AI in background Web Worker</p>
-              </div>
-            </div>
-            <button
-              type="button"
-              onClick={cancelTranscription}
-              className="text-[10px] text-[#66625B] hover:text-[#DC2626] px-2 py-1 rounded bg-[#F7F6F2] border border-[#E5E2DC] transition-colors cursor-pointer"
-            >
-              Cancel
-            </button>
-          </div>
-        )}
 
         {/* Status Banner: Error */}
         {transcriptionStatus === 'error' && (
@@ -1634,6 +1599,39 @@ export const Screen2Workspace: React.FC = () => {
               )}
             </div>
 
+            {/* Tap-Friendly "Edit Selected Word" Bar (Touch & Mobile Accessible) */}
+            {selectedWordId && (() => {
+              const selWord = project.transcript.find(w => w.id === selectedWordId);
+              if (!selWord) return null;
+              return (
+                <div className="flex items-center justify-between p-2 rounded-lg bg-[#FAF9F5] border border-[#E5E2DC] text-xs">
+                  <div className="flex items-center space-x-1.5 truncate">
+                    <span className="text-[#66625B]">Selected:</span>
+                    <span className="font-semibold text-[#181715]">&quot;{selWord.word}&quot;</span>
+                  </div>
+                  <div className="flex items-center space-x-1.5 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEditingWordId(selWord.id);
+                        setEditingWordText(selWord.word);
+                      }}
+                      className="px-2.5 py-1 bg-[#D96B27] hover:bg-[#C25E1F] text-white rounded text-xs font-medium cursor-pointer shadow-xs"
+                    >
+                      Edit Word
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedWordId(null)}
+                      className="p-1 text-[#66625B] hover:text-[#181715] cursor-pointer"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                </div>
+              );
+            })()}
+
             <div className="leading-relaxed space-x-1 font-sans text-xs">
               {mappedTranscriptWords.map(({ word: w, projMs }) => {
                 const isDeleted = projMs === null;
@@ -1672,6 +1670,7 @@ export const Screen2Workspace: React.FC = () => {
                   <span
                     key={w.id}
                     onClick={() => {
+                      setSelectedWordId(w.id);
                       if (projMs !== null) {
                         handleSeek(projMs);
                       } else {
@@ -1701,6 +1700,8 @@ export const Screen2Workspace: React.FC = () => {
                         ? 'line-through text-[#8E8A82] bg-[#F2EFEB] hover:text-[#66625B]'
                         : isCurrent
                         ? 'bg-[#FEF3C7] text-[#92400E] font-bold border border-[#F59E0B]'
+                        : selectedWordId === w.id
+                        ? 'bg-[#FAF9F5] text-[#181715] ring-2 ring-[#D96B27]'
                         : 'text-[#181715] hover:bg-[#F2EFEB]'
                     } ${w.edited ? 'ring-1 ring-[#0D9488]/50 bg-[#F0FDFA]' : ''}`}
                   >
@@ -2192,7 +2193,7 @@ export const Screen2Workspace: React.FC = () => {
       </div>
 
       {/* Mobile-integrated AI Input */}
-      <div className="shrink-0 pt-2 border-t border-[#E5E2DC]">
+      <div className="shrink-0 pt-2 border-t border-[#E5E2DC] safe-bottom">
         <div className="relative">
           <input
             type="text"
@@ -2336,13 +2337,39 @@ export const Screen2Workspace: React.FC = () => {
           </button>
         )}
       </div>
+
+      {/* Playback Preview Speed Card */}
+      <div className="p-3 rounded-xl bg-white border border-[#E5E2DC] shadow-sm space-y-2">
+        <div className="flex items-center justify-between">
+          <span className="font-semibold text-[#181715]">Preview Speed</span>
+          <div className="flex items-center space-x-1.5">
+            {([1, 2, 5] as const).map((s) => (
+              <button
+                key={s}
+                type="button"
+                onClick={() => setPreviewSpeed(s)}
+                className={`px-2.5 py-1 rounded-md text-xs font-mono font-medium transition-colors cursor-pointer ${
+                  previewSpeed === s
+                    ? 'bg-[#0F766E] text-white shadow-xs'
+                    : 'bg-[#F7F6F2] border border-[#E5E2DC] text-[#66625B] hover:text-[#181715]'
+                }`}
+              >
+                {s}x
+              </button>
+            ))}
+          </div>
+        </div>
+        <p className="text-[11px] text-[#8E8A82]">
+          Preview speed only — export keeps 1x speed
+        </p>
+      </div>
     </div>
   );
 
   return (
     <div className="h-[100dvh] w-full bg-[#F7F6F2] text-[#181715] flex flex-col overflow-hidden select-none">
       {/* Top Header */}
-      <header className="h-12 md:h-14 border-b border-[#E5E2DC] bg-white px-3 md:px-4 flex items-center justify-between z-20 shrink-0">
+      <header className="h-12 md:h-14 border-b border-[#E5E2DC] bg-white px-2.5 sm:px-3 md:px-4 flex items-center justify-between z-20 shrink-0">
         <div className="flex items-center space-x-2.5 md:space-x-3 min-w-0">
           <div className="w-7 h-7 md:w-8 md:h-8 rounded-lg bg-[#D96B27] text-white flex items-center justify-center font-bold text-xs md:text-sm shrink-0 shadow-sm">
             <Scissors className="w-4 h-4 text-white" />
@@ -2357,6 +2384,28 @@ export const Screen2Workspace: React.FC = () => {
 
         {/* Desktop Audio Filter Controls & Export */}
         <div className="hidden md:flex items-center space-x-2">
+          {/* Tablet Quick Sidebar Toggles (768px - 1023px) */}
+          <div className="hidden md:flex lg:hidden items-center space-x-1.5 mr-2">
+            <button
+              onClick={() => setIsLeftOpen(!isLeftOpen)}
+              className={`px-2 py-1 rounded-md text-xs font-medium border flex items-center space-x-1 transition-colors ${
+                isLeftOpen ? 'bg-[#F2EFEB] text-[#181715] border-[#D8D4CC]' : 'bg-white text-[#66625B] border-[#E5E2DC]'
+              }`}
+            >
+              <FileText className="w-3.5 h-3.5 text-[#D96B27]" />
+              <span>Transcript</span>
+            </button>
+            <button
+              onClick={() => setIsRightOpen(!isRightOpen)}
+              className={`px-2 py-1 rounded-md text-xs font-medium border flex items-center space-x-1 transition-colors ${
+                isRightOpen ? 'bg-[#F2EFEB] text-[#181715] border-[#D8D4CC]' : 'bg-white text-[#66625B] border-[#E5E2DC]'
+              }`}
+            >
+              <Sparkles className="w-3.5 h-3.5 text-[#D96B27]" />
+              <span>AI & Memes</span>
+            </button>
+          </div>
+
           {/* Speaker Voice Enhancement Toggle */}
           <button
             onClick={handleToggleVoiceEnhance}
@@ -2436,7 +2485,20 @@ export const Screen2Workspace: React.FC = () => {
             </button>
           </div>
 
-          {isLeftOpen && renderTranscriptSection()}
+          {isLeftOpen ? (
+            renderTranscriptSection()
+          ) : (
+            <button
+              onClick={() => setIsLeftOpen(true)}
+              className="flex-1 flex flex-col items-center justify-start pt-6 gap-2 text-[#66625B] hover:text-[#181715] hover:bg-[#F7F6F2] transition cursor-pointer select-none"
+              title="Open Transcript panel"
+            >
+              <FileText className="w-4 h-4 text-[#D96B27]" />
+              <span className="text-[11px] font-semibold [writing-mode:vertical-lr] tracking-wider uppercase">
+                Transcript
+              </span>
+            </button>
+          )}
         </div>
 
         {/* Center: Dual-Video Preview Player (Desktop & Mobile) */}
@@ -2501,7 +2563,7 @@ export const Screen2Workspace: React.FC = () => {
           })()}
 
           {/* Dual-Video Canvas Frame */}
-          <div className="relative w-full max-w-3xl h-[26dvh] min-h-[160px] max-h-[220px] md:h-auto md:aspect-video bg-[#0B0B0A] rounded-xl overflow-hidden border border-[#D8D4CC] flex items-center justify-center shadow-sm">
+          <div className="relative w-full max-w-3xl h-[25dvh] min-h-[155px] max-h-[215px] md:h-auto md:aspect-video bg-[#0B0B0A] rounded-xl overflow-hidden border border-[#D8D4CC] flex items-center justify-center shadow-sm">
             {/* Playhead-driven Frame-accurate Transition Stage (Spec 1) */}
             <div
               ref={transitionStageRef}
@@ -2562,14 +2624,14 @@ export const Screen2Workspace: React.FC = () => {
             <div className="flex items-center space-x-2 md:space-x-3">
               <button
                 onClick={togglePlayPause}
-                className="w-8 h-8 md:w-9 md:h-9 rounded-lg bg-[#D96B27] hover:bg-[#C25E1F] text-white flex items-center justify-center shadow-sm transition-all active:scale-95 cursor-pointer"
+                className="w-9 h-9 min-w-[36px] min-h-[36px] rounded-lg bg-[#D96B27] hover:bg-[#C25E1F] text-white flex items-center justify-center shadow-sm transition-all active:scale-95 cursor-pointer"
               >
                 {isPlaying ? <Pause className="w-4 h-4 fill-white" /> : <Play className="w-4 h-4 fill-white translate-x-0.5" />}
               </button>
 
               <button
                 onClick={() => handleSeek(0)}
-                className="p-1.5 md:p-2 text-[#66625B] hover:text-[#181715] transition-colors cursor-pointer"
+                className="p-2 min-h-[36px] min-w-[36px] flex items-center justify-center text-[#66625B] hover:text-[#181715] transition-colors cursor-pointer"
                 title="Restart"
               >
                 <RotateCcw className="w-4 h-4" />
@@ -2586,7 +2648,7 @@ export const Screen2Workspace: React.FC = () => {
             <div className="flex items-center space-x-1.5 md:space-x-2">
               <button
                 onClick={splitAtPlayhead}
-                className="px-2.5 py-1 md:px-3 md:py-1.5 bg-white hover:bg-[#F7F6F2] border border-[#E5E2DC] text-[#181715] rounded-lg text-xs font-medium flex items-center space-x-1.5 transition-colors shadow-sm cursor-pointer"
+                className="px-2.5 py-1.5 min-h-[36px] bg-white hover:bg-[#F7F6F2] border border-[#E5E2DC] text-[#181715] rounded-lg text-xs font-medium flex items-center space-x-1.5 transition-colors shadow-sm cursor-pointer"
                 title="Split at playhead position (S)"
               >
                 <Scissors className="w-3.5 h-3.5 text-[#D96B27]" />
@@ -2597,7 +2659,7 @@ export const Screen2Workspace: React.FC = () => {
               <button
                 onClick={deleteSelected}
                 disabled={!selectedItemId}
-                className="px-2.5 py-1 md:px-3 md:py-1.5 bg-[#FEF2F2] hover:bg-[#FEE2E2] border border-[#FCA5A5] text-[#DC2626] rounded-lg text-xs font-medium flex items-center space-x-1.5 transition-colors disabled:opacity-30 disabled:cursor-not-allowed shadow-sm cursor-pointer"
+                className="px-2.5 py-1.5 min-h-[36px] bg-[#FEF2F2] hover:bg-[#FEE2E2] border border-[#FCA5A5] text-[#DC2626] rounded-lg text-xs font-medium flex items-center space-x-1.5 transition-colors disabled:opacity-30 disabled:cursor-not-allowed shadow-sm cursor-pointer"
                 title="Delete selected clip"
               >
                 <Trash2 className="w-3.5 h-3.5" />
@@ -2609,7 +2671,7 @@ export const Screen2Workspace: React.FC = () => {
               <button
                 onClick={undo}
                 disabled={undoStack.length === 0}
-                className="p-1.5 text-[#66625B] hover:text-[#181715] disabled:opacity-30 transition-colors cursor-pointer"
+                className="p-2 min-h-[36px] min-w-[36px] flex items-center justify-center text-[#66625B] hover:text-[#181715] disabled:opacity-30 transition-colors cursor-pointer"
                 title="Undo"
               >
                 <RotateCcw className="w-4 h-4" />
@@ -2618,7 +2680,7 @@ export const Screen2Workspace: React.FC = () => {
               <button
                 onClick={redo}
                 disabled={redoStack.length === 0}
-                className="p-1.5 text-[#66625B] hover:text-[#181715] disabled:opacity-30 transition-colors cursor-pointer"
+                className="p-2 min-h-[36px] min-w-[36px] flex items-center justify-center text-[#66625B] hover:text-[#181715] disabled:opacity-30 transition-colors cursor-pointer"
                 title="Redo"
               >
                 <RotateCw className="w-4 h-4" />
@@ -2648,7 +2710,7 @@ export const Screen2Workspace: React.FC = () => {
             )}
           </div>
 
-          {isRightOpen && (
+          {isRightOpen ? (
             <div className="flex-1 min-h-0 flex flex-col justify-between overflow-hidden">
               {/* Scrollable Middle Body */}
               <div className="flex-1 min-h-0 overflow-y-auto space-y-3 px-3 py-2 flex flex-col">
@@ -2673,17 +2735,17 @@ export const Screen2Workspace: React.FC = () => {
                   </div>
                 </div>
 
-                {/* Meme Reactions Section */}
-                <div className="shrink-0">
+                {/* Meme Reactions Section (strictly bounded so it never pushes log away) */}
+                <div className="shrink-0 max-h-[145px] overflow-y-auto">
                   {renderMemesSection()}
                 </div>
 
                 {/* Command Execution Log */}
-                <div className="flex-1 min-h-[130px] flex flex-col space-y-1.5 pt-1 border-t border-[#E5E2DC]">
+                <div className="flex-1 min-h-[115px] flex flex-col space-y-1.5 pt-1 border-t border-[#E5E2DC] bg-[#FAF9F6] px-3 py-2 rounded-lg">
                   <span className="text-[10px] uppercase font-bold text-[#66625B] tracking-wider shrink-0">Execution Log</span>
                   <div className="flex-1 overflow-y-auto space-y-1.5 pr-1">
                     {commandLogs.length === 0 ? (
-                      <p className="text-[11px] text-[#8E8A82] italic">No AI commands executed yet.</p>
+                      <p className="text-[11px] text-[#8E8A82] italic">Commands and cut confirmations appear here.</p>
                     ) : (
                       commandLogs.map((log) => (
                         <div
@@ -2706,7 +2768,7 @@ export const Screen2Workspace: React.FC = () => {
               </div>
 
               {/* Permanently Pinned AI Command Input Bar (Footer) */}
-              <div className="shrink-0 border-t border-[#E5E2DC] bg-white p-3">
+              <div className="shrink-0 border-t border-[#E5E2DC] bg-white p-2.5">
                 <div className="relative">
                   <input
                     type="text"
@@ -2727,12 +2789,23 @@ export const Screen2Workspace: React.FC = () => {
                 </div>
               </div>
             </div>
+          ) : (
+            <button
+              onClick={() => setIsRightOpen(true)}
+              className="flex-1 flex flex-col items-center justify-start pt-6 gap-2 text-[#66625B] hover:text-[#181715] hover:bg-[#F7F6F2] transition cursor-pointer select-none"
+              title="Open AI & Memes panel"
+            >
+              <Sparkles className="w-4 h-4 text-[#D96B27]" />
+              <span className="text-[11px] font-semibold [writing-mode:vertical-lr] tracking-wider uppercase">
+                AI & Memes
+              </span>
+            </button>
           )}
         </div>
       </div>
 
       {/* Bottom Timeline Section (Spec 1 & Spec 2) */}
-      <footer className="h-[116px] md:h-52 border-t border-[#E5E2DC] bg-white flex flex-col p-2 md:p-3 z-20 shrink-0">
+      <footer className="h-[104px] md:h-52 border-t border-[#E5E2DC] bg-white flex flex-col p-1.5 md:p-3 z-20 shrink-0">
         {/* Timeline Toolbar */}
         <div className="flex flex-wrap items-center justify-between pb-1.5 md:pb-2 text-xs gap-1.5 md:gap-2">
           <div className="flex items-center space-x-2 md:space-x-3 overflow-x-auto no-scrollbar">
@@ -2925,17 +2998,23 @@ export const Screen2Workspace: React.FC = () => {
             </div>
 
             {/* Red Playhead Line */}
-            <div
-              style={{
-                left: `${project.totalProjectDurationMs > 0 ? (currentProjectMs / project.totalProjectDurationMs) * 100 : 0}%`
-              }}
-              className="absolute top-5 md:top-6 bottom-0 w-[2px] bg-[#EF4444] z-30 pointer-events-none"
-            >
-              <div className="w-3 h-3 bg-[#EF4444] transform -translate-x-1/2 -translate-y-1 rotate-45 rounded-sm shadow-md" />
-              <div className="absolute top-0 transform -translate-x-1/2 -translate-y-4 px-1 rounded bg-[#EF4444] text-white font-mono tabular-nums text-[8px] font-bold shadow pointer-events-none whitespace-nowrap">
-                {formatReadout(currentProjectMs)}
-              </div>
-            </div>
+            {(() => {
+              const playheadPct = project.totalProjectDurationMs > 0 ? (currentProjectMs / project.totalProjectDurationMs) * 100 : 0;
+              const pillAnchor = playheadPct < 8 ? 'translate-x-0' : playheadPct > 92 ? '-translate-x-full' : '-translate-x-1/2';
+              return (
+                <div
+                  style={{
+                    left: `${playheadPct}%`
+                  }}
+                  className="absolute top-5 md:top-6 bottom-0 w-[2px] bg-[#EF4444] z-30 pointer-events-none"
+                >
+                  <div className="w-3 h-3 bg-[#EF4444] transform -translate-x-1/2 -translate-y-1 rotate-45 rounded-sm shadow-md" />
+                  <div className={`absolute top-0 transform ${pillAnchor} -translate-y-4 px-1 rounded bg-[#EF4444] text-white font-mono tabular-nums text-[8px] font-bold shadow pointer-events-none whitespace-nowrap`}>
+                    {formatReadout(currentProjectMs)}
+                  </div>
+                </div>
+              );
+            })()}
 
             {/* Timeline Items Track */}
             <div className="w-full h-10 md:h-12 flex items-center gap-0 flex-nowrap relative mt-0.5 md:mt-1 overflow-visible">
@@ -3028,7 +3107,7 @@ export const Screen2Workspace: React.FC = () => {
                         ? replacingMemeId === item.id
                           ? 'bg-[#FFF1F2] text-[#BE123C] ring-2 ring-[#D96B27] animate-pulse shadow-lg border border-[#FDA4AF]'
                           : 'bg-[#FFF1F2] border border-[#FDA4AF] text-[#BE123C] hover:bg-[#FFE4E6]'
-                        : 'bg-[#22211E] text-white border border-[#3A3833] hover:border-[#45423C]'
+                        : 'bg-[#252422] text-[#F7F6F2] border border-[#3D3A35] hover:border-[#524E47]'
                     }`}
                   >
                     {/* Touch Reorder Buttons on Selected Active Clip */}
@@ -3317,7 +3396,7 @@ export const Screen2Workspace: React.FC = () => {
         <div className="flex items-center border-b border-[#E5E2DC] bg-[#FAF9F5] text-xs font-medium shrink-0">
           <button
             onClick={() => setMobileDrawerTab('ai')}
-            className={`flex-1 py-2 flex items-center justify-center gap-1 border-b-2 transition-colors cursor-pointer ${
+            className={`flex-1 min-h-[40px] py-2 flex items-center justify-center gap-1 border-b-2 transition-colors cursor-pointer ${
               mobileDrawerTab === 'ai'
                 ? 'border-[#D96B27] text-[#D96B27] font-semibold bg-white'
                 : 'border-transparent text-[#66625B] hover:text-[#181715]'
@@ -3328,7 +3407,7 @@ export const Screen2Workspace: React.FC = () => {
           </button>
           <button
             onClick={() => setMobileDrawerTab('clips')}
-            className={`flex-1 py-2 flex items-center justify-center gap-1 border-b-2 transition-colors cursor-pointer ${
+            className={`flex-1 min-h-[40px] py-2 flex items-center justify-center gap-1 border-b-2 transition-colors cursor-pointer ${
               mobileDrawerTab === 'clips'
                 ? 'border-[#D96B27] text-[#D96B27] font-semibold bg-white'
                 : 'border-transparent text-[#66625B] hover:text-[#181715]'
@@ -3339,7 +3418,7 @@ export const Screen2Workspace: React.FC = () => {
           </button>
           <button
             onClick={() => setMobileDrawerTab('audio')}
-            className={`flex-1 py-2 flex items-center justify-center gap-1 border-b-2 transition-colors cursor-pointer ${
+            className={`flex-1 min-h-[40px] py-2 flex items-center justify-center gap-1 border-b-2 transition-colors cursor-pointer ${
               mobileDrawerTab === 'audio'
                 ? 'border-[#0F766E] text-[#0F766E] font-semibold bg-white'
                 : 'border-transparent text-[#66625B] hover:text-[#181715]'
@@ -3350,7 +3429,7 @@ export const Screen2Workspace: React.FC = () => {
           </button>
           <button
             onClick={() => setMobileDrawerTab('transcript')}
-            className={`flex-1 py-2 flex items-center justify-center gap-1 border-b-2 transition-colors cursor-pointer ${
+            className={`flex-1 min-h-[40px] py-2 flex items-center justify-center gap-1 border-b-2 transition-colors cursor-pointer ${
               mobileDrawerTab === 'transcript'
                 ? 'border-[#D96B27] text-[#D96B27] font-semibold bg-white'
                 : 'border-transparent text-[#66625B] hover:text-[#181715]'

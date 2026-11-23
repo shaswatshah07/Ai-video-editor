@@ -3,6 +3,11 @@
 @tailwind utilities;
 
 @layer base {
+  html, body {
+    overflow-x: hidden;
+    max-width: 100%;
+  }
+
   body {
     background-color: #F7F6F2;
     color: #181715;
@@ -27,6 +32,11 @@
 }
 
 @layer utilities {
+  /* Mobile Safe Area Bottom Padding */
+  .safe-bottom {
+    padding-bottom: max(0.5rem, env(safe-area-inset-bottom));
+  }
+
   /* Warm Light Studio Custom Scrollbars */
   ::-webkit-scrollbar {
     width: 6px;
