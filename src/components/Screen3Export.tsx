@@ -5,6 +5,7 @@ import { exportProjectVideo, verifyRenderedVideo, RenderProgress, ExportResult }
 import { isActualMemeClip } from '../utils/timelineMath';
 import { logExportEvent, submitUserFeedback } from '../utils/supabaseClient';
 import { ThemeToggle } from './ThemeToggle';
+import { Screen3RobotStage } from './Screen3RobotStage';
 
 export const Screen3Export: React.FC = () => {
   const { project, setScreen, bgMusic } = useEditorStore();
@@ -173,7 +174,7 @@ export const Screen3Export: React.FC = () => {
       </header>
 
       {/* Main Export Content */}
-      <main className="max-w-4xl mx-auto w-full my-6 space-y-6">
+      <main className="max-w-4xl mx-auto w-full my-3 sm:my-5 space-y-4 sm:space-y-5">
         {/* Visible Warnings for Preview-only items (Step 2.d) */}
         {exportResult && exportResult.warnings.length > 0 && (
           <div className="bg-[#FEF3C7] dark:bg-[#78350F]/40 border border-[#F59E0B]/50 dark:border-[#F59E0B]/40 rounded-xl p-3 flex items-start space-x-2.5 text-xs text-[#92400E] dark:text-[#FCD34D]">
@@ -187,27 +188,32 @@ export const Screen3Export: React.FC = () => {
 
         {/* State A: Rendering in Progress */}
         {isExporting ? (
-          <div className="bg-white dark:bg-[#171615] border border-[#E5E2DC] dark:border-[#2C2A27] shadow-sm rounded-2xl p-8 text-center space-y-5">
-            <div className="w-16 h-16 rounded-full bg-[#F0EEE9] dark:bg-[#24221F] border border-[#E5E2DC] dark:border-[#2C2A27] text-[#D96B27] dark:text-[#E8632A] mx-auto flex items-center justify-center animate-spin">
-              <RefreshCw className="w-8 h-8" />
+          <div className="pt-2 sm:pt-4 pb-1 space-y-4 sm:space-y-5">
+            <div className="bg-white dark:bg-[#171615] border border-[#E5E2DC] dark:border-[#2C2A27] shadow-sm rounded-2xl p-6 sm:p-8 text-center space-y-4 sm:space-y-5">
+              <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-full bg-[#F0EEE9] dark:bg-[#24221F] border border-[#E5E2DC] dark:border-[#2C2A27] text-[#D96B27] dark:text-[#E8632A] mx-auto flex items-center justify-center animate-spin">
+                <RefreshCw className="w-7 h-7 sm:w-8 sm:h-8" />
+              </div>
+
+              <div className="space-y-1.5 sm:space-y-2">
+                <h3 className="text-base sm:text-lg font-semibold text-[#181715] dark:text-[#F4F2EC]">Rendering Your Final MP4</h3>
+                <p className="text-xs text-[#66625B] dark:text-[#A39E95]">{progress.stage}</p>
+              </div>
+
+              {/* Progress Bar */}
+              <div className="w-full max-w-md mx-auto bg-[#E5E2DC] dark:bg-[#2C2A27] h-2.5 rounded-full overflow-hidden">
+                <div
+                  style={{ width: `${Math.round(progress.ratio * 100)}%` }}
+                  className="bg-[#D96B27] dark:bg-[#E8632A] h-full transition-all duration-300"
+                />
+              </div>
+
+              <p className="text-xs font-mono tabular-nums text-[#66625B] dark:text-[#A39E95]">
+                {Math.round(progress.ratio * 100)}% • Rendering locally in your browser
+              </p>
             </div>
 
-            <div className="space-y-2">
-              <h3 className="text-lg font-semibold text-[#181715] dark:text-[#F4F2EC]">Rendering Your Final MP4</h3>
-              <p className="text-xs text-[#66625B] dark:text-[#A39E95]">{progress.stage}</p>
-            </div>
-
-            {/* Progress Bar */}
-            <div className="w-full max-w-md mx-auto bg-[#E5E2DC] dark:bg-[#2C2A27] h-2.5 rounded-full overflow-hidden">
-              <div
-                style={{ width: `${Math.round(progress.ratio * 100)}%` }}
-                className="bg-[#D96B27] dark:bg-[#E8632A] h-full transition-all duration-300"
-              />
-            </div>
-
-            <p className="text-xs font-mono tabular-nums text-[#66625B] dark:text-[#A39E95]">
-              {Math.round(progress.ratio * 100)}% • Rendering locally in your browser
-            </p>
+            {/* Storytelling Scene A: Fastcutz puts edits together */}
+            <Screen3RobotStage mode="rendering" />
           </div>
         ) : !verificationPassed || renderError ? (
           /* State B: Verification or Render Failure (Step 3) */
@@ -463,6 +469,11 @@ export const Screen3Export: React.FC = () => {
               </div>
             )}
           </div>
+        )}
+
+        {/* Storytelling Scene B: Export Complete Resting & Reading Scene */}
+        {!isExporting && verificationPassed && !renderError && (
+          <Screen3RobotStage mode="complete" />
         )}
       </main>
 
