@@ -177,15 +177,29 @@ const RobotAvatar: React.FC<RobotAvatarProps> = ({
         </div>
       )}
 
-      {/* Held Item: Mini Hardcover Book */}
+      {/* Held Item: Open Mini Hardcover Book */}
       {holdingItem === 'book' && (
-        <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 z-30 pointer-events-none">
-          <div className="w-6.5 h-4.5 bg-[#D96B27] border border-[#B45309] rounded-xs shadow-md flex items-center justify-center p-0.5">
-            <div className="w-full h-full bg-[#FEF3C7] rounded-[1px] flex flex-col justify-around py-0.5 px-0.5">
-              <div className="w-full h-[1px] bg-[#78716C]" />
-              <div className="w-3/4 h-[1px] bg-[#78716C]" />
-              <div className="w-4/5 h-[1px] bg-[#78716C]" />
+        <div className="absolute -bottom-2.5 left-1/2 -translate-x-1/2 z-30 pointer-events-none drop-shadow-[0_2px_6px_rgba(0,0,0,0.25)]">
+          <div className="relative w-[32px] sm:w-[36px] h-[22px] sm:h-[25px] flex items-center justify-center">
+            {/* Terracotta Book Cover Spine & Backing */}
+            <div className="absolute inset-0 bg-[#D96B27] border border-[#B45309] rounded-[3px] shadow-sm transform -rotate-1" />
+            {/* Open Pages Spread (Cream White with Spine Fold) */}
+            <div className="relative z-10 w-[28px] sm:w-[32px] h-[18px] sm:h-[20px] bg-[#FEF3C7] border border-[#FDE68A] rounded-[2px] flex items-center justify-between px-1 py-0.5 shadow-inner">
+              {/* Left Page Text Lines */}
+              <div className="flex-1 flex flex-col justify-between h-full pr-0.5 border-r border-[#D97706]/30">
+                <div className="w-full h-[1.5px] bg-[#44403C] rounded-full" />
+                <div className="w-3/4 h-[1.5px] bg-[#57534E] rounded-full" />
+                <div className="w-4/5 h-[1.5px] bg-[#78716C] rounded-full" />
+              </div>
+              {/* Right Page Text Lines */}
+              <div className="flex-1 flex flex-col justify-between h-full pl-0.5">
+                <div className="w-full h-[1.5px] bg-[#44403C] rounded-full" />
+                <div className="w-4/5 h-[1.5px] bg-[#57534E] rounded-full" />
+                <div className="w-2/3 h-[1.5px] bg-[#78716C] rounded-full" />
+              </div>
             </div>
+            {/* Ribbon Bookmark Tail */}
+            <div className="absolute -bottom-1 right-2.5 w-1 h-2 bg-[#DC2626] rounded-b-xs transform rotate-12" />
           </div>
         </div>
       )}
@@ -358,32 +372,32 @@ const PuzzleZone: React.FC<PuzzleZoneProps> = ({ arrangedCount }) => {
 const RockingChairBack: React.FC = () => {
   return (
     <svg
-      viewBox="0 0 120 110"
-      className="w-[110px] sm:w-[130px] h-[98px] sm:h-[114px] overflow-visible absolute inset-0 pointer-events-none"
+      viewBox="0 0 140 120"
+      className="w-[138px] sm:w-[158px] h-[120px] sm:h-[136px] overflow-visible absolute inset-0 pointer-events-none"
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
     >
       {/* Back Rocker Runner */}
-      <path d="M 12 104 Q 60 110 108 104" stroke="#5A321C" strokeWidth="4" strokeLinecap="round" fill="none" />
+      <path d="M 12 114 Q 70 120 128 114" stroke="#5A321C" strokeWidth="4.5" strokeLinecap="round" fill="none" />
       {/* Back Leg Uprights */}
-      <line x1="32" y1="68" x2="26" y2="105" stroke="#7C4A2D" strokeWidth="3.5" strokeLinecap="round" />
-      <line x1="88" y1="68" x2="94" y2="105" stroke="#7C4A2D" strokeWidth="3.5" strokeLinecap="round" />
+      <line x1="36" y1="74" x2="28" y2="115" stroke="#7C4A2D" strokeWidth="4" strokeLinecap="round" />
+      <line x1="102" y1="74" x2="110" y2="115" stroke="#7C4A2D" strokeWidth="4" strokeLinecap="round" />
 
-      {/* Seat Cushion */}
+      {/* Seat Cushion / Pan */}
       <path
-        d="M 30 68 L 90 68 Q 90 74 86 76 L 34 76 Q 30 74 30 68 Z"
+        d="M 32 74 L 106 74 Q 106 82 100 84 L 38 84 Q 32 82 32 74 Z"
         fill="#9A3412"
         stroke="#7C2D12"
-        strokeWidth="1"
+        strokeWidth="1.2"
       />
 
-      {/* Slatted Wooden Backrest */}
-      <line x1="32" y1="68" x2="16" y2="14" stroke="#7C4A2D" strokeWidth="4.5" strokeLinecap="round" />
-      <path d="M 14 16 Q 26 10 38 16" stroke="#A46843" strokeWidth="4.5" strokeLinecap="round" fill="none" />
+      {/* Slatted Wooden Backrest on the left */}
+      <line x1="36" y1="74" x2="16" y2="16" stroke="#7C4A2D" strokeWidth="5" strokeLinecap="round" />
+      <path d="M 14 18 Q 30 10 46 18" stroke="#A46843" strokeWidth="5" strokeLinecap="round" fill="none" />
       {/* Slats */}
-      <line x1="22" y1="68" x2="19" y2="17" stroke="#935733" strokeWidth="2.2" strokeLinecap="round" />
-      <line x1="28" y1="68" x2="27" y2="15" stroke="#935733" strokeWidth="2.2" strokeLinecap="round" />
-      <line x1="34" y1="68" x2="35" y2="17" stroke="#935733" strokeWidth="2.2" strokeLinecap="round" />
+      <line x1="24" y1="74" x2="20" y2="20" stroke="#935733" strokeWidth="2.5" strokeLinecap="round" />
+      <line x1="32" y1="74" x2="30" y2="17" stroke="#935733" strokeWidth="2.5" strokeLinecap="round" />
+      <line x1="40" y1="74" x2="40" y2="20" stroke="#935733" strokeWidth="2.5" strokeLinecap="round" />
     </svg>
   );
 };
@@ -391,43 +405,43 @@ const RockingChairBack: React.FC = () => {
 const RockingChairFront: React.FC = () => {
   return (
     <svg
-      viewBox="0 0 120 110"
-      className="w-[110px] sm:w-[130px] h-[98px] sm:h-[114px] overflow-visible absolute inset-0 pointer-events-none"
+      viewBox="0 0 140 120"
+      className="w-[138px] sm:w-[158px] h-[120px] sm:h-[136px] overflow-visible absolute inset-0 pointer-events-none"
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
     >
       {/* Front Rocker Runner */}
-      <path d="M 8 106 Q 60 113 112 106" stroke="#7C4A2D" strokeWidth="4.5" strokeLinecap="round" fill="none" />
-      <path d="M 12 105 Q 60 111 108 105" stroke="#A46843" strokeWidth="1.5" strokeLinecap="round" fill="none" opacity="0.6" />
+      <path d="M 8 116 Q 70 123 132 116" stroke="#7C4A2D" strokeWidth="5" strokeLinecap="round" fill="none" />
+      <path d="M 12 115 Q 70 121 128 115" stroke="#A46843" strokeWidth="1.8" strokeLinecap="round" fill="none" opacity="0.6" />
 
       {/* Front Leg */}
-      <line x1="84" y1="68" x2="92" y2="106" stroke="#7C4A2D" strokeWidth="4" strokeLinecap="round" />
+      <line x1="98" y1="74" x2="108" y2="116" stroke="#7C4A2D" strokeWidth="4.5" strokeLinecap="round" />
 
-      {/* Scrolled Curved Wooden Armrest */}
+      {/* Scrolled Curved Wooden Armrest on front */}
       <path
-        d="M 22 46 Q 50 42 86 48 Q 92 50 92 56 Q 90 60 84 59"
+        d="M 24 50 Q 60 46 102 52 Q 110 54 110 61 Q 107 66 100 65"
         stroke="#A46843"
-        strokeWidth="4"
+        strokeWidth="4.5"
         strokeLinecap="round"
         fill="none"
       />
-      <circle cx="90" cy="56" r="2.5" fill="#7C4A2D" />
+      <circle cx="108" cy="61" r="3" fill="#7C4A2D" />
       {/* Armrest Post */}
-      <line x1="85" y1="52" x2="84" y2="68" stroke="#7C4A2D" strokeWidth="3" />
+      <line x1="100" y1="56" x2="98" y2="74" stroke="#7C4A2D" strokeWidth="3.5" />
 
       {/* Signature Spoked Wooden Side Wheel */}
       <g>
         {/* Outer Wheel Rim */}
-        <circle cx="58" cy="86" r="18" stroke="#7C4A2D" strokeWidth="3" fill="none" />
-        <circle cx="58" cy="86" r="17" stroke="#A46843" strokeWidth="0.8" fill="none" opacity="0.6" />
+        <circle cx="68" cy="94" r="20" stroke="#7C4A2D" strokeWidth="3.5" fill="none" />
+        <circle cx="68" cy="94" r="19" stroke="#A46843" strokeWidth="1" fill="none" opacity="0.6" />
         {/* Spokes (8 radial lines) */}
-        <line x1="58" y1="68" x2="58" y2="104" stroke="#5A321C" strokeWidth="1.5" />
-        <line x1="40" y1="86" x2="76" y2="86" stroke="#5A321C" strokeWidth="1.5" />
-        <line x1="45" y1="73" x2="71" y2="99" stroke="#5A321C" strokeWidth="1.5" />
-        <line x1="45" y1="99" x2="71" y2="73" stroke="#5A321C" strokeWidth="1.5" />
+        <line x1="68" y1="74" x2="68" y2="114" stroke="#5A321C" strokeWidth="1.8" />
+        <line x1="48" y1="94" x2="88" y2="94" stroke="#5A321C" strokeWidth="1.8" />
+        <line x1="54" y1="80" x2="82" y2="108" stroke="#5A321C" strokeWidth="1.8" />
+        <line x1="54" y1="108" x2="82" y2="80" stroke="#5A321C" strokeWidth="1.8" />
         {/* Center Hub */}
-        <circle cx="58" cy="86" r="4.5" fill="#5A321C" stroke="#A46843" strokeWidth="1" />
-        <circle cx="58" cy="86" r="2" fill="#C68A5D" />
+        <circle cx="68" cy="94" r="5" fill="#5A321C" stroke="#A46843" strokeWidth="1.2" />
+        <circle cx="68" cy="94" r="2.2" fill="#C68A5D" />
       </g>
     </svg>
   );
@@ -568,7 +582,7 @@ export const Screen3RobotStage: React.FC<Screen3RobotStageProps> = ({ mode }) =>
     const isArranging = renderPhase === 'arranging';
 
     return (
-      <div className="w-full max-w-4xl mx-auto relative h-[152px] sm:h-[172px] mt-4 sm:mt-6 px-2 sm:px-4 overflow-hidden pointer-events-none select-none">
+      <div className="w-full max-w-4xl mx-auto relative h-[140px] sm:h-[155px] mt-2 sm:mt-3 px-2 sm:px-4 overflow-hidden pointer-events-none select-none">
         {/* Left Side: Sticky-Notes Pin Board */}
         <div className="absolute left-2 sm:left-6 bottom-6 z-10 scale-[0.82] sm:scale-100 origin-bottom-left">
           <StickyNotesBoard isReading={renderPhase === 'reading-notes'} />
@@ -625,7 +639,7 @@ export const Screen3RobotStage: React.FC<Screen3RobotStageProps> = ({ mode }) =>
   const isSeated = donePhase === 'swinging' || donePhase === 'reading';
 
   return (
-    <div className="w-full max-w-4xl mx-auto relative h-[150px] sm:h-[170px] mt-4 sm:mt-5 px-2 sm:px-4 overflow-hidden pointer-events-none select-none">
+    <div className="w-full max-w-4xl mx-auto relative h-[136px] sm:h-[150px] my-1 px-2 sm:px-4 overflow-hidden pointer-events-none select-none">
       {/* Sweeping Phase Leftover Trim Scraps */}
       {donePhase === 'sweeping' && (
         <>
@@ -675,11 +689,11 @@ export const Screen3RobotStage: React.FC<Screen3RobotStageProps> = ({ mode }) =>
       )}
 
       {/* Classic Vintage Wooden Rocking Armchair Area (Right Side) */}
-      <div className="absolute right-[8%] sm:right-[15%] bottom-5 z-20 scale-[0.85] sm:scale-100 origin-bottom-right">
+      <div className="absolute right-[6%] sm:right-[12%] bottom-5 z-20 origin-bottom-right">
         {/* Rocking Pivot Wrapper (Rocks Chair + Seated Robot as a single cohesive unit) */}
         <div
           style={{ transformOrigin: '50% 94%' }}
-          className={`relative w-[110px] sm:w-[130px] h-[98px] sm:h-[114px] ${
+          className={`relative w-[138px] sm:w-[158px] h-[120px] sm:h-[136px] ${
             donePhase === 'swinging'
               ? 'animate-rocking-chair-happy'
               : donePhase === 'reading'
@@ -692,7 +706,7 @@ export const Screen3RobotStage: React.FC<Screen3RobotStageProps> = ({ mode }) =>
 
           {/* Layer 2: Seated Fastcutz Robot (Sandwiched snugly inside chair) */}
           {isSeated && (
-            <div className="absolute left-[34px] sm:left-[40px] bottom-[18px] sm:bottom-[20px] z-10 scale-[0.78] sm:scale-[0.88] origin-bottom">
+            <div className="absolute left-[36px] sm:left-[42px] bottom-[34px] sm:bottom-[38px] z-10 scale-[0.86] sm:scale-[0.90] origin-bottom">
               {/* Floating Speech Pill */}
               {donePhase === 'swinging' && (
                 <div className="absolute -top-7 left-1/2 -translate-x-1/2 whitespace-nowrap px-2 py-0.5 rounded-full bg-white dark:bg-[#1E1D1B] border border-[#D96B27] dark:border-[#E8632A] text-[#D96B27] dark:text-[#E8632A] font-mono text-[9px] font-bold shadow-md animate-bounce">

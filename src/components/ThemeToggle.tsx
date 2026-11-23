@@ -22,7 +22,11 @@ export function applyTheme(theme: ThemeMode): void {
   if (typeof document === 'undefined') return;
   try {
     const isDark = theme === 'dark';
-    document.documentElement.classList.toggle('dark', isDark);
+    if (isDark) {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
     localStorage.setItem(THEME_STORAGE_KEY, theme);
     window.dispatchEvent(new CustomEvent('fastcutz-theme-change', { detail: { theme } }));
   } catch {
@@ -30,11 +34,15 @@ export function applyTheme(theme: ThemeMode): void {
   }
 }
 
-// Immediate module-level initialization to prevent white flash on refresh
+// Immediate module-level initialization to prevent flash on refresh
 if (typeof window !== 'undefined') {
   try {
     const saved = getInitialTheme();
-    document.documentElement.classList.toggle('dark', saved === 'dark');
+    if (saved === 'dark') {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
   } catch {
     // Fail-safe
   }
@@ -44,6 +52,15 @@ export function useTheme() {
   const [theme, setTheme] = useState<ThemeMode>(getInitialTheme);
 
   useEffect(() => {
+    // Synchronize DOM class on mount
+    const current = getInitialTheme();
+    if (current === 'dark') {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
+    setTheme(current);
+
     const handleThemeChange = (e: Event) => {
       const customEvent = e as CustomEvent<{ theme: ThemeMode }>;
       if (customEvent.detail?.theme) {

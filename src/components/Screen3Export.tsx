@@ -7,6 +7,113 @@ import { logExportEvent, submitUserFeedback } from '../utils/supabaseClient';
 import { ThemeToggle } from './ThemeToggle';
 import { Screen3RobotStage } from './Screen3RobotStage';
 
+/**
+ * Slim, non-interactive rolling filmstrip for Screen 3:
+ * [Thank You] -> [For] -> [Using] -> [Fastcutz]
+ */
+const Screen3Filmstrip: React.FC = () => {
+  const frames = [
+    { id: 'f1', text: 'Thank You', tag: '01', isHighlight: false, isPrimary: true },
+    { id: 'f2', text: 'For', tag: '02', isHighlight: false, isPrimary: false },
+    { id: 'f3', text: 'Using', tag: '03', isHighlight: false, isPrimary: false },
+    { id: 'f4', text: 'Fastcutz', tag: '04', isHighlight: true, isPrimary: false },
+  ];
+
+  // Repeat sequence 3 times per copy for seamless coverage on all monitor widths
+  const repeatedSequence = [...frames, ...frames, ...frames];
+
+  const renderFrame = (item: (typeof frames)[0], key: string) => (
+    <div
+      key={key}
+      className={`w-[155px] sm:w-[185px] h-[52px] sm:h-[58px] rounded-lg border flex flex-col justify-between p-1.5 sm:p-2 shrink-0 ${
+        item.isHighlight
+          ? 'bg-[#FFF7F2] dark:bg-[#201B18] border-[#D96B27]/50 dark:border-[#E8632A]/60 shadow-[0_2px_8px_rgba(217,107,39,0.12)]'
+          : 'bg-white dark:bg-[#1B1A18] border-[#E5E2DC] dark:border-[#2E2C28]'
+      }`}
+    >
+      {/* Top Sprocket Rail */}
+      <div className="flex items-center justify-between px-0.5">
+        <div className="flex items-center space-x-1">
+          <div className="w-2 h-1 rounded-[1.5px] bg-[#F0EEE9] dark:bg-[#24221F] border border-[#E5E2DC] dark:border-[#2C2A27]" />
+          <div className="w-2 h-1 rounded-[1.5px] bg-[#F0EEE9] dark:bg-[#24221F] border border-[#E5E2DC] dark:border-[#2C2A27]" />
+          <div className="w-2 h-1 rounded-[1.5px] bg-[#F0EEE9] dark:bg-[#24221F] border border-[#E5E2DC] dark:border-[#2C2A27]" />
+        </div>
+        <span
+          className={`font-mono text-[8px] sm:text-[9px] tabular-nums tracking-widest ${
+            item.isHighlight
+              ? 'text-[#D96B27] dark:text-[#E8632A] font-bold'
+              : 'text-[#8E8A82] dark:text-[#78736B]'
+          }`}
+        >
+          {item.tag}
+        </span>
+        <div className="flex items-center space-x-1">
+          <div className="w-2 h-1 rounded-[1.5px] bg-[#F0EEE9] dark:bg-[#24221F] border border-[#E5E2DC] dark:border-[#2C2A27]" />
+          <div className="w-2 h-1 rounded-[1.5px] bg-[#F0EEE9] dark:bg-[#24221F] border border-[#E5E2DC] dark:border-[#2C2A27]" />
+          <div className="w-2 h-1 rounded-[1.5px] bg-[#F0EEE9] dark:bg-[#24221F] border border-[#E5E2DC] dark:border-[#2C2A27]" />
+        </div>
+      </div>
+
+      {/* Frame Center Content */}
+      <div className="flex items-center justify-center space-x-1.5 py-0.5">
+        {item.isHighlight ? (
+          <>
+            <span className="font-extrabold text-xs sm:text-sm tracking-tight text-[#181715] dark:text-[#F4F2EC]">
+              Fastcutz<span className="text-[#D96B27] dark:text-[#E8632A]">.ai</span>
+            </span>
+            <span className="w-1.5 h-1.5 rounded-full bg-[#D96B27] dark:bg-[#E8632A]" />
+          </>
+        ) : item.isPrimary ? (
+          <span className="font-bold text-xs sm:text-sm text-[#181715] dark:text-[#F4F2EC] tracking-tight">
+            {item.text}
+          </span>
+        ) : (
+          <span className="font-medium text-xs sm:text-sm text-[#66625B] dark:text-[#A39E95] tracking-tight">
+            {item.text}
+          </span>
+        )}
+      </div>
+
+      {/* Bottom Sprocket Rail */}
+      <div className="flex items-center justify-between px-0.5">
+        <div className="flex items-center space-x-1">
+          <div className="w-2 h-1 rounded-[1.5px] bg-[#F0EEE9] dark:bg-[#24221F] border border-[#E5E2DC] dark:border-[#2C2A27]" />
+          <div className="w-2 h-1 rounded-[1.5px] bg-[#F0EEE9] dark:bg-[#24221F] border border-[#E5E2DC] dark:border-[#2C2A27]" />
+          <div className="w-2 h-1 rounded-[1.5px] bg-[#F0EEE9] dark:bg-[#24221F] border border-[#E5E2DC] dark:border-[#2C2A27]" />
+        </div>
+        <div className="w-1 h-1 rounded-full bg-[#D8D4CC] dark:bg-[#383531]" />
+        <div className="flex items-center space-x-1">
+          <div className="w-2 h-1 rounded-[1.5px] bg-[#F0EEE9] dark:bg-[#24221F] border border-[#E5E2DC] dark:border-[#2C2A27]" />
+          <div className="w-2 h-1 rounded-[1.5px] bg-[#F0EEE9] dark:bg-[#24221F] border border-[#E5E2DC] dark:border-[#2C2A27]" />
+          <div className="w-2 h-1 rounded-[1.5px] bg-[#F0EEE9] dark:bg-[#24221F] border border-[#E5E2DC] dark:border-[#2C2A27]" />
+        </div>
+      </div>
+    </div>
+  );
+
+  return (
+    <div className="w-full overflow-hidden pointer-events-none select-none my-1 sm:my-2">
+      <div className="w-full relative overflow-hidden py-1 bg-white/80 dark:bg-[#141312] border-y border-[#E5E2DC] dark:border-[#2C2A27] shadow-xs">
+        {/* Left & Right Edge-Fade Masks */}
+        <div className="pointer-events-none absolute inset-y-0 left-0 w-12 sm:w-20 md:w-32 bg-gradient-to-r from-[#F7F6F2] dark:from-[#0E0E0D] to-transparent z-10" />
+        <div className="pointer-events-none absolute inset-y-0 right-0 w-12 sm:w-20 md:w-32 bg-gradient-to-l from-[#F7F6F2] dark:from-[#0E0E0D] to-transparent z-10" />
+
+        {/* Marquee Track (-50% loop) */}
+        <div className="flex w-max animate-filmstrip-marquee select-none">
+          {/* Copy 1 (0% to -50%) */}
+          <div className="flex items-center space-x-2.5 sm:space-x-3 pr-2.5 sm:pr-3 shrink-0">
+            {repeatedSequence.map((item, idx) => renderFrame(item, `s3_c1_${idx}`))}
+          </div>
+          {/* Copy 2 (-50% to -100%) */}
+          <div className="flex items-center space-x-2.5 sm:space-x-3 pr-2.5 sm:pr-3 shrink-0" aria-hidden="true">
+            {repeatedSequence.map((item, idx) => renderFrame(item, `s3_c2_${idx}`))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 export const Screen3Export: React.FC = () => {
   const { project, setScreen, bgMusic } = useEditorStore();
 
@@ -152,9 +259,9 @@ export const Screen3Export: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-[#F7F6F2] dark:bg-[#0E0E0D] text-[#181715] dark:text-[#F4F2EC] flex flex-col justify-between p-4 sm:p-6">
+    <div className="min-h-screen bg-[#F7F6F2] dark:bg-[#0E0E0D] text-[#181715] dark:text-[#F4F2EC] flex flex-col justify-between p-3 sm:p-5">
       {/* Top Header */}
-      <header className="max-w-4xl mx-auto w-full flex flex-wrap items-center justify-between gap-3 pb-5 border-b border-[#E5E2DC] dark:border-[#2C2A27]">
+      <header className="max-w-4xl mx-auto w-full flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-[#E5E2DC] dark:border-[#2C2A27]">
         <button
           onClick={() => setScreen('WORKSPACE')}
           className="flex items-center space-x-2 text-xs font-medium text-[#181715] dark:text-[#F4F2EC] hover:text-[#000000] dark:hover:text-white transition-colors bg-white dark:bg-[#1E1D1B] hover:bg-[#F0EEE9] dark:hover:bg-[#2A2825] px-3 py-2 rounded-lg border border-[#E5E2DC] dark:border-[#2C2A27] shadow-sm cursor-pointer"
@@ -173,6 +280,9 @@ export const Screen3Export: React.FC = () => {
         </div>
       </header>
 
+      {/* Slim Non-Interactive Rolling Filmstrip: [Thank You] -> [For] -> [Using] -> [Fastcutz] */}
+      <Screen3Filmstrip />
+
       {/* Main Export Content */}
       <main className="max-w-4xl mx-auto w-full my-3 sm:my-5 space-y-4 sm:space-y-5">
         {/* Visible Warnings for Preview-only items (Step 2.d) */}
@@ -188,13 +298,13 @@ export const Screen3Export: React.FC = () => {
 
         {/* State A: Rendering in Progress */}
         {isExporting ? (
-          <div className="pt-2 sm:pt-4 pb-1 space-y-4 sm:space-y-5">
-            <div className="bg-white dark:bg-[#171615] border border-[#E5E2DC] dark:border-[#2C2A27] shadow-sm rounded-2xl p-6 sm:p-8 text-center space-y-4 sm:space-y-5">
-              <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-full bg-[#F0EEE9] dark:bg-[#24221F] border border-[#E5E2DC] dark:border-[#2C2A27] text-[#D96B27] dark:text-[#E8632A] mx-auto flex items-center justify-center animate-spin">
-                <RefreshCw className="w-7 h-7 sm:w-8 sm:h-8" />
+          <div className="pt-1 sm:pt-2 pb-1 space-y-3 sm:space-y-4">
+            <div className="bg-white dark:bg-[#171615] border border-[#E5E2DC] dark:border-[#2C2A27] shadow-sm rounded-2xl p-4 sm:p-6 text-center space-y-3 sm:space-y-4">
+              <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-full bg-[#F0EEE9] dark:bg-[#24221F] border border-[#E5E2DC] dark:border-[#2C2A27] text-[#D96B27] dark:text-[#E8632A] mx-auto flex items-center justify-center animate-spin">
+                <RefreshCw className="w-6 h-6 sm:w-7 sm:h-7" />
               </div>
 
-              <div className="space-y-1.5 sm:space-y-2">
+              <div className="space-y-1">
                 <h3 className="text-base sm:text-lg font-semibold text-[#181715] dark:text-[#F4F2EC]">Rendering Your Final MP4</h3>
                 <p className="text-xs text-[#66625B] dark:text-[#A39E95]">{progress.stage}</p>
               </div>
@@ -272,34 +382,34 @@ export const Screen3Export: React.FC = () => {
 
             {/* Video Player */}
             {exportResult?.blobUrl && (
-              <div className="aspect-video w-full max-w-2xl mx-auto bg-[#0B0B0A] dark:bg-[#070706] rounded-xl overflow-hidden border border-[#D8D4CC] dark:border-[#2E2C28]">
+              <div className="w-full max-w-2xl mx-auto max-h-[220px] sm:max-h-[250px] aspect-video bg-[#0B0B0A] dark:bg-[#070706] rounded-xl overflow-hidden border border-[#D8D4CC] dark:border-[#2E2C28] flex items-center justify-center">
                 <video
                   ref={previewVideoRef}
                   src={exportResult.blobUrl}
                   controls
                   playsInline
-                  className="w-full h-full object-contain"
+                  className="w-full h-full max-h-[220px] sm:max-h-[250px] object-contain"
                 />
               </div>
             )}
 
             {/* Edit Summary Card */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 sm:gap-3 pt-2">
-              <div className="bg-[#F7F6F2] dark:bg-[#1E1D1B] border border-[#E5E2DC] dark:border-[#2C2A27] p-3 rounded-xl text-center">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 sm:gap-3 pt-1">
+              <div className="bg-[#F7F6F2] dark:bg-[#1E1D1B] border border-[#E5E2DC] dark:border-[#2C2A27] p-2.5 sm:p-3 rounded-xl text-center">
                 <span className="text-[10px] uppercase font-bold text-[#66625B] dark:text-[#A39E95] tracking-wider">Cuts Applied</span>
                 <p className="text-base font-bold text-[#181715] dark:text-[#F4F2EC] font-mono tabular-nums">
                   {cutsCount} {cutsCount === 1 ? 'Cut' : 'Cuts'}
                 </p>
               </div>
 
-              <div className="bg-[#F7F6F2] dark:bg-[#1E1D1B] border border-[#E5E2DC] dark:border-[#2C2A27] p-3 rounded-xl text-center">
+              <div className="bg-[#F7F6F2] dark:bg-[#1E1D1B] border border-[#E5E2DC] dark:border-[#2C2A27] p-2.5 sm:p-3 rounded-xl text-center">
                 <span className="text-[10px] uppercase font-bold text-[#66625B] dark:text-[#A39E95] tracking-wider">Source Clips</span>
                 <p className="text-base font-bold text-[#181715] dark:text-[#F4F2EC] font-mono tabular-nums">
                   {activeClipsCount} {activeClipsCount === 1 ? 'Segment' : 'Segments'}
                 </p>
               </div>
 
-              <div className="bg-[#F7F6F2] dark:bg-[#1E1D1B] border border-[#E5E2DC] dark:border-[#2C2A27] p-3 rounded-xl text-center">
+              <div className="bg-[#F7F6F2] dark:bg-[#1E1D1B] border border-[#E5E2DC] dark:border-[#2C2A27] p-2.5 sm:p-3 rounded-xl text-center">
                 <span className="text-[10px] uppercase font-bold text-[#66625B] dark:text-[#A39E95] tracking-wider">Memes Spliced</span>
                 <p className="text-base font-bold text-[#181715] dark:text-[#F4F2EC] font-mono tabular-nums">
                   {(() => {
@@ -309,13 +419,16 @@ export const Screen3Export: React.FC = () => {
                 </p>
               </div>
 
-              <div className="bg-[#F7F6F2] dark:bg-[#1E1D1B] border border-[#E5E2DC] dark:border-[#2C2A27] p-3 rounded-xl text-center">
+              <div className="bg-[#F7F6F2] dark:bg-[#1E1D1B] border border-[#E5E2DC] dark:border-[#2C2A27] p-2.5 sm:p-3 rounded-xl text-center">
                 <span className="text-[10px] uppercase font-bold text-[#66625B] dark:text-[#A39E95] tracking-wider">Music Track</span>
                 <p className={`text-base font-bold font-mono tabular-nums truncate ${exportResult?.bgMusicBaked ? 'text-[#181715] dark:text-[#F4F2EC]' : 'text-[#8E8A82] dark:text-[#78736B]'}`} title={exportResult?.bgMusicName}>
                   {exportResult?.bgMusicBaked ? `${Math.round((exportResult.bgMusicVolume ?? 1) * 100)}%` : 'None'}
                 </p>
               </div>
             </div>
+
+            {/* Storytelling Scene B: Export Complete Resting & Reading Scene (High Placement) */}
+            <Screen3RobotStage mode="complete" />
 
             {/* Quick Feedback Card */}
             <div className="bg-[#FAF9F5] dark:bg-[#1E1D1B] border border-[#E5E2DC] dark:border-[#2C2A27] rounded-xl p-4 sm:p-5 space-y-3">
@@ -469,11 +582,6 @@ export const Screen3Export: React.FC = () => {
               </div>
             )}
           </div>
-        )}
-
-        {/* Storytelling Scene B: Export Complete Resting & Reading Scene */}
-        {!isExporting && verificationPassed && !renderError && (
-          <Screen3RobotStage mode="complete" />
         )}
       </main>
 
