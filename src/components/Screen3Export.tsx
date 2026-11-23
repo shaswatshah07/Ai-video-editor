@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { ArrowLeft, Download, CheckCircle2, AlertTriangle, AlertCircle, Film, RefreshCw, ChevronDown, ChevronUp } from 'lucide-react';
+import { ArrowLeft, Download, CheckCircle2, AlertTriangle, AlertCircle, Film, RefreshCw, ChevronDown, ChevronUp, Star } from 'lucide-react';
 import { useEditorStore } from '../store/useEditorStore';
 import { exportProjectVideo, verifyRenderedVideo, RenderProgress, ExportResult } from '../utils/ffmpegExporter';
 import { isActualMemeClip } from '../utils/timelineMath';
+import { logExportEvent, submitUserFeedback } from '../utils/supabaseClient';
 
 export const Screen3Export: React.FC = () => {
   const { project, setScreen, bgMusic } = useEditorStore();
@@ -14,6 +15,16 @@ export const Screen3Export: React.FC = () => {
   const [verificationPassed, setVerificationPassed] = useState<boolean>(false);
   const [actualDuration, setActualDuration] = useState<number>(0);
   const [showDetails, setShowDetails] = useState<boolean>(false);
+
+  // Silent 1x Export logging tracking ref
+  const loggedExportRef = useRef<string | null>(null);
+
+  // Quick Feedback state
+  const [feedbackRating, setFeedbackRating] = useState<number>(0);
+  const [feedbackHover, setFeedbackHover] = useState<number>(0);
+  const [feedbackComment, setFeedbackComment] = useState<string>('');
+  const [isSubmittingFeedback, setIsSubmittingFeedback] = useState<boolean>(false);
+  const [feedbackSubmitted, setFeedbackSubmitted] = useState<boolean>(false);
 
   const previewVideoRef = useRef<HTMLVideoElement | null>(null);
   const activeBlobUrlRef = useRef<string | null>(null);
@@ -109,6 +120,34 @@ export const Screen3Export: React.FC = () => {
     (it) => isActualMemeClip(it, project.sourceVideoUrl)
   ).length;
   const cutsCount = project.items.filter((it) => it.status === 'DELETED' && it.kind === 'SOURCE_CLIP').length;
+
+  // Silent 1x Export Event Logging (export_events)
+  useEffect(() => {
+    if (verificationPassed && exportResult?.blobUrl && loggedExportRef.current !== exportResult.blobUrl) {
+      loggedExportRef.current = exportResult.blobUrl;
+      const memesCount = exportResult.memesSplicedCount !== undefined ? exportResult.memesSplicedCount : actualMemesCount;
+      void logExportEvent({
+        durationSec: actualDuration || exportResult.expectedDurationSec,
+        cutsCount,
+        memesCount,
+      });
+    }
+  }, [verificationPassed, exportResult, actualDuration, cutsCount, actualMemesCount]);
+
+  const handleSubmitFeedback = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (feedbackRating < 1 || isSubmittingFeedback) return;
+    setIsSubmittingFeedback(true);
+    try {
+      await submitUserFeedback({
+        rating: feedbackRating,
+        comment: feedbackComment,
+      });
+    } finally {
+      setIsSubmittingFeedback(false);
+      setFeedbackSubmitted(true);
+    }
+  };
 
   return (
     <div className="min-h-screen bg-[#F7F6F2] text-[#181715] flex flex-col justify-between p-4 sm:p-6">
@@ -267,6 +306,73 @@ export const Screen3Export: React.FC = () => {
                   {exportResult?.bgMusicBaked ? `${Math.round((exportResult.bgMusicVolume ?? 1) * 100)}%` : 'None'}
                 </p>
               </div>
+            </div>
+
+            {/* Quick Feedback Card */}
+            <div className="bg-[#FAF9F5] border border-[#E5E2DC] rounded-xl p-4 sm:p-5 space-y-3">
+              {feedbackSubmitted ? (
+                <div className="flex items-center space-x-2 text-[#0F766E] text-xs font-semibold py-2">
+                  <CheckCircle2 className="w-5 h-5 flex-shrink-0 text-[#0F766E]" />
+                  <span>Thanks! Your feedback was saved.</span>
+                </div>
+              ) : (
+                <form onSubmit={handleSubmitFeedback} className="space-y-3">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
+                    <div>
+                      <h4 className="text-xs sm:text-sm font-bold text-[#181715]">
+                        How was your export experience?
+                      </h4>
+                      <p className="text-[11px] text-[#66625B]">
+                        Helps us improve Fastcutz.ai (takes 10 seconds)
+                      </p>
+                    </div>
+
+                    {/* 1 to 5 Star Rating */}
+                    <div className="flex items-center space-x-1 pt-1 sm:pt-0">
+                      {[1, 2, 3, 4, 5].map((star) => {
+                        const active = (feedbackHover || feedbackRating) >= star;
+                        return (
+                          <button
+                            key={star}
+                            type="button"
+                            onClick={() => setFeedbackRating(star)}
+                            onMouseEnter={() => setFeedbackHover(star)}
+                            onMouseLeave={() => setFeedbackHover(0)}
+                            className="min-h-[40px] min-w-[40px] p-2 flex items-center justify-center rounded-lg hover:bg-white transition-colors cursor-pointer"
+                            title={`${star} star${star > 1 ? 's' : ''}`}
+                          >
+                            <Star
+                              className={`w-5 h-5 transition-colors ${
+                                active
+                                  ? 'text-[#D96B27] fill-[#D96B27]'
+                                  : 'text-[#D6D2C9] fill-[#F0EEE9]'
+                              }`}
+                            />
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  <div className="flex flex-col sm:flex-row gap-2">
+                    <textarea
+                      rows={2}
+                      value={feedbackComment}
+                      onChange={(e) => setFeedbackComment(e.target.value)}
+                      placeholder="What worked well, or what annoyed you? (Optional)"
+                      className="flex-1 bg-white border border-[#E5E2DC] rounded-lg p-2.5 text-xs text-[#181715] placeholder-[#8E8A82] focus:outline-none focus:border-[#D96B27] resize-none select-text"
+                    />
+
+                    <button
+                      type="submit"
+                      disabled={feedbackRating === 0 || isSubmittingFeedback}
+                      className="sm:self-end bg-[#D96B27] hover:bg-[#C25A1B] disabled:opacity-40 disabled:cursor-not-allowed text-white font-semibold px-4 py-2 rounded-lg text-xs transition-colors shadow-xs cursor-pointer min-h-[40px] flex items-center justify-center shrink-0"
+                    >
+                      {isSubmittingFeedback ? 'Sending...' : 'Send Feedback'}
+                    </button>
+                  </div>
+                </form>
+              )}
             </div>
           </div>
         )}

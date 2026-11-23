@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Upload, Wand2, ArrowRight, AlertCircle, FileVideo, Loader2 } from 'lucide-react';
+import { Upload, Wand2, ArrowRight, AlertCircle, FileVideo, Loader2, Scissors, X } from 'lucide-react';
 import { useEditorStore } from '../store/useEditorStore';
 import { TimelineItem } from '../types/edl';
 import { MEME_LIBRARY, MemeLibraryItem } from '../utils/memeLibrary';
+import { getSavedUserProfile, saveUserProfile, registerUser, UserProfile } from '../utils/supabaseClient';
 
 // Types for the mascot animation lifecycle
 type BotPhase = 'idle' | 'to-cupboard' | 'searching' | 'to-computer' | 'inserting' | 'returning';
@@ -611,6 +612,23 @@ export const Screen1Upload: React.FC = () => {
     noiseReduction: true
   });
 
+  // Creator profile & non-blocking sign-in state (Supabase / localStorage)
+  const [userProfile, setUserProfile] = useState<UserProfile | null>(() => getSavedUserProfile());
+  const [isAuthModalOpen, setIsAuthModalOpen] = useState<boolean>(false);
+  const [nameInput, setNameInput] = useState<string>('');
+  const [emailInput, setEmailInput] = useState<string>('');
+  const [modalError, setModalError] = useState<string | null>(null);
+
+  // Auto-open modal on first visit ONLY if getSavedUserProfile() is null
+  useEffect(() => {
+    const saved = getSavedUserProfile();
+    if (!saved) {
+      setIsAuthModalOpen(true);
+    } else {
+      setUserProfile(saved);
+    }
+  }, []);
+
   // Dynamic Meme Slots for Empty Frames in Filmstrip: [Slot A, Slot B]
   const [slotMemes, setSlotMemes] = useState<[MemeLibraryItem | null, MemeLibraryItem | null]>([null, null]);
 
@@ -1173,6 +1191,167 @@ export const Screen1Upload: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-[#F7F6F2] bg-[radial-gradient(ellipse_at_top,_rgba(217,107,39,0.06),_transparent_55%),radial-gradient(ellipse_at_bottom_left,_rgba(15,118,110,0.05),_transparent_50%)] text-[#181715] flex flex-col overflow-y-auto">
+      {/* Top Bar with Creator Profile Pill */}
+      <header className="w-full max-w-6xl mx-auto px-4 sm:px-6 pt-3 pb-1 flex items-center justify-between z-30">
+        <div className="flex items-center space-x-2">
+          <div className="w-7 h-7 rounded-lg bg-[#D96B27] text-white flex items-center justify-center font-bold text-xs shadow-xs">
+            <Scissors className="w-4 h-4 text-white" />
+          </div>
+          <span className="font-extrabold tracking-tight text-sm sm:text-base">
+            <span className="text-[#181715]">Fastcutz</span>
+            <span className="text-[#D96B27]">.ai</span>
+          </span>
+        </div>
+
+        {/* Top-Right Compact Profile Pill */}
+        {userProfile && !userProfile.isGuest && userProfile.name ? (
+          <div className="bg-white border border-[#E5E2DC] text-[#181715] rounded-full px-3 py-1.5 text-xs font-medium shadow-sm flex items-center space-x-2">
+            <span className="text-[#181715] font-semibold truncate max-w-[120px] sm:max-w-none">
+              Hi, {userProfile.name.split(' ')[0]}
+            </span>
+            <span className="text-[#D8D4CC]">|</span>
+            <button
+              type="button"
+              onClick={() => {
+                setNameInput(userProfile.name);
+                setEmailInput(userProfile.email === 'guest' ? '' : userProfile.email);
+                setIsAuthModalOpen(true);
+              }}
+              className="text-[11px] text-[#66625B] hover:text-[#D96B27] underline cursor-pointer"
+            >
+              Switch
+            </button>
+          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={() => {
+              setNameInput(userProfile?.name && userProfile.name !== 'Guest' ? userProfile.name : '');
+              setEmailInput(userProfile?.email && userProfile.email !== 'guest' ? userProfile.email : '');
+              setIsAuthModalOpen(true);
+            }}
+            className="bg-white border border-[#D96B27]/40 hover:border-[#D96B27] text-[#D96B27] rounded-full px-3 py-1.5 text-xs font-medium shadow-sm transition-colors cursor-pointer flex items-center space-x-1.5"
+          >
+            <span>Sign in (Optional)</span>
+          </button>
+        )}
+      </header>
+
+      {/* Non-Blocking Sign-In Modal */}
+      {isAuthModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs p-4 animate-in fade-in duration-200">
+          <div className="bg-white border border-[#E5E2DC] rounded-2xl shadow-xl max-w-sm w-full p-5 relative select-text">
+            {/* Close Button */}
+            <button
+              type="button"
+              onClick={() => {
+                const guestProfile: UserProfile = userProfile || { name: 'Guest', email: 'guest', isGuest: true };
+                if (!userProfile) saveUserProfile(guestProfile);
+                setUserProfile(guestProfile);
+                setIsAuthModalOpen(false);
+                setModalError(null);
+              }}
+              className="absolute top-4 right-4 text-[#8E8A82] hover:text-[#181715] p-1 rounded-lg transition-colors cursor-pointer"
+              title="Close and continue as guest"
+            >
+              <X className="w-4 h-4" />
+            </button>
+
+            <div className="space-y-1 mb-4">
+              <h3 className="text-base font-bold text-[#181715]">Welcome to Fastcutz.ai</h3>
+              <p className="text-xs text-[#66625B]">
+                Save your creator name for export tracking — or jump straight in as a guest.
+              </p>
+            </div>
+
+            {modalError && (
+              <div className="mb-3 p-2 bg-[#FEF2F2] border border-[#FCA5A5] rounded-lg text-xs text-[#991B1B]">
+                {modalError}
+              </div>
+            )}
+
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (!nameInput.trim()) {
+                  setModalError('Please enter your name.');
+                  return;
+                }
+                if (!emailInput.trim() || !emailInput.includes('@')) {
+                  setModalError('Please enter a valid email address.');
+                  return;
+                }
+                const newProfile: UserProfile = {
+                  name: nameInput.trim(),
+                  email: emailInput.trim().toLowerCase(),
+                  isGuest: false,
+                };
+                saveUserProfile(newProfile);
+                setUserProfile(newProfile);
+                void registerUser(newProfile.name, newProfile.email);
+                setIsAuthModalOpen(false);
+                setModalError(null);
+              }}
+              className="space-y-3"
+            >
+              <div>
+                <label className="block text-[11px] font-semibold text-[#181715] mb-1">
+                  Your Name
+                </label>
+                <input
+                  type="text"
+                  value={nameInput}
+                  onChange={(e) => {
+                    setNameInput(e.target.value);
+                    if (modalError) setModalError(null);
+                  }}
+                  placeholder="e.g. Alex Creator"
+                  className="w-full bg-[#F7F6F2] border border-[#E5E2DC] rounded-lg px-3 py-2 text-xs text-[#181715] placeholder-[#8E8A82] focus:outline-none focus:border-[#D96B27] select-text"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-semibold text-[#181715] mb-1">
+                  Email
+                </label>
+                <input
+                  type="email"
+                  value={emailInput}
+                  onChange={(e) => {
+                    setEmailInput(e.target.value);
+                    if (modalError) setModalError(null);
+                  }}
+                  placeholder="alex@creator.com"
+                  className="w-full bg-[#F7F6F2] border border-[#E5E2DC] rounded-lg px-3 py-2 text-xs text-[#181715] placeholder-[#8E8A82] focus:outline-none focus:border-[#D96B27] select-text"
+                />
+              </div>
+
+              <div className="pt-2 space-y-2">
+                <button
+                  type="submit"
+                  className="w-full bg-[#D96B27] hover:bg-[#C25A1B] text-white font-semibold py-2 px-4 rounded-lg text-xs transition-colors shadow-xs cursor-pointer min-h-[40px] flex items-center justify-center"
+                >
+                  Continue
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    const guestProfile: UserProfile = { name: 'Guest', email: 'guest', isGuest: true };
+                    saveUserProfile(guestProfile);
+                    setUserProfile(guestProfile);
+                    setIsAuthModalOpen(false);
+                    setModalError(null);
+                  }}
+                  className="w-full bg-[#F0EEE9] hover:bg-[#E7E4DD] border border-[#E5E2DC] text-[#66625B] hover:text-[#181715] font-medium py-2 px-4 rounded-lg text-xs transition-colors cursor-pointer min-h-[38px] flex items-center justify-center"
+                >
+                  Continue as Guest
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
       {/* Top Rolling Cinema Filmstrip Hero with Custom Scissor Cursor */}
       <section id="hero-space" className="w-full overflow-hidden pt-3 pb-2">
         <div
