@@ -130,6 +130,7 @@ export const Screen3Export: React.FC = () => {
   const [feedbackComment, setFeedbackComment] = useState<string>('');
   const [isSubmittingFeedback, setIsSubmittingFeedback] = useState<boolean>(false);
   const [feedbackSubmitted, setFeedbackSubmitted] = useState<boolean>(false);
+  const [feedbackError, setFeedbackError] = useState<string | null>(null);
 
   const previewVideoRef = useRef<HTMLVideoElement | null>(null);
   const activeBlobUrlRef = useRef<string | null>(null);
@@ -243,14 +244,21 @@ export const Screen3Export: React.FC = () => {
     e.preventDefault();
     if (feedbackRating < 1 || isSubmittingFeedback) return;
     setIsSubmittingFeedback(true);
+    setFeedbackError(null);
     try {
-      await submitUserFeedback({
+      const res = await submitUserFeedback({
         rating: feedbackRating,
         comment: feedbackComment,
       });
+      if (res && res.ok) {
+        setFeedbackSubmitted(true);
+      } else {
+        setFeedbackError('Could not save feedback right now — please try again.');
+      }
+    } catch {
+      setFeedbackError('Could not save feedback right now — please try again.');
     } finally {
       setIsSubmittingFeedback(false);
-      setFeedbackSubmitted(true);
     }
   };
 
@@ -453,7 +461,10 @@ export const Screen3Export: React.FC = () => {
                           <button
                             key={star}
                             type="button"
-                            onClick={() => setFeedbackRating(star)}
+                            onClick={() => {
+                              setFeedbackRating(star);
+                              if (feedbackError) setFeedbackError(null);
+                            }}
                             onMouseEnter={() => setFeedbackHover(star)}
                             onMouseLeave={() => setFeedbackHover(0)}
                             className="min-h-[40px] min-w-[40px] p-2 flex items-center justify-center rounded-lg hover:bg-white dark:hover:bg-[#2A2825] transition-colors cursor-pointer"
@@ -472,11 +483,20 @@ export const Screen3Export: React.FC = () => {
                     </div>
                   </div>
 
+                  {feedbackError && (
+                    <div className="p-2.5 bg-[#FEF2F2] dark:bg-[#450A0A]/40 border border-[#FCA5A5] dark:border-[#991B1B] rounded-lg text-xs text-[#991B1B] dark:text-[#FCA5A5]">
+                      {feedbackError}
+                    </div>
+                  )}
+
                   <div className="flex flex-col sm:flex-row gap-2">
                     <textarea
                       rows={2}
                       value={feedbackComment}
-                      onChange={(e) => setFeedbackComment(e.target.value)}
+                      onChange={(e) => {
+                        setFeedbackComment(e.target.value);
+                        if (feedbackError) setFeedbackError(null);
+                      }}
                       placeholder="What worked well, or what annoyed you? (Optional)"
                       className="flex-1 bg-white dark:bg-[#24221F] border border-[#E5E2DC] dark:border-[#2C2A27] rounded-lg p-2.5 text-xs text-[#181715] dark:text-[#F4F2EC] placeholder-[#8E8A82] dark:placeholder-[#78736B] focus:outline-none focus:border-[#D96B27] dark:focus:border-[#E8632A] resize-none select-text"
                     />

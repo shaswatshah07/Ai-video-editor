@@ -3,7 +3,6 @@ import { Upload, Wand2, ArrowRight, AlertCircle, FileVideo, Loader2, Scissors, X
 import { useEditorStore } from '../store/useEditorStore';
 import { TimelineItem } from '../types/edl';
 import { MEME_LIBRARY, MemeLibraryItem } from '../utils/memeLibrary';
-import { getSavedUserProfile, saveUserProfile, registerUser, UserProfile } from '../utils/supabaseClient';
 import { ThemeToggle, useTheme } from './ThemeToggle';
 
 // Types for the mascot animation lifecycle
@@ -633,21 +632,6 @@ export const Screen1Upload: React.FC = () => {
     voiceEnhance: true,
     noiseReduction: true
   });
-
-  // Creator profile & non-blocking sign-in state (Supabase / localStorage)
-  const [userProfile, setUserProfile] = useState<UserProfile | null>(() => getSavedUserProfile());
-  const [isAuthModalOpen, setIsAuthModalOpen] = useState<boolean>(false);
-  const [nameInput, setNameInput] = useState<string>('');
-  const [emailInput, setEmailInput] = useState<string>('');
-  const [modalError, setModalError] = useState<string | null>(null);
-
-  // Load saved profile if present (modal NEVER auto-opens on initial visit)
-  useEffect(() => {
-    const saved = getSavedUserProfile();
-    if (saved) {
-      setUserProfile(saved);
-    }
-  }, []);
 
   // Dynamic Meme Slots for Empty Frames in Filmstrip: [Slot A, Slot B]
   const [slotMemes, setSlotMemes] = useState<[MemeLibraryItem | null, MemeLibraryItem | null]>([null, null]);
@@ -1306,157 +1290,8 @@ export const Screen1Upload: React.FC = () => {
 
         <div className="flex items-center space-x-2 sm:space-x-3">
           <ThemeToggle />
-
-          {/* Top-Right Compact Profile Pill */}
-          {userProfile && !userProfile.isGuest && userProfile.name ? (
-            <div className="bg-white dark:bg-[#1E1D1B] border border-[#E5E2DC] dark:border-[#2C2A27] text-[#181715] dark:text-[#F4F2EC] rounded-full px-3 py-1.5 text-xs font-medium shadow-sm flex items-center space-x-2">
-              <span className="text-[#181715] dark:text-[#F4F2EC] font-semibold truncate max-w-[120px] sm:max-w-none">
-                Hi, {userProfile.name.split(' ')[0]}
-              </span>
-              <span className="text-[#D8D4CC] dark:text-[#423F3A]">|</span>
-              <button
-                type="button"
-                onClick={() => {
-                  setNameInput(userProfile.name);
-                  setEmailInput(userProfile.email === 'guest' ? '' : userProfile.email);
-                  setIsAuthModalOpen(true);
-                }}
-                className="text-[11px] text-[#66625B] dark:text-[#A39E95] hover:text-[#D96B27] dark:hover:text-[#E8632A] underline cursor-pointer"
-              >
-                Switch
-              </button>
-            </div>
-          ) : (
-            <button
-              type="button"
-              onClick={() => {
-                setNameInput(userProfile?.name && userProfile.name !== 'Guest' ? userProfile.name : '');
-                setEmailInput(userProfile?.email && userProfile.email !== 'guest' ? userProfile.email : '');
-                setIsAuthModalOpen(true);
-              }}
-              className="bg-white dark:bg-[#1E1D1B] border border-[#D96B27]/40 hover:border-[#D96B27] dark:border-[#E8632A]/50 dark:hover:border-[#E8632A] text-[#D96B27] dark:text-[#E8632A] rounded-full px-3 py-1.5 text-xs font-medium shadow-sm transition-colors cursor-pointer flex items-center space-x-1.5"
-            >
-              <span>Sign in (Optional)</span>
-            </button>
-          )}
         </div>
       </header>
-
-      {/* Non-Blocking Sign-In Modal */}
-      {isAuthModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 animate-in fade-in duration-200">
-          <div className="bg-white dark:bg-[#171615] border border-[#E5E2DC] dark:border-[#2C2A27] rounded-2xl shadow-xl max-w-sm w-full p-5 relative select-text">
-            {/* Close Button */}
-            <button
-              type="button"
-              onClick={() => {
-                const guestProfile: UserProfile = userProfile || { name: 'Guest', email: 'guest', isGuest: true };
-                if (!userProfile) saveUserProfile(guestProfile);
-                setUserProfile(guestProfile);
-                setIsAuthModalOpen(false);
-                setModalError(null);
-              }}
-              className="absolute top-4 right-4 text-[#8E8A82] dark:text-[#78736B] hover:text-[#181715] dark:hover:text-[#F4F2EC] p-1 rounded-lg transition-colors cursor-pointer"
-              title="Close and continue as guest"
-            >
-              <X className="w-4 h-4" />
-            </button>
-
-            <div className="space-y-1 mb-4">
-              <h3 className="text-base font-bold text-[#181715] dark:text-[#F4F2EC]">Welcome to Fastcutz.ai</h3>
-              <p className="text-xs text-[#66625B] dark:text-[#A39E95]">
-                Save your creator name for export tracking — or jump straight in as a guest.
-              </p>
-            </div>
-
-            {modalError && (
-              <div className="mb-3 p-2 bg-[#FEF2F2] dark:bg-[#450A0A]/40 border border-[#FCA5A5] dark:border-[#991B1B] rounded-lg text-xs text-[#991B1B] dark:text-[#FCA5A5]">
-                {modalError}
-              </div>
-            )}
-
-            <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                if (!nameInput.trim()) {
-                  setModalError('Please enter your name.');
-                  return;
-                }
-                if (!emailInput.trim() || !emailInput.includes('@')) {
-                  setModalError('Please enter a valid email address.');
-                  return;
-                }
-                const newProfile: UserProfile = {
-                  name: nameInput.trim(),
-                  email: emailInput.trim().toLowerCase(),
-                  isGuest: false,
-                };
-                saveUserProfile(newProfile);
-                setUserProfile(newProfile);
-                void registerUser(newProfile.name, newProfile.email);
-                setIsAuthModalOpen(false);
-                setModalError(null);
-              }}
-              className="space-y-3"
-            >
-              <div>
-                <label className="block text-[11px] font-semibold text-[#181715] dark:text-[#F4F2EC] mb-1">
-                  Your Name
-                </label>
-                <input
-                  type="text"
-                  value={nameInput}
-                  onChange={(e) => {
-                    setNameInput(e.target.value);
-                    if (modalError) setModalError(null);
-                  }}
-                  placeholder="e.g. Alex Creator"
-                  className="w-full bg-[#F7F6F2] dark:bg-[#1E1D1B] border border-[#E5E2DC] dark:border-[#2C2A27] rounded-lg px-3 py-2 text-xs text-[#181715] dark:text-[#F4F2EC] placeholder-[#8E8A82] dark:placeholder-[#78736B] focus:outline-none focus:border-[#D96B27] dark:focus:border-[#E8632A] select-text"
-                />
-              </div>
-
-              <div>
-                <label className="block text-[11px] font-semibold text-[#181715] dark:text-[#F4F2EC] mb-1">
-                  Email
-                </label>
-                <input
-                  type="email"
-                  value={emailInput}
-                  onChange={(e) => {
-                    setEmailInput(e.target.value);
-                    if (modalError) setModalError(null);
-                  }}
-                  placeholder="alex@creator.com"
-                  className="w-full bg-[#F7F6F2] dark:bg-[#1E1D1B] border border-[#E5E2DC] dark:border-[#2C2A27] rounded-lg px-3 py-2 text-xs text-[#181715] dark:text-[#F4F2EC] placeholder-[#8E8A82] dark:placeholder-[#78736B] focus:outline-none focus:border-[#D96B27] dark:focus:border-[#E8632A] select-text"
-                />
-              </div>
-
-              <div className="pt-2 space-y-2">
-                <button
-                  type="submit"
-                  className="w-full bg-[#D96B27] dark:bg-[#E8632A] hover:bg-[#C25A1B] dark:hover:bg-[#F2743D] text-white font-semibold py-2 px-4 rounded-lg text-xs transition-colors shadow-xs cursor-pointer min-h-[40px] flex items-center justify-center"
-                >
-                  Continue
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    const guestProfile: UserProfile = { name: 'Guest', email: 'guest', isGuest: true };
-                    saveUserProfile(guestProfile);
-                    setUserProfile(guestProfile);
-                    setIsAuthModalOpen(false);
-                    setModalError(null);
-                  }}
-                  className="w-full bg-[#F0EEE9] dark:bg-[#24221F] hover:bg-[#E7E4DD] dark:hover:bg-[#2E2B27] border border-[#E5E2DC] dark:border-[#2C2A27] text-[#66625B] dark:text-[#A39E95] hover:text-[#181715] dark:hover:text-[#F4F2EC] font-medium py-2 px-4 rounded-lg text-xs transition-colors cursor-pointer min-h-[38px] flex items-center justify-center"
-                >
-                  Continue as Guest
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
       {/* Top Rolling Cinema Filmstrip Hero with Custom Scissor Cursor */}
       <section id="hero-space" className="w-full overflow-hidden pt-3 pb-2">
         <div

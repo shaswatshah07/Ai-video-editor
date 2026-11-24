@@ -1,9 +1,10 @@
+/// <reference types="vite/client" />
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
 // Read strictly from Vite environment variables (zero hardcoded secrets)
-const meta = import.meta as unknown as { env?: Record<string, string | undefined> };
-const supabaseUrl: string | undefined = meta.env?.VITE_SUPABASE_URL?.trim();
-const supabaseAnonKey: string | undefined = meta.env?.VITE_SUPABASE_ANON_KEY?.trim();
+// Direct property access is required for Vite AST build-time replacement
+const supabaseUrl: string = (import.meta.env.VITE_SUPABASE_URL || '').trim();
+const supabaseAnonKey: string = (import.meta.env.VITE_SUPABASE_ANON_KEY || '').trim();
 
 export const isSupabaseConfigured = Boolean(supabaseUrl && supabaseAnonKey);
 
@@ -22,7 +23,7 @@ export function getSupabaseClient(): SupabaseClient | null {
         },
       });
     } catch (err) {
-      console.warn('[Fastcutz Supabase] Failed to initialize client:', err);
+      console.error('[Fastcutz Supabase] Failed to initialize client:', err);
       cachedClient = null;
     }
   }
@@ -81,13 +82,22 @@ export function getOrCreateGuestVisitorId(): string {
   }
 }
 
-let pendingRegistration: Promise<string | null> | null = null;
+/**
+ * Returns the canonical email for the current guest visitor.
+ */
+export function getGuestEmail(): string {
+  const visitorId = getOrCreateGuestVisitorId();
+  return `${visitorId}@guest.fastcutz.ai`;
+}
+
+let pendingRegistration: Promise<boolean> | null = null;
 
 /**
  * Deduplicated silent guest registration in Supabase `users` table.
- * Caches userId in localStorage & cookie so reloads never fire duplicate rows.
+ * 100% compatible with INSERT-only `anon` RLS policies (no .select()).
+ * Tracks registration via localStorage and cookie flags.
  */
-export async function ensureGuestUserRegistered(): Promise<string | null> {
+export async function ensureGuestUserRegistered(): Promise<boolean> {
   if (pendingRegistration) {
     return pendingRegistration;
   }
@@ -95,62 +105,52 @@ export async function ensureGuestUserRegistered(): Promise<string | null> {
   pendingRegistration = (async () => {
     try {
       const visitorId = getOrCreateGuestVisitorId();
-      const cachedUserId = localStorage.getItem('fastcutz_sb_user_id') || getCookie('fastcutz_sb_uid');
-      const cachedVisitorUid = localStorage.getItem('fastcutz_sb_user_uid');
+      const isRegisteredInStorage =
+        typeof localStorage !== 'undefined' &&
+        localStorage.getItem('fastcutz_user_registered_uid') === visitorId;
+      const isRegisteredInCookie = getCookie('fastcutz_uid_synced') === visitorId;
 
-      if (cachedUserId && cachedVisitorUid === visitorId) {
-        return cachedUserId;
+      if (isRegisteredInStorage || isRegisteredInCookie) {
+        if (!isRegisteredInStorage && typeof localStorage !== 'undefined') {
+          localStorage.setItem('fastcutz_user_registered_uid', visitorId);
+        }
+        if (!isRegisteredInCookie) {
+          setCookie('fastcutz_uid_synced', visitorId, 2592000);
+        }
+        return true;
       }
 
       const client = getSupabaseClient();
       if (!client) {
-        return cachedUserId || null;
+        return false;
       }
 
-      const guestEmail = `${visitorId}@guest.fastcutz.ai`;
+      const guestEmail = getGuestEmail();
 
-      // Insert guest row using exact users columns: name, email, device_type
-      const { data, error } = await client
-        .from('users')
-        .insert([
-          {
-            name: 'Guest Creator',
-            email: guestEmail,
-            device_type: getDeviceType(),
-          },
-        ])
-        .select('id')
-        .single();
+      // INSERT-only RLS safe: plain insert sends PostgREST 'Prefer: return=minimal'
+      // Strictly avoid .select() and .upsert() which require SELECT permission
+      const { error } = await client.from('users').insert([
+        {
+          name: 'Guest Creator',
+          email: guestEmail,
+          device_type: getDeviceType(),
+        },
+      ]);
 
-      if (!error && data?.id) {
-        const idStr = String(data.id);
-        localStorage.setItem('fastcutz_sb_user_id', idStr);
-        localStorage.setItem('fastcutz_sb_user_uid', visitorId);
-        setCookie('fastcutz_sb_uid', idStr, 2592000);
-        return idStr;
-      }
-
-      // If duplicate-email / conflict occurred, safely fetch/reuse the existing row
-      if (error) {
-        const { data: existingUser } = await client
-          .from('users')
-          .select('id')
-          .eq('email', guestEmail)
-          .maybeSingle();
-
-        if (existingUser?.id) {
-          const idStr = String(existingUser.id);
-          localStorage.setItem('fastcutz_sb_user_id', idStr);
-          localStorage.setItem('fastcutz_sb_user_uid', visitorId);
-          setCookie('fastcutz_sb_uid', idStr, 2592000);
-          return idStr;
+      // If insert succeeded or if already registered (23505 unique constraint violation on email)
+      if (!error || error.code === '23505') {
+        if (typeof localStorage !== 'undefined') {
+          localStorage.setItem('fastcutz_user_registered_uid', visitorId);
         }
+        setCookie('fastcutz_uid_synced', visitorId, 2592000);
+        return true;
       }
 
-      return cachedUserId || null;
+      console.error('[Fastcutz Supabase] users insert failed:', error);
+      return false;
     } catch (err) {
-      console.warn('[Fastcutz Supabase] ensureGuestUserRegistered notice:', err);
-      return null;
+      console.error('[Fastcutz Supabase] ensureGuestUserRegistered error:', err);
+      return false;
     } finally {
       pendingRegistration = null;
     }
@@ -229,13 +229,16 @@ export async function registerUser(name: string, email: string): Promise<Operati
     ]);
 
     if (error) {
-      console.warn('[Fastcutz Supabase] users insert notice:', error.message);
+      if (error.code === '23505') {
+        return { ok: true };
+      }
+      console.error('[Fastcutz Supabase] users insert failed:', error);
       return { ok: false, error: error.message };
     }
 
     return { ok: true };
   } catch (err) {
-    console.warn('[Fastcutz Supabase] registerUser error:', err);
+    console.error('[Fastcutz Supabase] registerUser error:', err);
     return { ok: false, error: (err as Error).message };
   }
 }
@@ -258,8 +261,11 @@ export async function logExportEvent(params: {
   await ensureGuestUserRegistered();
 
   const profile = getSavedUserProfile();
-  const visitorId = getOrCreateGuestVisitorId();
-  const user_email = profile && !profile.isGuest && profile.email ? profile.email : `${visitorId}@guest.fastcutz.ai`;
+  const visitorEmail = getGuestEmail();
+  const user_email =
+    profile && !profile.isGuest && profile.email && profile.email.includes('@')
+      ? profile.email.trim().toLowerCase()
+      : visitorEmail;
 
   try {
     const { error } = await client.from('export_events').insert([
@@ -273,13 +279,13 @@ export async function logExportEvent(params: {
     ]);
 
     if (error) {
-      console.warn('[Fastcutz Supabase] export_events insert notice:', error.message);
+      console.error('[Fastcutz Supabase] export_events insert failed:', error);
       return { ok: false, error: error.message };
     }
 
     return { ok: true };
   } catch (err) {
-    console.warn('[Fastcutz Supabase] logExportEvent error:', err);
+    console.error('[Fastcutz Supabase] logExportEvent error:', err);
     return { ok: false, error: (err as Error).message };
   }
 }
@@ -295,17 +301,19 @@ export async function submitUserFeedback(params: {
 }): Promise<OperationResult> {
   const client = getSupabaseClient();
   if (!client) {
-    return { ok: false, skipped: true };
+    return { ok: false, skipped: true, error: 'Database is not configured' };
   }
 
   // Ensure guest user is registered so feedback attaches to a valid user
   await ensureGuestUserRegistered();
 
   const savedProfile = getSavedUserProfile();
-  const visitorId = getOrCreateGuestVisitorId();
+  const visitorEmail = getGuestEmail();
   const user_email =
     params.emailOverride?.trim().toLowerCase() ||
-    (savedProfile && !savedProfile.isGuest ? savedProfile.email : `${visitorId}@guest.fastcutz.ai`);
+    (savedProfile && !savedProfile.isGuest && savedProfile.email && savedProfile.email.includes('@')
+      ? savedProfile.email.trim().toLowerCase()
+      : visitorEmail);
 
   try {
     const { error } = await client.from('user_feedback').insert([
@@ -318,13 +326,13 @@ export async function submitUserFeedback(params: {
     ]);
 
     if (error) {
-      console.warn('[Fastcutz Supabase] user_feedback insert notice:', error.message);
+      console.error('[Fastcutz Supabase] user_feedback insert failed:', error);
       return { ok: false, error: error.message };
     }
 
     return { ok: true };
   } catch (err) {
-    console.warn('[Fastcutz Supabase] submitUserFeedback error:', err);
+    console.error('[Fastcutz Supabase] submitUserFeedback error:', err);
     return { ok: false, error: (err as Error).message };
   }
 }
