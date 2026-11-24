@@ -1585,14 +1585,29 @@ export const useEditorStore = create<EditorState>((set, get) => ({
 
       const p = payload as {
         clipId?: string;
-        type: TransitionType;
-        durationMs: number;
+        type?: TransitionType;
+        durationMs?: number;
         targetMs?: number;
         usePlayhead?: boolean;
       };
 
+      const transitionDurationMs = p.durationMs || 400;
       const currentProjectMs = playheadMs ?? store.currentProjectMs;
       const totalDuration = store.project?.totalProjectDurationMs || 0;
+
+      // 1. If user specified an explicit target time that is out of bounds (<300ms or >totalDuration - 300ms):
+      // Do NOT silently fall back to 00:00. Abort cleanly with clear instruction.
+      if (p.targetMs != null && (p.targetMs < 300 || p.targetMs > totalDuration - 300)) {
+        store.addCommandLog({
+          id: `cmd_${Date.now()}`,
+          rawInput,
+          timestamp: Date.now(),
+          parsedCommand: command,
+          status: 'WARNING',
+          appliedMessage: `Cannot place Fade at ${(p.targetMs / 1000).toFixed(1)}s — pick a time between 0.3s and ${Math.max(0.3, (totalDuration - 300) / 1000).toFixed(1)}s.`
+        });
+        return;
+      }
 
       // Resolve target position: cmd.targetMs ?? (cmd.usePlayhead || currentProjectMs > 300 ? currentProjectMs : null)
       const resolvedMs = p.targetMs ?? (p.usePlayhead || currentProjectMs > 300 ? currentProjectMs : null);
@@ -1600,7 +1615,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       if (resolvedMs !== null && totalDuration > 0) {
         const clampedMs = Math.max(0, Math.min(resolvedMs, totalDuration));
 
-        // 1. Check if within 800ms of an existing cut boundary between two adjacent 'ACTIVE' clips
+        // Check if any non-last 'ACTIVE' clip has an existing cut boundary within 800ms
         const nonDeleted = store.project!.items.filter(it => it.status !== 'DELETED');
         let boundaryClip: TimelineItem | null = null;
 
@@ -1616,19 +1631,19 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         }
 
         if (boundaryClip) {
-          store.setTransition(boundaryClip.id, p.type, p.durationMs);
+          store.setTransition(boundaryClip.id, 'fade', transitionDurationMs);
           store.addCommandLog({
             id: `cmd_${Date.now()}`,
             rawInput,
             timestamp: Date.now(),
             parsedCommand: command,
             status: 'SUCCESS',
-            appliedMessage: `Applied ${p.type} transition (${p.durationMs}ms) at ${(boundaryClip.projectEndMs / 1000).toFixed(1)}s.`
+            appliedMessage: `Applied Fade transition at ${(boundaryClip.projectEndMs / 1000).toFixed(1)}s (included in MP4 export).`
           });
           return;
         }
 
-        // 2. Otherwise, if resolvedMs falls strictly inside an 'ACTIVE' clip (at least 300ms from start & end)
+        // Otherwise, locate the 'ACTIVE' clip containing resolvedMs, split it at resolvedMs
         if (clampedMs >= 300 && clampedMs <= totalDuration - 300) {
           const clipToSplit = nonDeleted.find(
             it => it.status === 'ACTIVE' && clampedMs > it.projectStartMs + 300 && clampedMs < it.projectEndMs - 300
@@ -1642,7 +1657,14 @@ export const useEditorStore = create<EditorState>((set, get) => ({
             );
 
             if (newlyCreatedClip) {
-              newlyCreatedClip.transitionOut = { type: p.type, durationMs: p.durationMs };
+              newlyCreatedClip.transitionOut = { type: 'fade', durationMs: transitionDurationMs };
+            }
+
+            const rightClip = splitItems.find(
+              it => it.status === 'ACTIVE' && Math.abs(it.projectStartMs - clampedMs) <= 50
+            );
+            if (rightClip) {
+              rightClip.transitionOut = { type: 'none', durationMs: 0 };
             }
 
             const newTotalDuration = getTotalProjectDuration(splitItems);
@@ -1661,24 +1683,37 @@ export const useEditorStore = create<EditorState>((set, get) => ({
               timestamp: Date.now(),
               parsedCommand: command,
               status: 'SUCCESS',
-              appliedMessage: `Applied ${p.type} transition (${p.durationMs}ms) at ${(clampedMs / 1000).toFixed(1)}s.`
+              appliedMessage: `Applied Fade transition at ${(clampedMs / 1000).toFixed(1)}s (included in MP4 export).`
             });
             return;
           }
         }
       }
 
-      // Fallback: clip 0 or selected active clip
-      const selectedActive = activeItems.find(it => it.id === store.selectedItemId);
-      const targetId = p.clipId || (selectedActive ? selectedActive.id : activeItems[0].id);
-      store.setTransition(targetId, p.type, p.durationMs);
+      // Only if resolvedMs === null:
+      // If only 1 clip exists and playhead is at 0.0s, guide user instead of slapping FADE onto 00:00
+      if (activeItems.length < 2) {
+        store.addCommandLog({
+          id: `cmd_${Date.now()}`,
+          rawInput,
+          timestamp: Date.now(),
+          parsedCommand: command,
+          status: 'WARNING',
+          appliedMessage: "Move the playhead or specify a timestamp (e.g., 'Add fade transition at 0:05') to place a Fade."
+        });
+        return;
+      }
+
+      // If >= 2 active clips exist, apply to first existing cut boundary
+      const targetId = activeItems[0].id;
+      store.setTransition(targetId, 'fade', transitionDurationMs);
       store.addCommandLog({
         id: `cmd_${Date.now()}`,
         rawInput,
         timestamp: Date.now(),
         parsedCommand: command,
         status: 'SUCCESS',
-        appliedMessage: `Applied ${p.type} transition (${p.durationMs}ms).`
+        appliedMessage: `Applied Fade transition at ${(activeItems[0].projectEndMs / 1000).toFixed(1)}s (included in MP4 export).`
       });
     } else if (action === 'ENHANCE_AUDIO') {
       store.toggleVoiceEnhance(payload.enabled);

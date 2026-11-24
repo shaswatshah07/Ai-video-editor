@@ -281,13 +281,13 @@ export const Screen3Export: React.FC = () => {
 
       {/* Main Export Content */}
       <main className="max-w-4xl mx-auto w-full my-3 sm:my-5 space-y-4 sm:space-y-5">
-        {/* Visible Warnings for Preview-only items (Step 2.d) */}
-        {exportResult && exportResult.warnings.length > 0 && (
+        {/* Visible Warnings for other export items if any */}
+        {exportResult && exportResult.warnings.filter(w => !w.toLowerCase().includes('transition')).length > 0 && (
           <div className="bg-[#FEF3C7] dark:bg-[#78350F]/40 border border-[#F59E0B]/50 dark:border-[#F59E0B]/40 rounded-xl p-3 flex items-start space-x-2.5 text-xs text-[#92400E] dark:text-[#FCD34D]">
             <AlertTriangle className="w-4 h-4 text-[#D97706] dark:text-[#FBBF24] flex-shrink-0 mt-0.5" />
             <div className="space-y-0.5">
               <span className="font-semibold text-[#92400E] dark:text-[#FCD34D]">Notice:</span>
-              <p>{exportResult.warnings.join(' ')}</p>
+              <p>{exportResult.warnings.filter(w => !w.toLowerCase().includes('transition')).join(' ')}</p>
             </div>
           </div>
         )}

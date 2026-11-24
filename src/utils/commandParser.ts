@@ -287,7 +287,7 @@ function isUnsupportedFeatureQuery(lower: string, text: string): AICommand | nul
       action: 'UNSUPPORTED_OPERATION',
       payload: {
         feature: text,
-        message: 'That editing feature is currently not available in Fastcutz.ai. Supported commands: cutting/trimming timestamps, inserting memes, adding Fade/Wipe transitions, Voice Enhance, and Reduce Low Hum (Basic).'
+        message: 'That editing feature is currently not available in Fastcutz.ai. Supported commands: cutting/trimming timestamps, inserting memes, adding Fade transitions, Voice Enhance, and Reduce Low Hum (Basic).'
       },
       explanation: 'That editing feature is currently not available in Fastcutz.ai.'
     };
@@ -406,13 +406,22 @@ function parseSupportedAction(
   }
 
   // 4. TRANSITIONS
-  if (lower.includes('transition') || lower.includes('fade') || lower.includes('wipe') || lower.includes('dissolve') || lower.includes('slideup')) {
-    let type: 'fade' | 'dissolve' | 'wipeleft' | 'wiperight' | 'slideup' = 'fade';
-    if (lower.includes('dissolve')) type = 'dissolve';
-    else if (lower.includes('wipeleft') || lower.includes('wipe left')) type = 'wipeleft';
-    else if (lower.includes('wiperight') || lower.includes('wipe right')) type = 'wiperight';
-    else if (lower.includes('slideup') || lower.includes('slide up')) type = 'slideup';
-    else if (lower.includes('fade')) type = 'fade';
+  if (lower.includes('transition') || lower.includes('fade') || lower.includes('wipe') || lower.includes('dissolve') || lower.includes('slide') || lower.includes('spin') || lower.includes('zoom')) {
+    // Requests explicitly asking for dissolve, wipe, wipeleft, wiperight, slide, slideup, zoom transition, or spin -> return UNSUPPORTED
+    const unsupportedMatch = lower.match(/\b(dissolve|wipe\s*left|wipe\s*right|wipe|slide\s*up|slide|zoom\s*transition|spin)\b/i);
+    if (unsupportedMatch && !lower.includes('fade')) {
+      return {
+        action: 'UNSUPPORTED_OPERATION',
+        payload: {
+          feature: 'transition_style',
+          message: "Only Fade transitions are currently supported in Fastcutz.ai (and baked into your MP4 export). Try 'Add fade transition at 0:11'."
+        },
+        explanation: 'Only Fade transitions are currently supported in Fastcutz.ai (and baked into your MP4 export).'
+      };
+    }
+
+    // Generic transition or fade prompts -> ADD_TRANSITION with type 'fade'
+    const type = 'fade';
 
     // Parse optional target timestamps: "at 0:11 sec", "at 0:11", "at 11s", "at 11.5 seconds"
     let targetMs: number | undefined = undefined;
@@ -438,10 +447,10 @@ function parseSupportedAction(
         ...(usePlayhead ? { usePlayhead: true } : {})
       } as any,
       explanation: targetMs !== undefined
-        ? `Adding ${type} transition at ${(targetMs / 1000).toFixed(1)}s.`
+        ? `Adding Fade transition at ${(targetMs / 1000).toFixed(1)}s (included in MP4 export).`
         : usePlayhead
-        ? `Adding ${type} transition at current playhead.`
-        : `Adding ${type} transition to current cut point.`
+        ? 'Adding Fade transition at current playhead (included in MP4 export).'
+        : 'Adding Fade transition to cut point (included in MP4 export).'
     };
   }
 

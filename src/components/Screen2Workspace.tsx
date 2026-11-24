@@ -1272,6 +1272,40 @@ export const Screen2Workspace: React.FC = () => {
         project,
         Boolean(bgMusic)
       );
+
+      // Deterministic Safety Net for ADD_TRANSITION
+      if (command.action === 'ADD_TRANSITION') {
+        const payload = command.payload as any;
+        payload.type = 'fade';
+
+        if (payload.targetMs == null) {
+          const lowerQuery = query.toLowerCase();
+          // Match m:ss (e.g. 0:11, 0:11 sec, 1:05s, with or without at/@)
+          const mssMatch = lowerQuery.match(/(?:at|@)?\s*\b(\d+):([0-5]\d(?:\.\d+)?)\s*(?:s|se|sec|secs|seconds)?\b/i);
+          if (mssMatch) {
+            const mins = parseInt(mssMatch[1], 10);
+            const secs = parseFloat(mssMatch[2]);
+            if (!isNaN(mins) && !isNaN(secs)) {
+              payload.targetMs = Math.round((mins * 60 + secs) * 1000);
+            }
+          } else {
+            // Match (?:at|@)\s*(\d+(?:\.\d+)?)\s*(?:s|se|sec|secs|seconds)?\b OR \b(\d+(?:\.\d+)?)\s*(?:s|se|sec|secs|seconds)\b
+            const secMatch = lowerQuery.match(/(?:at|@)\s*(\d+(?:\.\d+)?)\s*(?:s|se|sec|secs|seconds)?\b/i) ||
+                             lowerQuery.match(/\b(\d+(?:\.\d+)?)\s*(?:s|se|sec|secs|seconds)\b/i);
+            if (secMatch) {
+              const secs = parseFloat(secMatch[1]);
+              if (!isNaN(secs)) {
+                payload.targetMs = Math.round(secs * 1000);
+              }
+            }
+          }
+        }
+
+        if (payload.targetMs == null && /\b(here|marker|playhead|current\s*position)\b/i.test(query)) {
+          payload.usePlayhead = true;
+        }
+      }
+
       await applyAICommand(command, query, currentProjectMs);
     } catch (err: unknown) {
       console.warn('Command processing failed:', err);
@@ -3455,9 +3489,7 @@ export const Screen2Workspace: React.FC = () => {
                       onPointerDown={(e) => e.stopPropagation()}
                       onClick={(e) => {
                         e.stopPropagation();
-                        const types: TransitionType[] = ['none', 'fade', 'dissolve', 'wipeleft', 'slideup'];
-                        const curIdx = types.indexOf(item.transitionOut?.type || 'none');
-                        const nextType = types[(curIdx + 1) % types.length];
+                        const nextType: TransitionType = item.transitionOut?.type === 'fade' ? 'none' : 'fade';
                         setTransition(item.id, nextType);
                       }}
                       className={`absolute right-0 top-1/2 -translate-y-1/2 translate-x-1/2 w-4 h-4 rounded-full flex items-center justify-center text-[8px] z-30 shadow cursor-pointer transition-all ${
@@ -3465,7 +3497,7 @@ export const Screen2Workspace: React.FC = () => {
                           ? 'bg-[#D96B27] dark:bg-[#E8632A] border border-white dark:border-[#171615] text-white hover:bg-[#C25E1F] dark:hover:bg-[#F2743D] scale-110'
                           : 'bg-white dark:bg-[#24221F] border border-[#E5E2DC] dark:border-[#2C2A27] hover:border-[#D96B27] dark:hover:border-[#E8632A] text-[#66625B] dark:text-[#A39E95] hover:text-[#D96B27] dark:hover:text-[#E8632A]'
                       }`}
-                      title={`Click to toggle clip transition (Fade / None) - Current: ${item.transitionOut?.type || 'none'}`}
+                      title="Toggle Fade transition (included in MP4 export)"
                     >
                       {item.transitionOut && item.transitionOut.type !== 'none' && (
                         <span className="absolute -top-4 left-1/2 -translate-x-1/2 px-1 py-0.5 rounded bg-[#D96B27] dark:bg-[#E8632A] text-white font-bold text-[8px] uppercase tracking-wider shadow whitespace-nowrap pointer-events-none">

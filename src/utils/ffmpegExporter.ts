@@ -247,15 +247,8 @@ export async function exportProjectVideo(
     throw new Error('Cannot export: No active source clips remaining on timeline.');
   }
 
-  // Check for preview-only transitions
+  // Warnings collection
   const warnings: string[] = [];
-  const hasTransitions = project.items.some(
-    (it) => it.transitionOut && it.transitionOut.type !== 'none' && it.status !== 'DELETED'
-  );
-
-  if (hasTransitions) {
-    warnings.push('Transitions are preview-only and will be supported in export soon.');
-  }
 
   // Calculate expected total duration across all active items
   const totalExpectedMs = activeItems.reduce(
@@ -429,10 +422,27 @@ export async function exportProjectVideo(
       const item = activeItems[i];
       const startSec = ((item.sourceStartMs || 0) / 1000).toFixed(3);
       const endSec = ((item.sourceEndMs || item.durationMs) / 1000).toFixed(3);
-      const durSec = Math.max(0.01, (item.sourceEndMs - item.sourceStartMs) / 1000).toFixed(3);
+      const segDur = Math.max(0.01, (item.sourceEndMs - item.sourceStartMs) / 1000);
+      const durSec = segDur.toFixed(3);
+
+      // Dip-to-black Fade: baked directly per segment with zero xfade drift
+      const hasFadeOut = i < N - 1 && Boolean(activeItems[i].transitionOut && activeItems[i].transitionOut.type && activeItems[i].transitionOut.type !== 'none');
+      const hasFadeIn = i > 0 && Boolean(activeItems[i - 1].transitionOut && activeItems[i - 1].transitionOut.type && activeItems[i - 1].transitionOut.type !== 'none');
+
+      const fadeInDur = hasFadeIn ? Math.min(0.3, segDur * 0.4) : 0;
+      const fadeOutDur = hasFadeOut ? Math.min(0.3, segDur * 0.4) : 0;
+
+      let segFadeFilters = '';
+      if (fadeInDur > 0.02) {
+        segFadeFilters += `,fade=t=in:st=0:d=${fadeInDur.toFixed(3)}`;
+      }
+      if (fadeOutDur > 0.02) {
+        const fadeOutStart = Math.max(0, segDur - fadeOutDur);
+        segFadeFilters += `,fade=t=out:st=${fadeOutStart.toFixed(3)}:d=${fadeOutDur.toFixed(3)}`;
+      }
 
       if (item.kind === 'SOURCE_CLIP') {
-        filterParts.push(`[0:v]trim=start=${startSec}:end=${endSec},setpts=PTS-STARTPTS,${normVideo}[v${i}]`);
+        filterParts.push(`[0:v]trim=start=${startSec}:end=${endSec},setpts=PTS-STARTPTS,${normVideo}${segFadeFilters}[v${i}]`);
 
         if (sourceHasAudio) {
           filterParts.push(`[0:a]atrim=start=${startSec}:end=${endSec},asetpts=PTS-STARTPTS,aresample=44100:async=1,aformat=sample_fmts=fltp:channel_layouts=stereo${audioFilters},apad,atrim=0:${durSec}[a${i}]`);
@@ -448,7 +458,7 @@ export async function exportProjectVideo(
         }
         const inputIdx = clipInfo.inputIndex;
 
-        filterParts.push(`[${inputIdx}:v]trim=start=${startSec}:end=${endSec},setpts=PTS-STARTPTS,${normVideo}[v${i}]`);
+        filterParts.push(`[${inputIdx}:v]trim=start=${startSec}:end=${endSec},setpts=PTS-STARTPTS,${normVideo}${segFadeFilters}[v${i}]`);
 
         if (clipInfo.hasAudio) {
           const segAudioFilters = isUserClip ? audioFilters : '';
