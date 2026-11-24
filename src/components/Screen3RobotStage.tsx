@@ -208,6 +208,148 @@ const RobotAvatar: React.FC<RobotAvatarProps> = ({
 };
 
 /**
+ * Seated Fastcutz Robot Mascot in 3/4 Right-Facing Side Profile
+ * Specially designed for the right-facing vintage rocking chair:
+ * - Leaning back comfortably (~ -8deg) against the left slatted backrest
+ * - Glossy dark visor shifted toward the right side of the head looking forward-right
+ * - Joyful curved ^ ^ eyes while swinging; downward-right eyes reading open book
+ * - Open terracotta hardcover book held forward-right angled toward the visor
+ */
+interface SeatedRobotAvatarProps {
+  eyeMode?: 'happy' | 'reading';
+  holdingItem?: 'book' | null;
+}
+
+const SeatedRobotAvatar: React.FC<SeatedRobotAvatarProps> = ({
+  eyeMode = 'happy',
+  holdingItem = null,
+}) => {
+  return (
+    <div className="relative w-[56px] sm:w-[64px] h-[58px] sm:h-[66px] flex items-center justify-center">
+      <svg
+        viewBox="0 0 64 64"
+        className="w-full h-full overflow-visible drop-shadow-[0_4px_10px_rgba(0,0,0,0.18)]"
+        fill="none"
+        xmlns="http://www.w3.org/2000/svg"
+      >
+        <g>
+          {/* Top Antenna Stem - angled back-left */}
+          <line x1="26" y1="17" x2="20" y2="8" stroke="#94A3B8" strokeWidth="2" strokeLinecap="round" />
+          {/* Glowing Terracotta Antenna Bulb */}
+          <circle cx="19" cy="6.5" r="3.5" fill="#E8632A" />
+          <circle cx="19" cy="6.5" r="5.5" fill="#E8632A" opacity="0.28" />
+          <circle cx="17.8" cy="5.2" r="1" fill="#FFFFFF" opacity="0.9" />
+
+          {/* Left Ear Bolt Accent (Back of Head) */}
+          <rect x="4" y="27" width="3" height="10" rx="1.5" fill="#CBD5E1" stroke="#94A3B8" strokeWidth="1" />
+
+          {/* Sleek Crisp White/Silver Head Shell */}
+          <rect
+            x="6"
+            y="16"
+            width="48"
+            height="36"
+            rx="14"
+            fill="#F4F6FA"
+            stroke="#94A3B8"
+            strokeWidth="1.5"
+          />
+
+          {/* Curved Dark Glossy Visor Face - shifted toward front-right (3/4 Profile) */}
+          <rect
+            x="18"
+            y="22"
+            width="34"
+            height="22"
+            rx="8"
+            fill="#0F172A"
+            stroke="#1E293B"
+            strokeWidth="1"
+          />
+          {/* Visor Glare Curve */}
+          <path
+            d="M22 25 C29 23.5 42 24 48 26"
+            stroke="#334155"
+            strokeWidth="1"
+            strokeLinecap="round"
+          />
+
+          {/* Expressive Eyes looking forward-right */}
+          {eyeMode === 'happy' ? (
+            /* Joyful Curved ^ ^ Eyes facing forward-right while swinging */
+            <g>
+              <path
+                d="M 23 33 Q 26.5 28 30 33"
+                stroke="#22D3EE"
+                strokeWidth="2.5"
+                strokeLinecap="round"
+                fill="none"
+              />
+              <path
+                d="M 37 33 Q 40.5 28 44 33"
+                stroke="#22D3EE"
+                strokeWidth="2.5"
+                strokeLinecap="round"
+                fill="none"
+              />
+            </g>
+          ) : (
+            /* Downward-right glancing eyes while reading book */
+            <g>
+              <rect x="23" y="32" width="7" height="6" rx="3" fill="#22D3EE" />
+              <circle cx="28" cy="35" r="1" fill="#FFFFFF" />
+              <rect x="37" y="32" width="7" height="6" rx="3" fill="#22D3EE" />
+              <circle cx="42" cy="35" r="1" fill="#FFFFFF" />
+            </g>
+          )}
+
+          {/* Cute Mint Smile Line - shifted right */}
+          <path
+            d="M30 39.5 Q34 41.5 37 39.5"
+            stroke="#10B981"
+            strokeWidth="1.2"
+            strokeLinecap="round"
+            fill="none"
+            opacity="0.9"
+          />
+
+          {/* Compact Rounded Paws - positioned in lap holding forward */}
+          <ellipse cx="22" cy="51" rx="3.5" ry="3" fill="#E2E8F0" stroke="#94A3B8" strokeWidth="1" />
+          <ellipse cx="45" cy="50" rx="4.5" ry="3.5" fill="#E2E8F0" stroke="#94A3B8" strokeWidth="1" />
+        </g>
+      </svg>
+
+      {/* Held Item: Open Mini Hardcover Book angled toward Visor */}
+      {holdingItem === 'book' && (
+        <div className="absolute -bottom-2.5 right-[-4px] z-30 pointer-events-none drop-shadow-[0_2px_6px_rgba(0,0,0,0.25)] transform rotate-[12deg]">
+          <div className="relative w-[34px] sm:w-[38px] h-[22px] sm:h-[25px] flex items-center justify-center">
+            {/* Terracotta Book Cover Spine & Backing */}
+            <div className="absolute inset-0 bg-[#D96B27] border border-[#B45309] rounded-[3px] shadow-sm" />
+            {/* Open Pages Spread (Cream White with Spine Fold) */}
+            <div className="relative z-10 w-[30px] sm:w-[34px] h-[18px] sm:h-[20px] bg-[#FEF3C7] border border-[#FDE68A] rounded-[2px] flex items-center justify-between px-1 py-0.5 shadow-inner">
+              {/* Left Page Text Lines */}
+              <div className="flex-1 flex flex-col justify-between h-full pr-0.5 border-r border-[#D97706]/30">
+                <div className="w-full h-[1.5px] bg-[#44403C] rounded-full" />
+                <div className="w-3/4 h-[1.5px] bg-[#57534E] rounded-full" />
+                <div className="w-4/5 h-[1.5px] bg-[#78716C] rounded-full" />
+              </div>
+              {/* Right Page Text Lines */}
+              <div className="flex-1 flex flex-col justify-between h-full pl-0.5">
+                <div className="w-full h-[1.5px] bg-[#44403C] rounded-full" />
+                <div className="w-4/5 h-[1.5px] bg-[#57534E] rounded-full" />
+                <div className="w-2/3 h-[1.5px] bg-[#78716C] rounded-full" />
+              </div>
+            </div>
+            {/* Ribbon Bookmark Tail */}
+            <div className="absolute -bottom-1 right-2.5 w-1 h-2 bg-[#DC2626] rounded-b-xs transform rotate-12" />
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+/**
  * Sticky-Note Edit Board (Left Side in Scene A)
  */
 const StickyNotesBoard: React.FC<{ isReading: boolean }> = ({ isReading }) => {
@@ -704,9 +846,9 @@ export const Screen3RobotStage: React.FC<Screen3RobotStageProps> = ({ mode }) =>
           {/* Layer 1: Back of Rocking Chair (backrest + seat cushion + back runner) */}
           <RockingChairBack />
 
-          {/* Layer 2: Seated Fastcutz Robot (Sandwiched snugly inside chair) */}
+          {/* Layer 2: Seated Fastcutz Robot (Sandwiched snugly inside chair in 3/4 profile) */}
           {isSeated && (
-            <div className="absolute left-[36px] sm:left-[42px] bottom-[34px] sm:bottom-[38px] z-10 scale-[0.86] sm:scale-[0.90] origin-bottom">
+            <div className="absolute left-[34px] sm:left-[40px] bottom-[34px] sm:bottom-[38px] z-10 scale-[0.86] sm:scale-[0.90] origin-bottom transform -rotate-[8deg]">
               {/* Floating Speech Pill */}
               {donePhase === 'swinging' && (
                 <div className="absolute -top-7 left-1/2 -translate-x-1/2 whitespace-nowrap px-2 py-0.5 rounded-full bg-white dark:bg-[#1E1D1B] border border-[#D96B27] dark:border-[#E8632A] text-[#D96B27] dark:text-[#E8632A] font-mono text-[9px] font-bold shadow-md animate-bounce">
@@ -714,7 +856,7 @@ export const Screen3RobotStage: React.FC<Screen3RobotStageProps> = ({ mode }) =>
                 </div>
               )}
 
-              <RobotAvatar
+              <SeatedRobotAvatar
                 eyeMode={donePhase === 'swinging' ? 'happy' : 'reading'}
                 holdingItem={donePhase === 'reading' ? 'book' : null}
               />

@@ -120,12 +120,29 @@ If the user requests an unsupported feature, ALWAYS return action: 'UNSUPPORTED_
 - Non-library memes (e.g. 'rickroll'): "That meme is not in the built-in library. Workaround: Choose one from 'Choose a Meme' or upload your own .mp4 under 'Insert Your Own'."
 
 RULE B — CREATOR & BACKGROUND MUSIC SUGGESTOR (ASSISTANT_ADVICE):
-If the user asks for creative ideas, background music recommendations, pacing advice, or soundtrack choices (e.g. "Suggest background music for a tech review", "what music should I use for a fast vlog", "give me music ideas", "how should I pace this video"):
+If the user asks for creative ideas, background music recommendations, pacing advice, or soundtrack choices (e.g. "Suggest trendy background music for Meesho finds unboxing reel", "BGM for gaming stream intro", "song for college vlog", "suggest background music for tech review", "what music should I use"):
 Return action: 'ASSISTANT_ADVICE' with payload { "message": string } and an explanation.
-The message MUST include:
-1. Recommended music genre and target BPM/mood matching their topic (e.g. Tech -> Minimal Ambient Electronic/Chillhop ~90-105 BPM; Vlog -> Chill Lo-Fi or Upbeat Acoustic ~100-115 BPM; Gaming -> Synthwave/EDM ~125-135 BPM; Workout -> Fast Trap/Phonk ~130-145 BPM).
-2. Free, royalty-free sources where they can download safe tracks (e.g. YouTube Audio Library, Pixabay Music, Free Music Archive).
-3. Concrete Fastcutz.ai tip: Click '+ Add Music' in the top bar to load the audio file, and set the music volume slider to 15–20% so speaker voice stays crisp and prominent.
+The message MUST return 3–4 actual popular Bollywood / Indian Reels / Shorts tracks matching the video vibe with a 1-line reason each (NEVER dry generic genres like "Minimal Ambient Electronic"):
+- Meesho Finds / Unboxing / Fashion / Haul:
+  1. Tauba Tauba (catchy beat for stylish product reveals)
+  2. Aaj Ki Raat (glamorous vibe for jewellery/accessories)
+  3. Laal Peeli Akhiyaan (upbeat energetic unboxing transitions)
+  4. What Jhumka? (playful cute finds energy)
+- Gaming / Stream Intro / Montages:
+  1. Metamorphosis (Interworld) / Brazilian Phonk
+  2. Aarambh Hai Prachand (Trap/Phonk Remix)
+  3. Kalaastar / Brown Munde (high-hype beat drop)
+  4. NCS — On & On / Mortals (classic stream hype)
+- Travel / College Vlog / Aesthetic:
+  1. Husn (Anuv Jain) or Ilahi (warm aesthetic/travel feel)
+  2. Sajni / Choo Lo (chill montage vibe)
+  3. Kasoor / Safarnama (upbeat road-trip/campus energy)
+- Comedy / Tech / Talking-Head / Reviews:
+  1. Sneaky Snitch / quirky funk groove
+  2. Desi Lo-Fi instrumental (clean under voice)
+  3. Badtameez Dil (instrumental intro hook)
+Always conclude with:
+"Tip: Use Trending Audio inside Instagram/YouTube for copyright safety, or add an MP3 via '+ Music' at 15% volume under your voice."
 
 PROJECT CONTEXT:
 - Current playhead: ${currentProjectMs || 0}ms

@@ -6,7 +6,10 @@ import { ProjectEDL } from '../types/edl';
  * Parses time strings like "0:15", "1:20", "15s", "2.5s", "3 s", "10" into integer milliseconds.
  */
 function parseTimeStringToMs(raw: string): number | null {
-  const clean = raw.trim().toLowerCase().replace(/\s+/g, '');
+  let clean = raw.trim().toLowerCase().replace(/\s+/g, '');
+
+  // Strip optional trailing units: seconds, second, secs, sec, se, s
+  clean = clean.replace(/(?:seconds?|secs?|se|s)$/i, '');
 
   // Format MM:SS or M:SS or HH:MM:SS
   if (clean.includes(':')) {
@@ -20,22 +23,16 @@ function parseTimeStringToMs(raw: string): number | null {
     }
   }
 
-  // Format with "s" suffix like "15s", "2.5s", "3s"
-  if (clean.endsWith('s')) {
-    const val = parseFloat(clean.slice(0, -1));
-    return isNaN(val) ? null : Math.round(val * 1000);
-  }
-
   // Pure number as seconds
   const val = parseFloat(clean);
   return isNaN(val) ? null : Math.round(val * 1000);
 }
 
 /**
- * Extracts target timestamp from an explicit time ("at 0:15", "at 10s", "at 3 s", "around 10s").
+ * Extracts target timestamp from an explicit time ("at 0:15", "at 10s", "at 3 s", "around 10s", "at 0:04 sec").
  */
 function extractTargetTimestamp(lower: string, currentProjectMs: number, _project?: ProjectEDL | null): number {
-  const atMatch = lower.match(/(?:at|around)\s+([0-9:.]+\s*s?)/i);
+  const atMatch = lower.match(/(?:at|around|on|near)\s+([0-9:.]+\s*(?:seconds?|secs?|se|s)?)/i);
   if (atMatch) {
     const parsed = parseTimeStringToMs(atMatch[1]);
     if (parsed !== null) return parsed;
@@ -72,39 +69,54 @@ const MEME_SPECIFIC_MATCHERS: MemeMatcher[] = [
 function checkCreatorAdvice(lower: string): AICommand | null {
   const isMusicAdvice =
     /\b(music|bgm|soundtrack|song|beat|track|audio\s*track)\b/i.test(lower) &&
-    /\b(suggest|suggestion|recommend|recommendation|idea|ideas|what|best|good|which|choose|pick|advice|find|need|suitable)\b/i.test(lower);
+    /\b(suggest|suggestion|recommend|recommendation|idea|ideas|what|best|good|which|choose|pick|advice|find|need|suitable|trendy|trending|popular)\b/i.test(lower);
   const isDirectBgmQuery =
-    /^(?:suggest|recommend|find|what)\s+(?:a\s+|some\s+)?(?:bgm|music|song|beat)\b/i.test(lower) ||
-    /\b(?:bgm|music)\s+for\b/i.test(lower) ||
+    /^(?:suggest|recommend|find|what)\s+(?:a\s+|some\s+)?(?:trendy\s+|popular\s+)?(?:bgm|music|song|beat)\b/i.test(lower) ||
+    /\b(?:bgm|music|song)\s+for\b/i.test(lower) ||
     /\b(?:pacing|tempo)\s+advice\b/i.test(lower);
 
   if (!isMusicAdvice && !isDirectBgmQuery) {
     return null;
   }
 
-  let genre = 'Chill Lo-Fi / Acoustic Groove (95–110 BPM)';
-  let mood = 'warm, rhythmic, and universally creator-friendly';
-  let tip = "Click '+ Add Music' in the top bar, select your audio track, and set the slider to 15–20% volume so your voice stays crisp and upfront.";
+  let tracks: string[] = [];
 
-  if (/\b(gaming|gameplay|action|streamer|shooter|rpg|fps|speedrun)\b/i.test(lower)) {
-    genre = 'Synthwave / Cyberpunk or Bass-heavy Electronic (125–135 BPM)';
-    mood = 'high-energy, driving, and keeps viewers engaged during fast gameplay';
-    tip = "Click '+ Add Music' in the top bar to load your track. Keep BGM volume at 15–20% so in-game dialogue and your commentary stay front and center!";
-  } else if (/\b(vlog|travel|daily|story|lifestyle|chill|aesthetic|cooking|cafe)\b/i.test(lower)) {
-    genre = 'Chill Lo-Fi Beats or Upbeat Acoustic Pop (100–115 BPM)';
-    mood = 'relaxing, modern, and adds emotional warmth without competing with talking';
-    tip = "Click '+ Add Music' in the top bar to load your MP3/WAV. Keep volume around 18% for a clean, professional mix.";
-  } else if (/\b(tech|tutorial|unboxing|coding|review|software|explain|guide|education|how-to)\b/i.test(lower)) {
-    genre = 'Minimal Ambient Electronic or Chillhop (90–110 BPM)';
-    mood = 'steady, non-intrusive rhythm that aids focus and eliminates awkward dead silence';
-    tip = "Click '+ Add Music' in the top bar. Set volume around 15% to maintain perfect speech clarity during explanations.";
-  } else if (/\b(workout|gym|fitness|hype|fast|trailer|montage)\b/i.test(lower)) {
-    genre = 'High-Energy Trap or Upbeat EDM (128–145 BPM)';
-    mood = 'powerful, aggressive rhythm that sets a fast visual pace';
-    tip = "Click '+ Add Music' in the top bar. Use the Split (S) shortcut to align your visual cuts directly to the musical beat!";
+  if (/\b(meesho|haul|unboxing|fashion|outfit|grwm|styling|shopping|clothing|jewellery|makeup|beauty|finds)\b/i.test(lower)) {
+    tracks = [
+      '1. Tauba Tauba (catchy beat for stylish product reveals)',
+      '2. Aaj Ki Raat (glamorous vibe for jewellery/accessories)',
+      '3. Laal Peeli Akhiyaan (upbeat energetic unboxing transitions)',
+      '4. What Jhumka? (playful cute finds energy)'
+    ];
+  } else if (/\b(gaming|gameplay|action|streamer|stream|shooter|rpg|fps|montage|speedrun|stream\s*intro)\b/i.test(lower)) {
+    tracks = [
+      '1. Metamorphosis (Interworld) / Brazilian Phonk',
+      '2. Aarambh Hai Prachand (Trap/Phonk Remix)',
+      '3. Kalaastar / Brown Munde (high-hype beat drop)',
+      '4. NCS — On & On / Mortals (classic stream hype)'
+    ];
+  } else if (/\b(travel|vlog|college|campus|daily|story|lifestyle|chill|aesthetic|trip|cafe|friends|roadtrip)\b/i.test(lower)) {
+    tracks = [
+      '1. Husn (Anuv Jain) or Ilahi (warm aesthetic/travel feel)',
+      '2. Sajni / Choo Lo (chill montage vibe)',
+      '3. Kasoor / Safarnama (upbeat road-trip/campus energy)'
+    ];
+  } else if (/\b(comedy|funny|tech|review|tutorial|talking|interview|podcast|coding|explain|guide)\b/i.test(lower)) {
+    tracks = [
+      '1. Sneaky Snitch / quirky funk groove',
+      '2. Desi Lo-Fi instrumental (clean under voice)',
+      '3. Badtameez Dil (instrumental intro hook)'
+    ];
+  } else {
+    tracks = [
+      '1. Tauba Tauba / Aaj Ki Raat (trending high-energy beats for short-form clips)',
+      '2. Husn / Sajni (soulful warm vibe for lifestyle and vlogs)',
+      '3. NCS / Brazilian Phonk (driving energetic tracks for fast edits)'
+    ];
   }
 
-  const message = `• Recommended Genre: ${genre} — ${mood}.\n• Free Royalty-Free Sources: YouTube Audio Library (free, no copyright strikes), Pixabay Music, or Free Music Archive.\n• Fastcutz Workflow Tip: ${tip}`;
+  const tip = "Tip: Use Trending Audio inside Instagram/YouTube for copyright safety, or add an MP3 via '+ Music' at 15% volume under your voice.";
+  const message = `• Trending Bollywood & Reels Tracks:\n${tracks.join('\n')}\n\n• ${tip}`;
 
   return {
     action: 'ASSISTANT_ADVICE',
@@ -249,7 +261,7 @@ function isUnsupportedFeatureQuery(lower: string, text: string): AICommand | nul
   if (hasMemeWord && !hasUserClipWord && !matchedSpecificMeme) {
     const cleaned = lower
       .replace(/(?:insert|add|put|place|play|drop|include)\s+/gi, '')
-      .replace(/(?:at|around|on|near)\s+[0-9:.]+\s*s?/gi, '')
+      .replace(/(?:at|around|on|near)\s+[0-9:.]+\s*(?:seconds?|secs?|se|s)?/gi, '')
       .replace(/\b(a|an|the|funny|hilarious|random|good|cool|quick|short|video|clip|reaction|meme|reaction clip|here|there|now|this|spot|point)\b/gi, ' ')
       .trim();
 
@@ -295,8 +307,8 @@ function parseSupportedAction(
 ): AICommand | null {
   const lower = rawInput.trim().toLowerCase();
 
-  // 1. TRIM / CUT SECTION (Ranges: "cut from 0:10 to 0:15", "trim 5s to 12s", "delete from 10 to 20")
-  const trimRegex = /(?:cut|trim|delete|remove)\s+(?:from|between)?\s*([0-9:.]+\s*s?)\s*(?:to|-|and)\s*([0-9:.]+\s*s?)/i;
+  // 1. TRIM / CUT SECTION (Ranges: "cut from 0:10 to 0:15", "trim 5s to 12s", "delete from 10 to 20", "cut from 0:05 to 0:10 s", "cut from 0:05 to 0:10 sec")
+  const trimRegex = /(?:cut|trim|delete|remove)\s+(?:from|between)?\s*([0-9:.]+\s*(?:seconds?|secs?|se|s)?)\s*(?:to|-|and)\s*([0-9:.]+\s*(?:seconds?|secs?|se|s)?)/i;
   const trimMatch = lower.match(trimRegex);
   if (trimMatch) {
     const startMs = parseTimeStringToMs(trimMatch[1]);
@@ -310,8 +322,8 @@ function parseSupportedAction(
     }
   }
 
-  // Single timestamp split clarification ("split at 10s")
-  const splitCheckRegex = /\bsplit\s+at\s+([0-9:.]+\s*s?)/i;
+  // Single timestamp split clarification ("split at 10s", "split at 0:05 sec")
+  const splitCheckRegex = /\bsplit\s+at\s+([0-9:.]+\s*(?:seconds?|secs?|se|s)?)/i;
   const splitCheckMatch = lower.match(splitCheckRegex);
   if (splitCheckMatch) {
     const atMs = parseTimeStringToMs(splitCheckMatch[1]);
@@ -326,8 +338,8 @@ function parseSupportedAction(
     };
   }
 
-  // Single timestamp cut ("cut at 0:15", "delete at 10s", "trim at 5s")
-  const splitRegex = /(?:cut|delete|trim)\s+at\s+([0-9:.]+\s*s?)/i;
+  // Single timestamp cut ("cut at 0:15", "delete at 10s", "trim at 5s", "cut at 0:05 sec")
+  const splitRegex = /(?:cut|delete|trim)\s+at\s+([0-9:.]+\s*(?:seconds?|secs?|se|s)?)/i;
   const splitMatch = lower.match(splitRegex);
   if (splitMatch) {
     const atMs = parseTimeStringToMs(splitMatch[1]);

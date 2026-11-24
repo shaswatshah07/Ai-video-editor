@@ -2,7 +2,7 @@ import { pipeline, env } from '@huggingface/transformers';
 
 // Configure Transformers.js for browser client-side execution
 env.allowLocalModels = false;
-env.useBrowserCache = true;
+env.useBrowserCache = typeof caches !== 'undefined';
 
 const loadedTranscribers = new Map<string, any>();
 let currentDevice: 'webgpu' | 'wasm' = 'wasm';

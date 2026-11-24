@@ -258,6 +258,9 @@ export const Screen2Workspace: React.FC = () => {
 
   // Timeline scrubbing & hover state (Item 2)
   const [isScrubbing, setIsScrubbing] = useState<boolean>(false);
+  const [isPrecisionScrubbing, setIsPrecisionScrubbing] = useState<boolean>(false);
+  const playheadTouchTimerRef = useRef<number | null>(null);
+  const playheadStartXRef = useRef<number>(0);
   const [hoverTimeMs, setHoverTimeMs] = useState<number | null>(null);
   const [hoverPct, setHoverPct] = useState<number | null>(null);
 
@@ -275,6 +278,44 @@ export const Screen2Workspace: React.FC = () => {
   const timelineContainerRef = useRef<HTMLDivElement | null>(null);
   const trackContainerRef = useRef<HTMLDivElement | null>(null);
 
+  // Fix 5: Lightweight sessionStorage recovery for sample clip
+  useEffect(() => {
+    if (!project) return;
+    const isSample = Boolean(
+      project.sourceFileName === 'sample-video.mp4' ||
+      project.sourceFileName === 'fastcutz-sample.mp4' ||
+      project.isDemoSample ||
+      project.title?.toLowerCase().includes('sample')
+    );
+    if (!isSample) return;
+
+    try {
+      const serializableItems = project.items.map((it) => ({
+        id: it.id,
+        kind: it.kind,
+        title: it.title,
+        sourceStartMs: it.sourceStartMs,
+        sourceEndMs: it.sourceEndMs,
+        durationMs: it.durationMs,
+        projectStartMs: it.projectStartMs,
+        projectEndMs: it.projectEndMs,
+        status: it.status,
+        transitionOut: it.transitionOut,
+        meta: it.meta,
+        blobUrl: it.kind === 'SOURCE_CLIP' ? '' : it.blobUrl
+      }));
+      const snapshot = {
+        version: 1,
+        savedAt: Date.now(),
+        currentProjectMs,
+        items: serializableItems
+      };
+      sessionStorage.setItem('fastcutz_sample_session_v1', JSON.stringify(snapshot));
+    } catch {
+      // ignore
+    }
+  }, [project, currentProjectMs]);
+
   // Map and sort transcript words to Project Time (including added video clips and reordered clips)
   const getWordProjectMs = useCallback((w: { sourceStartMs: number; sourceEndMs: number; clipId?: string }, items: NonNullable<typeof project>['items']): number | null => {
     if (w.clipId && w.clipId !== 'primary') {
@@ -286,18 +327,14 @@ export const Screen2Workspace: React.FC = () => {
     return mapSourceToProjectMs(w.sourceStartMs, sourceItems.length > 0 ? sourceItems : items);
   }, []);
 
+  // Fix 4.3: Render ALL transcript words in ONE single chronological list sorted by original word.sourceStartMs
   const mappedTranscriptWords = useMemo(() => {
     if (!project?.transcript) return [];
     const mapped = project.transcript.map((w) => ({
       word: w,
       projMs: getWordProjectMs(w, project.items)
     }));
-    return mapped.sort((a, b) => {
-      if (a.projMs === null && b.projMs === null) return 0;
-      if (a.projMs === null) return 1;
-      if (b.projMs === null) return -1;
-      return a.projMs - b.projMs;
-    });
+    return mapped.sort((a, b) => a.word.sourceStartMs - b.word.sourceStartMs);
   }, [project?.transcript, project?.items, getWordProjectMs]);
 
   // Setup Web Audio Node Chain on user gesture, playback start, or mount
@@ -1112,6 +1149,58 @@ export const Screen2Workspace: React.FC = () => {
     }
   };
 
+  // Mobile press-and-hold precision scrub on red playhead marker (Fix 1.4)
+  const handlePlayheadTouchStart = (e: React.TouchEvent<HTMLDivElement>) => {
+    if (e.touches.length === 0) return;
+    const clientX = e.touches[0].clientX;
+    playheadStartXRef.current = clientX;
+
+    if (playheadTouchTimerRef.current) clearTimeout(playheadTouchTimerRef.current);
+    playheadTouchTimerRef.current = window.setTimeout(() => {
+      setIsPrecisionScrubbing(true);
+      setIsScrubbing(true);
+      const res = calcTrackTimeAndPct(clientX);
+      if (res) {
+        handleSeek(res.timeMs);
+        setHoverTimeMs(res.timeMs);
+        setHoverPct(res.pct);
+      }
+    }, 350);
+  };
+
+  const handlePlayheadTouchMove = (e: React.TouchEvent<HTMLDivElement>) => {
+    if (e.touches.length === 0) return;
+    const clientX = e.touches[0].clientX;
+    if (Math.abs(clientX - playheadStartXRef.current) > 4) {
+      if (playheadTouchTimerRef.current) {
+        clearTimeout(playheadTouchTimerRef.current);
+        playheadTouchTimerRef.current = null;
+      }
+      setIsPrecisionScrubbing(true);
+      setIsScrubbing(true);
+    }
+
+    if (isPrecisionScrubbing || isScrubbing) {
+      const res = calcTrackTimeAndPct(clientX);
+      if (res) {
+        handleSeek(res.timeMs);
+        setHoverTimeMs(res.timeMs);
+        setHoverPct(res.pct);
+      }
+    }
+  };
+
+  const handlePlayheadTouchEnd = () => {
+    if (playheadTouchTimerRef.current) {
+      clearTimeout(playheadTouchTimerRef.current);
+      playheadTouchTimerRef.current = null;
+    }
+    setIsPrecisionScrubbing(false);
+    setIsScrubbing(false);
+    setHoverTimeMs(null);
+    setHoverPct(null);
+  };
+
   // Window listeners during scrubbing
   useEffect(() => {
     if (!isScrubbing) return;
@@ -1692,12 +1781,12 @@ export const Screen2Workspace: React.FC = () => {
                     }}
                     title={
                       isDeleted
-                        ? 'Word was cut. Click to seek to next active video. (Double-click to edit)'
+                        ? 'Word cut from timeline. Click to seek to next active section. (Double-click to edit)'
                         : `${w.edited ? '[Edited] ' : ''}Source: ${(w.sourceStartMs / 1000).toFixed(1)}s (Double-click to edit)`
                     }
                     className={`inline-block px-1 py-0.5 rounded cursor-pointer transition-colors ${
                       isDeleted
-                        ? 'line-through text-[#8E8A82] dark:text-[#78736B] bg-[#F2EFEB] dark:bg-[#1E1D1B] hover:text-[#66625B] dark:hover:text-[#A39E95]'
+                        ? 'line-through opacity-45 text-[#8A857C] dark:text-[#6B6760]'
                         : isCurrent
                         ? 'bg-[#FEF3C7] dark:bg-[#78350F]/50 text-[#92400E] dark:text-[#FDE68A] font-bold border border-[#F59E0B] dark:border-[#B45309]'
                         : selectedWordId === w.id
@@ -2129,7 +2218,7 @@ export const Screen2Workspace: React.FC = () => {
 
   // Sub-render: AI Commands Section (used in mobile AI tab)
   const renderAiCommandsSection = () => (
-    <div className="flex-1 min-h-0 flex flex-col space-y-3">
+    <div className="flex-1 min-h-0 overflow-y-auto flex flex-col space-y-3 pt-2">
       {/* Quick Prompt Chips */}
       <div className="space-y-1.5 shrink-0">
         <span className="text-[10px] uppercase font-bold text-[#66625B] dark:text-[#A39E95] tracking-wider">Quick Prompts</span>
@@ -2586,7 +2675,7 @@ export const Screen2Workspace: React.FC = () => {
           })()}
 
           {/* Dual-Video Canvas Frame */}
-          <div className="relative w-full max-w-3xl h-[25dvh] min-h-[155px] max-h-[215px] md:h-auto md:aspect-video bg-[#0B0B0A] dark:bg-[#070706] rounded-xl overflow-hidden border border-[#D8D4CC] dark:border-[#2E2C28] flex items-center justify-center shadow-sm">
+          <div className="relative w-full max-w-3xl h-[23dvh] sm:h-[25dvh] min-h-[140px] max-h-[200px] md:h-auto md:aspect-video bg-[#0B0B0A] dark:bg-[#070706] rounded-xl overflow-hidden border border-[#D8D4CC] dark:border-[#2E2C28] flex items-center justify-center shadow-sm">
             {/* Playhead-driven Frame-accurate Transition Stage (Spec 1) */}
             <div
               ref={transitionStageRef}
@@ -2643,7 +2732,7 @@ export const Screen2Workspace: React.FC = () => {
           </div>
 
           {/* Player Controls Bar */}
-          <div className="w-full max-w-3xl flex items-center justify-between mt-2 md:mt-3 px-1 md:px-2">
+          <div className="w-full max-w-3xl flex items-center justify-between mt-1 md:mt-3 px-1 md:px-2">
             <div className="flex items-center space-x-2 md:space-x-3">
               <button
                 onClick={togglePlayPause}
@@ -2848,9 +2937,9 @@ export const Screen2Workspace: React.FC = () => {
       </div>
 
       {/* Bottom Timeline Section (Spec 1 & Spec 2) */}
-      <footer className="h-[104px] md:h-52 border-t border-[#E5E2DC] dark:border-[#2C2A27] bg-white dark:bg-[#171615] flex flex-col p-1.5 md:p-3 z-20 shrink-0">
+      <footer className="h-[155px] sm:h-[175px] md:h-52 border-t border-[#E5E2DC] dark:border-[#2C2A27] bg-white dark:bg-[#171615] flex flex-col p-1.5 md:p-3 z-20 shrink-0 mt-1 md:mt-0">
         {/* Timeline Toolbar */}
-        <div className="flex flex-wrap items-center justify-between pb-1.5 md:pb-2 text-xs gap-1.5 md:gap-2">
+        <div className="flex flex-wrap items-center justify-between pb-1 md:pb-2 text-xs gap-1 md:gap-2">
           <div className="flex items-center space-x-2 md:space-x-3 overflow-x-auto no-scrollbar">
             {/* Playback Speed Controls */}
             <div className="flex items-center space-x-1 md:space-x-1.5">
@@ -2913,8 +3002,8 @@ export const Screen2Workspace: React.FC = () => {
                 title="Add an extra video clip to the end of the timeline (up to 3 min / 100 MB)"
               >
                 <Plus className="w-3 h-3 text-[#D96B27] dark:text-[#E8632A]" />
-                <span className="hidden sm:inline">+ Add Clip</span>
-                <span className="sm:hidden">+ Clip</span>
+                <span className="hidden sm:inline">Add Clip</span>
+                <span className="sm:hidden">Clip</span>
               </button>
               <input
                 ref={addClipInputRef}
@@ -2979,16 +3068,16 @@ export const Screen2Workspace: React.FC = () => {
           {/* Inner scalable track container */}
           <div
             ref={trackContainerRef}
-            style={{ width: `${timelineZoom * 100}%`, minWidth: '100%', touchAction: 'pan-x' }}
+            style={{ width: `${timelineZoom * 100}%`, minWidth: '100%', touchAction: isPrecisionScrubbing ? 'none' : 'pan-x' }}
             onPointerDown={handleTrackPointerDown}
             onPointerMove={handleTrackPointerMove}
             onPointerUp={handleTrackPointerUp}
             onPointerCancel={handleTrackPointerCancel}
             onMouseLeave={handleTrackMouseLeave}
-            className="relative h-full flex flex-col justify-between cursor-pointer select-none pt-5 md:pt-6 pb-1"
+            className="relative h-full flex flex-col justify-between cursor-pointer select-none pt-0 pb-1"
           >
             {/* Floating Scrub / Hover Time Readout */}
-            {(isScrubbing || hoverPct !== null) && (
+            {(isScrubbing || hoverPct !== null) && !isPrecisionScrubbing && (
               <div
                 style={{
                   left: `${isScrubbing ? (project.totalProjectDurationMs > 0 ? (currentProjectMs / project.totalProjectDurationMs) * 100 : 0) : (hoverPct ?? 0)}%`
@@ -3002,8 +3091,8 @@ export const Screen2Workspace: React.FC = () => {
               </div>
             )}
 
-            {/* Thin Time Ruler Row */}
-            <div className="w-full h-4 md:h-5 border-b border-[#E5E2DC] dark:border-[#2C2A27] relative font-mono tabular-nums text-[9px] text-[#8E8A82] dark:text-[#78736B] select-none pointer-events-none">
+            {/* Dedicated Time Ruler Row (h-6) */}
+            <div className="w-full h-6 border-b border-[#E5E2DC] dark:border-[#2C2A27] relative font-mono tabular-nums text-[9px] text-[#8E8A82] dark:text-[#78736B] select-none pointer-events-none shrink-0 mb-1">
               {/* Minor Ticks */}
               {Array.from({ length: minorTickCount + 1 }).map((_, i) => {
                 const tickSec = i * rulerMinorStepSec;
@@ -3040,7 +3129,7 @@ export const Screen2Workspace: React.FC = () => {
               })}
             </div>
 
-            {/* Red Playhead Line */}
+            {/* Red Playhead Line & Precision Touch Handle */}
             {(() => {
               const playheadPct = project.totalProjectDurationMs > 0 ? (currentProjectMs / project.totalProjectDurationMs) * 100 : 0;
               const pillAnchor = playheadPct < 8 ? 'translate-x-0' : playheadPct > 92 ? '-translate-x-full' : '-translate-x-1/2';
@@ -3049,18 +3138,38 @@ export const Screen2Workspace: React.FC = () => {
                   style={{
                     left: `${playheadPct}%`
                   }}
-                  className="absolute top-5 md:top-6 bottom-0 w-[2px] bg-[#EF4444] z-30 pointer-events-none"
+                  className="absolute top-0 bottom-0 w-[2px] bg-[#EF4444] z-30 pointer-events-none"
                 >
-                  <div className="w-3 h-3 bg-[#EF4444] transform -translate-x-1/2 -translate-y-1 rotate-45 rounded-sm shadow-md" />
-                  <div className={`absolute top-0 transform ${pillAnchor} -translate-y-4 px-1 rounded bg-[#EF4444] text-white font-mono tabular-nums text-[8px] font-bold shadow pointer-events-none whitespace-nowrap`}>
-                    {formatReadout(currentProjectMs)}
+                  {/* Large 44px Touch Hitbox Handle for precision scrubbing */}
+                  <div
+                    onTouchStart={handlePlayheadTouchStart}
+                    onTouchMove={handlePlayheadTouchMove}
+                    onTouchEnd={handlePlayheadTouchEnd}
+                    onTouchCancel={handlePlayheadTouchEnd}
+                    className="absolute -top-1 left-1/2 -translate-x-1/2 w-[44px] h-8 flex flex-col items-center justify-start pointer-events-auto touch-none cursor-ew-resize select-none"
+                  >
+                    {/* Floating raised timestamp badge above thumb during precision scrub */}
+                    {isPrecisionScrubbing && (
+                      <div className="absolute -top-8 left-1/2 -translate-x-1/2 px-2 py-0.5 rounded-md bg-[#181715] dark:bg-[#070706] border border-[#EF4444] text-[#EF4444] dark:text-[#FCA5A5] font-mono text-[11px] font-bold shadow-xl whitespace-nowrap pointer-events-none flex flex-col items-center">
+                        <span>{formatReadout(currentProjectMs)}</span>
+                        <div className="w-0 h-0 border-x-4 border-x-transparent border-t-4 border-t-[#EF4444]" />
+                      </div>
+                    )}
+                    <div className={`w-3.5 h-3.5 bg-[#EF4444] rotate-45 rounded-[2px] shadow-md transition-transform ${isPrecisionScrubbing ? 'scale-125' : ''}`} />
                   </div>
+
+                  {/* Standard Playhead Time Badge */}
+                  {!isPrecisionScrubbing && (
+                    <div className={`absolute top-0 transform ${pillAnchor} -translate-y-4 px-1 rounded bg-[#EF4444] text-white font-mono tabular-nums text-[8px] font-bold shadow pointer-events-none whitespace-nowrap`}>
+                      {formatReadout(currentProjectMs)}
+                    </div>
+                  )}
                 </div>
               );
             })()}
 
             {/* Timeline Items Track */}
-            <div className="w-full h-10 md:h-12 flex items-center gap-0 flex-nowrap relative mt-0.5 md:mt-1 overflow-visible">
+            <div className="w-full h-14 md:h-16 flex items-center gap-0 flex-nowrap relative mt-0.5 overflow-visible">
               {project.items.map((item) => {
                 const isSelected = selectedItemId === item.id;
 
@@ -3135,7 +3244,7 @@ export const Screen2Workspace: React.FC = () => {
                     }}
                     style={{ width: `${durPct}%`, minWidth: isSilence ? '44px' : undefined }}
                     title={`${item.title} (${(item.durationMs / 1000).toFixed(1)}s)${isDraggable ? ' • Drag to reorder' : ''}`}
-                    className={`h-9 md:h-11 rounded-lg px-2 py-1 flex flex-col justify-between transition-all relative select-none cursor-pointer box-border overflow-visible flex-shrink-0 ${
+                    className={`h-14 md:h-16 rounded-lg px-2 py-1 flex flex-col justify-between transition-all relative select-none cursor-pointer box-border overflow-visible flex-shrink-0 ${
                       draggedItemId === item.id ? 'opacity-50' : 'opacity-100'
                     } ${
                       isSelected
@@ -3284,9 +3393,9 @@ export const Screen2Workspace: React.FC = () => {
                           </button>
                         </div>
                       )}
-                      {isMeme && (
+                      {isMeme && (isSelected || !isNarrow) && (
                         <div
-                          className="flex items-center space-x-1"
+                          className={`items-center space-x-1 ${!isSelected ? 'hidden sm:flex' : 'flex'}`}
                           draggable={false}
                           onDragStart={(e) => e.stopPropagation()}
                           onClick={(e) => e.stopPropagation()}
@@ -3356,32 +3465,37 @@ export const Screen2Workspace: React.FC = () => {
               })}
             </div>
 
-            {/* Background Music Track (Slim Track Bar) */}
-            <div className="w-full h-7 md:h-8 mt-1 md:mt-2 flex items-center">
+            {/* Background Music Track (Synced directly below video track) */}
+            <div className="w-full h-7 mt-1.5 flex items-center">
               {bgMusic ? (
-                <div className="w-full h-full bg-[#F0FDFA] dark:bg-[#14B8A6]/10 border border-[#99F6E4] dark:border-[#2DD4BF]/30 rounded-lg px-2.5 flex items-center justify-between text-xs transition-all shadow-sm">
-                  <div className="flex items-center space-x-2 min-w-0 mr-3">
-                    <Music className="w-3.5 h-3.5 text-[#0F766E] dark:text-[#5EEAD4] shrink-0" />
-                    <span className="font-medium text-[#0F766E] dark:text-[#5EEAD4] truncate text-[11px]" title={bgMusic.name}>
+                <div className="w-full h-full bg-[#0F766E]/15 border border-[#0F766E]/40 text-[#0F766E] dark:text-[#2DD4BF] rounded-md px-2 flex items-center justify-between text-xs transition-all shadow-sm">
+                  <div className="flex items-center space-x-1.5 min-w-0 mr-2">
+                    <Music className="w-3.5 h-3.5 shrink-0" />
+                    <span className="font-medium truncate text-[11px] max-w-[110px] sm:max-w-[200px]" title={bgMusic.name}>
                       {bgMusic.name}
                     </span>
-                    <span className="text-[10px] text-[#66625B] dark:text-[#A39E95] font-mono shrink-0">
-                      ({(bgMusic.durationMs / 1000).toFixed(1)}s loop)
-                    </span>
+                    {/* Subtle animated waveform bars */}
+                    <div className="flex items-center space-x-0.5 opacity-60 shrink-0">
+                      <div className="w-0.5 h-2 bg-current rounded-full animate-pulse" />
+                      <div className="w-0.5 h-3.5 bg-current rounded-full" />
+                      <div className="w-0.5 h-2.5 bg-current rounded-full" />
+                      <div className="w-0.5 h-4 bg-current rounded-full animate-pulse" />
+                      <div className="w-0.5 h-1.5 bg-current rounded-full" />
+                    </div>
                   </div>
 
-                  <div className="flex items-center space-x-2 md:space-x-3 shrink-0">
-                    {/* Volume Slider */}
-                    <div className="flex items-center space-x-1.5">
+                  <div className="flex items-center space-x-1.5 sm:space-x-2 shrink-0">
+                    {/* Volume Slider & Percent */}
+                    <div className="flex items-center space-x-1">
                       <button
                         onClick={() => toggleBgMusicMute()}
-                        className="text-[#66625B] dark:text-[#A39E95] hover:text-[#181715] dark:hover:text-[#F4F2EC] transition-colors p-0.5 cursor-pointer"
+                        className="p-0.5 hover:opacity-80 transition-opacity cursor-pointer"
                         title={bgMusic.isMuted || bgMusic.volume === 0 ? "Unmute music" : "Mute music"}
                       >
                         {bgMusic.isMuted || bgMusic.volume === 0 ? (
-                          <VolumeX className="w-3.5 h-3.5 text-[#DC2626]" />
+                          <VolumeX className="w-3 h-3 text-[#DC2626]" />
                         ) : (
-                          <Volume2 className="w-3.5 h-3.5 text-[#0F766E] dark:text-[#5EEAD4]" />
+                          <Volume2 className="w-3 h-3" />
                         )}
                       </button>
                       <input
@@ -3391,24 +3505,15 @@ export const Screen2Workspace: React.FC = () => {
                         step="0.05"
                         value={bgMusic.isMuted ? 0 : bgMusic.volume}
                         onChange={(e) => setBgMusicVolume(parseFloat(e.target.value))}
-                        className="w-12 md:w-16 h-1 bg-[#E5E2DC] dark:bg-[#2C2A27] accent-[#0F766E] rounded-lg cursor-pointer"
+                        className="w-10 sm:w-14 h-1 bg-[#0F766E]/30 accent-[#0F766E] dark:accent-[#2DD4BF] rounded-lg cursor-pointer"
                         title={`Music Volume: ${Math.round(bgMusic.volume * 100)}%`}
                       />
-                      <span className="text-[10px] font-mono tabular-nums text-[#66625B] dark:text-[#A39E95] w-6 md:w-7">
+                      <span className="text-[10px] font-mono tabular-nums w-5 sm:w-6 text-right">
                         {bgMusic.isMuted ? '0%' : `${Math.round(bgMusic.volume * 100)}%`}
                       </span>
                     </div>
 
-                    {/* Replace Button */}
-                    <button
-                      onClick={() => bgMusicInputRef.current?.click()}
-                      className="px-2 py-0.5 bg-white dark:bg-[#24221F] hover:bg-[#F7F6F2] dark:hover:bg-[#2E2B27] border border-[#E5E2DC] dark:border-[#2C2A27] text-[#181715] dark:text-[#F4F2EC] rounded text-[10px] font-medium transition-colors shadow-sm cursor-pointer"
-                      title="Replace music track"
-                    >
-                      Replace
-                    </button>
-
-                    {/* Remove Button */}
+                    {/* Quick remove button */}
                     <button
                       onClick={() => removeBgMusic()}
                       className="p-1 text-[#8E8A82] dark:text-[#78736B] hover:text-[#DC2626] dark:hover:text-[#F87171] transition-colors cursor-pointer"
@@ -3421,11 +3526,12 @@ export const Screen2Workspace: React.FC = () => {
               ) : (
                 <button
                   onClick={() => bgMusicInputRef.current?.click()}
-                  className="w-full h-full border border-dashed border-[#E5E2DC] dark:border-[#2C2A27] hover:border-[#0F766E] bg-white dark:bg-[#171615] hover:bg-[#F0FDFA] dark:hover:bg-[#14B8A6]/10 rounded-lg px-3 flex items-center justify-center space-x-2 text-[11px] text-[#66625B] dark:text-[#A39E95] hover:text-[#0F766E] dark:hover:text-[#5EEAD4] transition-all group cursor-pointer"
+                  className="w-full h-full border border-dashed border-[#E5E2DC] dark:border-[#2C2A27] hover:border-[#0F766E] bg-white dark:bg-[#171615] hover:bg-[#F0FDFA] dark:hover:bg-[#14B8A6]/10 rounded-md px-3 flex items-center justify-center space-x-1.5 text-[11px] text-[#66625B] dark:text-[#A39E95] hover:text-[#0F766E] dark:hover:text-[#5EEAD4] transition-all group cursor-pointer"
                   title="Click to add a background music track (.mp3, .wav, .m4a, .aac, .ogg)"
                 >
                   <Music className="w-3 h-3 text-[#8E8A82] dark:text-[#78736B] group-hover:text-[#0F766E] dark:group-hover:text-[#5EEAD4] transition-colors" />
-                  <span>+ Add Background Music track (.mp3, .wav, .m4a, up to 30 MB)</span>
+                  <span className="hidden sm:inline">+ Add Background Music track (.mp3, .wav, .m4a, up to 30 MB)</span>
+                  <span className="sm:hidden">♪ Add background music</span>
                 </button>
               )}
             </div>
@@ -3436,10 +3542,10 @@ export const Screen2Workspace: React.FC = () => {
       {/* Mobile 4-Tab Tool Drawer */}
       <div className="flex md:hidden flex-1 min-h-0 flex-col bg-white dark:bg-[#171615] border-t border-[#E5E2DC] dark:border-[#2C2A27]">
         {/* Drawer Tabs Header */}
-        <div className="flex items-center border-b border-[#E5E2DC] dark:border-[#2C2A27] bg-[#FAF9F5] dark:bg-[#1E1D1B] text-xs font-medium shrink-0">
+        <div className="flex items-center border-b border-[#E5E2DC] dark:border-[#2C2A27] bg-[#FAF9F5] dark:bg-[#1E1D1B] h-9 text-xs font-medium shrink-0">
           <button
             onClick={() => setMobileDrawerTab('ai')}
-            className={`flex-1 min-h-[40px] py-2 flex items-center justify-center gap-1 border-b-2 transition-colors cursor-pointer ${
+            className={`flex-1 h-full py-1 flex items-center justify-center gap-1 border-b-2 transition-colors cursor-pointer ${
               mobileDrawerTab === 'ai'
                 ? 'border-[#D96B27] dark:border-[#E8632A] text-[#D96B27] dark:text-[#E8632A] font-semibold bg-white dark:bg-[#171615]'
                 : 'border-transparent text-[#66625B] dark:text-[#A39E95] hover:text-[#181715] dark:hover:text-[#F4F2EC]'
@@ -3450,7 +3556,7 @@ export const Screen2Workspace: React.FC = () => {
           </button>
           <button
             onClick={() => setMobileDrawerTab('clips')}
-            className={`flex-1 min-h-[40px] py-2 flex items-center justify-center gap-1 border-b-2 transition-colors cursor-pointer ${
+            className={`flex-1 h-full py-1 flex items-center justify-center gap-1 border-b-2 transition-colors cursor-pointer ${
               mobileDrawerTab === 'clips'
                 ? 'border-[#D96B27] dark:border-[#E8632A] text-[#D96B27] dark:text-[#E8632A] font-semibold bg-white dark:bg-[#171615]'
                 : 'border-transparent text-[#66625B] dark:text-[#A39E95] hover:text-[#181715] dark:hover:text-[#F4F2EC]'
@@ -3461,7 +3567,7 @@ export const Screen2Workspace: React.FC = () => {
           </button>
           <button
             onClick={() => setMobileDrawerTab('audio')}
-            className={`flex-1 min-h-[40px] py-2 flex items-center justify-center gap-1 border-b-2 transition-colors cursor-pointer ${
+            className={`flex-1 h-full py-1 flex items-center justify-center gap-1 border-b-2 transition-colors cursor-pointer ${
               mobileDrawerTab === 'audio'
                 ? 'border-[#0F766E] dark:border-[#2DD4BF] text-[#0F766E] dark:text-[#5EEAD4] font-semibold bg-white dark:bg-[#171615]'
                 : 'border-transparent text-[#66625B] dark:text-[#A39E95] hover:text-[#181715] dark:hover:text-[#F4F2EC]'
@@ -3472,7 +3578,7 @@ export const Screen2Workspace: React.FC = () => {
           </button>
           <button
             onClick={() => setMobileDrawerTab('transcript')}
-            className={`flex-1 min-h-[40px] py-2 flex items-center justify-center gap-1 border-b-2 transition-colors cursor-pointer ${
+            className={`flex-1 h-full py-1 flex items-center justify-center gap-1 border-b-2 transition-colors cursor-pointer ${
               mobileDrawerTab === 'transcript'
                 ? 'border-[#D96B27] dark:border-[#E8632A] text-[#D96B27] dark:text-[#E8632A] font-semibold bg-white dark:bg-[#171615]'
                 : 'border-transparent text-[#66625B] dark:text-[#A39E95] hover:text-[#181715] dark:hover:text-[#F4F2EC]'

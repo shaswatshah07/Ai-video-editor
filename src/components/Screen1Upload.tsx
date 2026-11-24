@@ -597,7 +597,7 @@ const StudioPottedPlants: React.FC = () => {
 
 
 export const Screen1Upload: React.FC = () => {
-  const { loadProject, setScreen, toggleVoiceEnhance, toggleNoiseRemoval, generateTranscript } = useEditorStore();
+  const { loadProject, setScreen, setCurrentProjectMs, toggleVoiceEnhance, toggleNoiseRemoval, generateTranscript } = useEditorStore();
   const { isDark } = useTheme();
 
   const [isDragging, setIsDragging] = useState(false);
@@ -606,6 +606,26 @@ export const Screen1Upload: React.FC = () => {
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [processingStatus, setProcessingStatus] = useState<string>('');
+
+  // Lightweight session recovery for sample clip (Fix 5)
+  const [savedSessionSnapshot, setSavedSessionSnapshot] = useState<{
+    currentProjectMs?: number;
+    items: TimelineItem[];
+  } | null>(null);
+
+  useEffect(() => {
+    try {
+      const raw = sessionStorage.getItem('fastcutz_sample_session_v1');
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed && Array.isArray(parsed.items) && parsed.items.length > 0) {
+          setSavedSessionSnapshot(parsed);
+        }
+      }
+    } catch {
+      // ignore
+    }
+  }, []);
 
   // Auto Edit Checkboxes (3 options)
   const [autoOptions, setAutoOptions] = useState({
@@ -844,7 +864,90 @@ export const Screen1Upload: React.FC = () => {
       return;
     }
 
+    if (file.name !== 'sample-video.mp4') {
+      try {
+        sessionStorage.removeItem('fastcutz_sample_session_v1');
+        setSavedSessionSnapshot(null);
+      } catch {
+        // ignore
+      }
+    }
+
     setSelectedFile(file);
+  };
+
+  const handleResumeSampleSession = async (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (isProcessing || isLoadingSample || !savedSessionSnapshot) return;
+    setIsLoadingSample(true);
+    setErrorMsg(null);
+    try {
+      const res = await fetch('/sample-video.mp4');
+      const contentType = res.headers.get('content-type') || '';
+      if (!res.ok || contentType.includes('text/html')) {
+        throw new Error('Failed to load sample clip for recovery');
+      }
+      const blob = await res.blob();
+      const sampleFile = new File([blob], 'sample-video.mp4', { type: 'video/mp4' });
+      const videoUrl = URL.createObjectURL(sampleFile);
+
+      const tempVideo = document.createElement('video');
+      tempVideo.preload = 'metadata';
+      tempVideo.muted = true;
+      tempVideo.src = videoUrl;
+
+      await new Promise<void>((resolve, reject) => {
+        let isDone = false;
+        const cleanup = () => {
+          if (isDone) return;
+          isDone = true;
+          clearTimeout(timer);
+          tempVideo.onloadedmetadata = null;
+          tempVideo.onerror = null;
+        };
+        const timer = setTimeout(() => {
+          cleanup();
+          reject(new Error('Sample video metadata timeout'));
+        }, 8000);
+        tempVideo.onloadedmetadata = () => {
+          cleanup();
+          resolve();
+        };
+        tempVideo.onerror = () => {
+          cleanup();
+          reject(new Error('Invalid sample video file'));
+        };
+        tempVideo.load();
+      });
+
+      const durationMs = Math.round((tempVideo.duration || 10) * 1000);
+
+      const restoredItems: TimelineItem[] = savedSessionSnapshot.items.map((it: any) => ({
+        ...it,
+        blobUrl: it.kind === 'SOURCE_CLIP' ? videoUrl : (it.blobUrl || videoUrl)
+      }));
+
+      loadProject(
+        videoUrl,
+        'sample-video.mp4',
+        sampleFile.size,
+        durationMs,
+        restoredItems,
+        true
+      );
+
+      if (typeof savedSessionSnapshot.currentProjectMs === 'number') {
+        setCurrentProjectMs(savedSessionSnapshot.currentProjectMs);
+      }
+
+      setScreen('WORKSPACE');
+    } catch (err: any) {
+      setErrorMsg(err?.message || 'Could not resume previous sample session. Loading normal sample.');
+      handleLoadSampleClip(e);
+    } finally {
+      setIsLoadingSample(false);
+    }
   };
 
   const handleLoadSampleClip = async (e: React.MouseEvent) => {
@@ -966,7 +1069,7 @@ export const Screen1Upload: React.FC = () => {
   };
 
   // Internal visual element of a frame (rendered normally or duplicated into split halves)
-  const renderFrameVisual = (frameType: FrameSlotType, isCopy2: boolean = false) => {
+  const renderFrameVisual = (frameType: FrameSlotType) => {
     const meme = frameType === 'slotA' ? slotMemes[0] : frameType === 'slotB' ? slotMemes[1] : null;
     const isFastcutz = frameType === 'fastcutz';
     const hasMeme = meme !== null;
@@ -981,8 +1084,8 @@ export const Screen1Upload: React.FC = () => {
             : 'bg-white dark:bg-[#1B1A18] border-[#E5E2DC] dark:border-[#2E2C28]'
         }`}
       >
-        {/* If this slot holds a meme, render auto-playing looping video background (Copy 1 only) */}
-        {hasMeme && !isCopy2 && (
+        {/* If this slot holds a meme, render auto-playing looping video background across all marquee copies */}
+        {hasMeme && (
           <div className="absolute inset-0 z-0 overflow-hidden">
             <video
               src={meme.url}
@@ -990,13 +1093,11 @@ export const Screen1Upload: React.FC = () => {
               loop
               muted
               playsInline
+              preload="auto"
               className="w-full h-full object-cover"
             />
             <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-black/50 pointer-events-none" />
           </div>
-        )}
-        {hasMeme && isCopy2 && (
-          <div className="absolute inset-0 z-0 overflow-hidden bg-gradient-to-br from-[#0F766E]/20 via-[#F7F6F2] dark:via-[#1B1A18] to-[#D96B27]/15 pointer-events-none" />
         )}
 
         {/* Top Sprocket Rail */}
@@ -1105,7 +1206,7 @@ export const Screen1Upload: React.FC = () => {
   };
 
   // Helper to render individual filmstrip frame (supporting normal, cutting, and cut splice-gap states)
-  const renderFilmstripFrame = (frameType: FrameSlotType, instanceKey: string, isCopy2: boolean = false) => {
+  const renderFilmstripFrame = (frameType: FrameSlotType, instanceKey: string) => {
     const state = cutFrames[instanceKey];
 
     return (
@@ -1120,7 +1221,7 @@ export const Screen1Upload: React.FC = () => {
             onClick={() => handleCutFrame(instanceKey, frameType)}
             className="w-full h-full cursor-pointer group rounded-lg transition-all hover:border-[#D96B27] dark:hover:border-[#E8632A] hover:shadow-[0_2px_12px_rgba(217,107,39,0.25)]"
           >
-            {renderFrameVisual(frameType, isCopy2)}
+            {renderFrameVisual(frameType)}
           </div>
         )}
 
@@ -1132,7 +1233,7 @@ export const Screen1Upload: React.FC = () => {
               className="absolute inset-0 rounded-lg overflow-hidden animate-frame-split-left pointer-events-none"
               style={{ clipPath: 'inset(0 50% 0 0)' }}
             >
-              {renderFrameVisual(frameType, isCopy2)}
+              {renderFrameVisual(frameType)}
             </div>
 
             {/* Right half with inset(0 0 0 50%) and animate-frame-split-right */}
@@ -1140,7 +1241,7 @@ export const Screen1Upload: React.FC = () => {
               className="absolute inset-0 rounded-lg overflow-hidden animate-frame-split-right pointer-events-none"
               style={{ clipPath: 'inset(0 0 0 50%)' }}
             >
-              {renderFrameVisual(frameType, isCopy2)}
+              {renderFrameVisual(frameType)}
             </div>
 
             {/* Vertical Amber Cut Slice Line */}
@@ -1445,15 +1546,15 @@ export const Screen1Upload: React.FC = () => {
 
           {/* Marquee Track (Smooth, continuous -50% marquee loop) */}
           <div className="flex w-max animate-filmstrip-marquee select-none">
-            {/* Copy 1 (0% to -50%) - Active video decoding enabled */}
+            {/* Copy 1 (0% to -50%) */}
             <div className="flex items-center space-x-3 md:space-x-4 pr-3 md:pr-4 shrink-0">
-              {SEQUENCE_ORDER.map((slot, i) => renderFilmstripFrame(slot, `s1_${slot}_${i}`, false))}
-              {SEQUENCE_ORDER.map((slot, i) => renderFilmstripFrame(slot, `s2_${slot}_${i}`, false))}
+              {SEQUENCE_ORDER.map((slot, i) => renderFilmstripFrame(slot, `s1_${slot}_${i}`))}
+              {SEQUENCE_ORDER.map((slot, i) => renderFilmstripFrame(slot, `s2_${slot}_${i}`))}
             </div>
-            {/* Copy 2 (-50% to -100%) - Lightweight placeholder only (max 2 active video decoders) */}
+            {/* Copy 2 (-50% to -100%) */}
             <div className="flex items-center space-x-3 md:space-x-4 pr-3 md:pr-4 shrink-0" aria-hidden="true">
-              {SEQUENCE_ORDER.map((slot, i) => renderFilmstripFrame(slot, `s3_${slot}_${i}`, true))}
-              {SEQUENCE_ORDER.map((slot, i) => renderFilmstripFrame(slot, `s4_${slot}_${i}`, true))}
+              {SEQUENCE_ORDER.map((slot, i) => renderFilmstripFrame(slot, `s3_${slot}_${i}`))}
+              {SEQUENCE_ORDER.map((slot, i) => renderFilmstripFrame(slot, `s4_${slot}_${i}`))}
             </div>
           </div>
         </div>
@@ -1670,6 +1771,43 @@ export const Screen1Upload: React.FC = () => {
         <main className="max-w-6xl mx-auto w-full px-4 sm:px-6 pb-12 sm:pb-16 grid grid-cols-1 md:grid-cols-12 gap-4 md:gap-6 items-start mt-1 relative z-10">
           {/* Left Column: Drag & Drop Dropzone */}
           <div className="md:col-span-7 space-y-4">
+            {/* Lightweight Sample-Clip Session Recovery Banner (Fix 5) */}
+            {savedSessionSnapshot && !selectedFile && (
+              <div className="flex items-center justify-between px-3.5 py-2.5 rounded-xl bg-white dark:bg-[#1C1A17] border border-[#D96B27]/40 dark:border-[#E8632A]/50 text-xs shadow-sm transition-all animate-fadeIn">
+                <div className="flex items-center space-x-2.5 min-w-0">
+                  <span className="w-2 h-2 rounded-full bg-[#D96B27] dark:bg-[#E8632A] animate-ping shrink-0" />
+                  <span className="text-[#181715] dark:text-[#F4F2EC] font-medium truncate">
+                    Tab reloaded — Resume your last sample-clip edits
+                  </span>
+                </div>
+                <div className="flex items-center space-x-2 shrink-0 ml-2">
+                  <button
+                    type="button"
+                    onClick={handleResumeSampleSession}
+                    disabled={isLoadingSample || isProcessing}
+                    className="px-2.5 py-1 bg-[#D96B27] dark:bg-[#E8632A] hover:bg-[#C25E1F] dark:hover:bg-[#F2743D] text-white rounded-md text-[11px] font-semibold transition-colors cursor-pointer shadow-xs disabled:opacity-50"
+                  >
+                    {isLoadingSample ? 'Resuming...' : 'Resume →'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      try {
+                        sessionStorage.removeItem('fastcutz_sample_session_v1');
+                      } catch {
+                        // ignore
+                      }
+                      setSavedSessionSnapshot(null);
+                    }}
+                    className="p-1 text-[#8E8A82] dark:text-[#78736B] hover:text-[#181715] dark:hover:text-[#F4F2EC] cursor-pointer"
+                    title="Dismiss"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              </div>
+            )}
+
             <div
               onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
               onDragLeave={() => setIsDragging(false)}
