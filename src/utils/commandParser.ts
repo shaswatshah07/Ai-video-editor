@@ -414,10 +414,34 @@ function parseSupportedAction(
     else if (lower.includes('slideup') || lower.includes('slide up')) type = 'slideup';
     else if (lower.includes('fade')) type = 'fade';
 
+    // Parse optional target timestamps: "at 0:11 sec", "at 0:11", "at 11s", "at 11.5 seconds"
+    let targetMs: number | undefined = undefined;
+    const timeMatch = lower.match(/(?:at|around|on|near|to)\s+([0-9:.]+\s*(?:seconds?|secs?|se|s)?)/i) ||
+                      lower.match(/\b([0-9]+:[0-9]{2}(?:\.[0-9]+)?\s*(?:seconds?|secs?|se|s)?)\b/i) ||
+                      lower.match(/\b([0-9]+(?:\.[0-9]+)?\s*(?:seconds?|secs?|se|s))\b/i);
+    if (timeMatch) {
+      const parsed = parseTimeStringToMs(timeMatch[1]);
+      if (parsed !== null && !isNaN(parsed)) {
+        targetMs = parsed;
+      }
+    }
+
+    // Detect explicit playhead words
+    const usePlayhead = /\b(here|at marker|at playhead|current position|playhead position|current playhead)\b/i.test(lower);
+
     return {
       action: 'ADD_TRANSITION',
-      payload: { type, durationMs: 400 },
-      explanation: `Adding ${type} transition to current cut point.`
+      payload: {
+        type,
+        durationMs: 400,
+        ...(targetMs !== undefined ? { targetMs } : {}),
+        ...(usePlayhead ? { usePlayhead: true } : {})
+      } as any,
+      explanation: targetMs !== undefined
+        ? `Adding ${type} transition at ${(targetMs / 1000).toFixed(1)}s.`
+        : usePlayhead
+        ? `Adding ${type} transition at current playhead.`
+        : `Adding ${type} transition to current cut point.`
     };
   }
 

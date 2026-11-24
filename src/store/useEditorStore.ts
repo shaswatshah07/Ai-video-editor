@@ -118,7 +118,7 @@ interface EditorState {
   removeBgMusic: () => void;
   toggleVoiceEnhance: (enabled?: boolean) => void;
   toggleNoiseRemoval: (enabled?: boolean) => void;
-  applyAICommand: (command: AICommand, rawInput?: string) => Promise<void>;
+  applyAICommand: (command: AICommand, rawInput?: string, playheadMs?: number) => Promise<void>;
 }
 
 let transcriptionJobCounter = 0;
@@ -1480,7 +1480,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     }));
   },
 
-  applyAICommand: async (command: AICommand, rawInput = '') => {
+  applyAICommand: async (command: AICommand, rawInput = '', playheadMs?: number) => {
     const { action, payload, explanation } = command;
     const store = get();
 
@@ -1582,16 +1582,103 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         });
         return;
       }
+
+      const p = payload as {
+        clipId?: string;
+        type: TransitionType;
+        durationMs: number;
+        targetMs?: number;
+        usePlayhead?: boolean;
+      };
+
+      const currentProjectMs = playheadMs ?? store.currentProjectMs;
+      const totalDuration = store.project?.totalProjectDurationMs || 0;
+
+      // Resolve target position: cmd.targetMs ?? (cmd.usePlayhead || currentProjectMs > 300 ? currentProjectMs : null)
+      const resolvedMs = p.targetMs ?? (p.usePlayhead || currentProjectMs > 300 ? currentProjectMs : null);
+
+      if (resolvedMs !== null && totalDuration > 0) {
+        const clampedMs = Math.max(0, Math.min(resolvedMs, totalDuration));
+
+        // 1. Check if within 800ms of an existing cut boundary between two adjacent 'ACTIVE' clips
+        const nonDeleted = store.project!.items.filter(it => it.status !== 'DELETED');
+        let boundaryClip: TimelineItem | null = null;
+
+        for (let i = 0; i < nonDeleted.length - 1; i++) {
+          const item = nonDeleted[i];
+          const next = nonDeleted[i + 1];
+          if (item.status === 'ACTIVE' && next.status === 'ACTIVE') {
+            if (Math.abs(item.projectEndMs - clampedMs) <= 800) {
+              boundaryClip = item;
+              break;
+            }
+          }
+        }
+
+        if (boundaryClip) {
+          store.setTransition(boundaryClip.id, p.type, p.durationMs);
+          store.addCommandLog({
+            id: `cmd_${Date.now()}`,
+            rawInput,
+            timestamp: Date.now(),
+            parsedCommand: command,
+            status: 'SUCCESS',
+            appliedMessage: `Applied ${p.type} transition (${p.durationMs}ms) at ${(boundaryClip.projectEndMs / 1000).toFixed(1)}s.`
+          });
+          return;
+        }
+
+        // 2. Otherwise, if resolvedMs falls strictly inside an 'ACTIVE' clip (at least 300ms from start & end)
+        if (clampedMs >= 300 && clampedMs <= totalDuration - 300) {
+          const clipToSplit = nonDeleted.find(
+            it => it.status === 'ACTIVE' && clampedMs > it.projectStartMs + 300 && clampedMs < it.projectEndMs - 300
+          );
+
+          if (clipToSplit) {
+            store.pushHistory();
+            const splitItems = splitItemAtPlayhead(store.project!.items, clampedMs);
+            const newlyCreatedClip = splitItems.find(
+              it => it.status === 'ACTIVE' && Math.abs(it.projectEndMs - clampedMs) <= 50
+            );
+
+            if (newlyCreatedClip) {
+              newlyCreatedClip.transitionOut = { type: p.type, durationMs: p.durationMs };
+            }
+
+            const newTotalDuration = getTotalProjectDuration(splitItems);
+            set({
+              project: {
+                ...store.project!,
+                items: splitItems,
+                totalProjectDurationMs: newTotalDuration,
+                updatedAt: Date.now()
+              }
+            });
+
+            store.addCommandLog({
+              id: `cmd_${Date.now()}`,
+              rawInput,
+              timestamp: Date.now(),
+              parsedCommand: command,
+              status: 'SUCCESS',
+              appliedMessage: `Applied ${p.type} transition (${p.durationMs}ms) at ${(clampedMs / 1000).toFixed(1)}s.`
+            });
+            return;
+          }
+        }
+      }
+
+      // Fallback: clip 0 or selected active clip
       const selectedActive = activeItems.find(it => it.id === store.selectedItemId);
-      const targetId = payload.clipId || (selectedActive ? selectedActive.id : activeItems[0].id);
-      store.setTransition(targetId, payload.type, payload.durationMs);
+      const targetId = p.clipId || (selectedActive ? selectedActive.id : activeItems[0].id);
+      store.setTransition(targetId, p.type, p.durationMs);
       store.addCommandLog({
         id: `cmd_${Date.now()}`,
         rawInput,
         timestamp: Date.now(),
         parsedCommand: command,
         status: 'SUCCESS',
-        appliedMessage: `Applied ${payload.type} transition (${payload.durationMs}ms).`
+        appliedMessage: `Applied ${p.type} transition (${p.durationMs}ms).`
       });
     } else if (action === 'ENHANCE_AUDIO') {
       store.toggleVoiceEnhance(payload.enabled);

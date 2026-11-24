@@ -1093,6 +1093,9 @@ export const Screen2Workspace: React.FC = () => {
   }, [project]);
 
   const handleTrackPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    if ((e.target as HTMLElement).closest('button, input, select, textarea, a, label, [data-no-scrub="true"]')) {
+      return;
+    }
     try {
       e.currentTarget.setPointerCapture(e.pointerId);
     } catch {
@@ -1107,6 +1110,11 @@ export const Screen2Workspace: React.FC = () => {
   };
 
   const handleTrackPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!isScrubbing && (e.target as HTMLElement).closest('button, input, select, textarea, a, label, [data-no-scrub="true"]')) {
+      setHoverTimeMs(null);
+      setHoverPct(null);
+      return;
+    }
     const res = calcTrackTimeAndPct(e.clientX);
     if (!res) return;
     setHoverTimeMs(res.timeMs);
@@ -1264,7 +1272,7 @@ export const Screen2Workspace: React.FC = () => {
         project,
         Boolean(bgMusic)
       );
-      await applyAICommand(command, query);
+      await applyAICommand(command, query, currentProjectMs);
     } catch (err: unknown) {
       console.warn('Command processing failed:', err);
       addCommandLog({
@@ -2614,7 +2622,7 @@ export const Screen2Workspace: React.FC = () => {
         </div>
 
         {/* Center: Dual-Video Preview Player (Desktop & Mobile) */}
-        <div className="flex flex-col md:flex-1 items-center justify-center p-2 md:p-4 bg-[#F7F6F2] dark:bg-[#0E0E0D] overflow-y-auto md:overflow-hidden shrink-0 md:shrink w-full">
+        <div className="flex flex-col md:flex-1 items-center justify-start md:justify-center p-1 sm:p-2 md:p-4 bg-[#F7F6F2] dark:bg-[#0E0E0D] overflow-y-auto md:overflow-hidden shrink-0 md:shrink w-full">
           {/* Inline Workspace Error Banner */}
           {workspaceBannerError && (
             <div className="w-full max-w-3xl mb-2 px-3 py-2 rounded-xl bg-[#FEF2F2] dark:bg-[#450A0A]/40 border border-[#FCA5A5] dark:border-[#991B1B] text-[#991B1B] dark:text-[#FCA5A5] text-xs flex items-center justify-between gap-2 shadow-sm animate-in fade-in">
@@ -2937,7 +2945,7 @@ export const Screen2Workspace: React.FC = () => {
       </div>
 
       {/* Bottom Timeline Section (Spec 1 & Spec 2) */}
-      <footer className="h-[155px] sm:h-[175px] md:h-52 border-t border-[#E5E2DC] dark:border-[#2C2A27] bg-white dark:bg-[#171615] flex flex-col p-1.5 md:p-3 z-20 shrink-0 mt-1 md:mt-0">
+      <footer className="min-h-[168px] sm:h-[185px] md:h-52 border-t border-[#E5E2DC] dark:border-[#2C2A27] bg-white dark:bg-[#171615] flex flex-col p-1.5 md:p-3 z-20 shrink-0 mt-1 md:mt-0">
         {/* Timeline Toolbar */}
         <div className="flex flex-wrap items-center justify-between pb-1 md:pb-2 text-xs gap-1 md:gap-2">
           <div className="flex items-center space-x-2 md:space-x-3 overflow-x-auto no-scrollbar">
@@ -3063,7 +3071,7 @@ export const Screen2Workspace: React.FC = () => {
         {/* Timeline Track Area (Horizontally Scrollable) */}
         <div
           ref={timelineContainerRef}
-          className="flex-1 bg-[#F7F6F2] dark:bg-[#141312] rounded-xl border border-[#E5E2DC] dark:border-[#2C2A27] relative overflow-x-auto overflow-y-hidden p-1.5 md:p-2"
+          className="flex-1 min-h-[125px] bg-[#F7F6F2] dark:bg-[#141312] rounded-xl border border-[#E5E2DC] dark:border-[#2C2A27] relative overflow-x-auto overflow-y-visible md:overflow-y-hidden p-1.5 md:p-2"
         >
           {/* Inner scalable track container */}
           <div
@@ -3132,38 +3140,34 @@ export const Screen2Workspace: React.FC = () => {
             {/* Red Playhead Line & Precision Touch Handle */}
             {(() => {
               const playheadPct = project.totalProjectDurationMs > 0 ? (currentProjectMs / project.totalProjectDurationMs) * 100 : 0;
-              const pillAnchor = playheadPct < 8 ? 'translate-x-0' : playheadPct > 92 ? '-translate-x-full' : '-translate-x-1/2';
               return (
                 <div
                   style={{
                     left: `${playheadPct}%`
                   }}
-                  className="absolute top-0 bottom-0 w-[2px] bg-[#EF4444] z-30 pointer-events-none"
+                  className="absolute inset-y-0 w-[2px] bg-[#EF4444] z-30 pointer-events-none"
                 >
-                  {/* Large 44px Touch Hitbox Handle for precision scrubbing */}
+                  {/* Transparent 44px (w-11) Touch Hitbox Handle with centered marker cap */}
                   <div
                     onTouchStart={handlePlayheadTouchStart}
                     onTouchMove={handlePlayheadTouchMove}
                     onTouchEnd={handlePlayheadTouchEnd}
                     onTouchCancel={handlePlayheadTouchEnd}
-                    className="absolute -top-1 left-1/2 -translate-x-1/2 w-[44px] h-8 flex flex-col items-center justify-start pointer-events-auto touch-none cursor-ew-resize select-none"
+                    className="absolute -top-1 left-1/2 -translate-x-1/2 w-11 h-8 bg-transparent flex flex-col items-center justify-start pointer-events-auto touch-none cursor-ew-resize select-none"
                   >
-                    {/* Floating raised timestamp badge above thumb during precision scrub */}
-                    {isPrecisionScrubbing && (
-                      <div className="absolute -top-8 left-1/2 -translate-x-1/2 px-2 py-0.5 rounded-md bg-[#181715] dark:bg-[#070706] border border-[#EF4444] text-[#EF4444] dark:text-[#FCA5A5] font-mono text-[11px] font-bold shadow-xl whitespace-nowrap pointer-events-none flex flex-col items-center">
+                    {/* Floating raised timestamp badge above thumb shown ONLY while actively scrubbing */}
+                    {isScrubbing && (
+                      <div className="absolute -top-8 left-1/2 -translate-x-1/2 px-2 py-0.5 rounded-md bg-[#181715] dark:bg-[#070706] border border-[#EF4444] text-[#EF4444] dark:text-[#FCA5A5] font-mono text-[11px] font-bold shadow-xl whitespace-nowrap pointer-events-none flex flex-col items-center z-50">
                         <span>{formatReadout(currentProjectMs)}</span>
                         <div className="w-0 h-0 border-x-4 border-x-transparent border-t-4 border-t-[#EF4444]" />
                       </div>
                     )}
-                    <div className={`w-3.5 h-3.5 bg-[#EF4444] rotate-45 rounded-[2px] shadow-md transition-transform ${isPrecisionScrubbing ? 'scale-125' : ''}`} />
+                    {/* Clean compact 12px x 14px red inverted pentagon cap centered directly on the 2px hairline */}
+                    <div
+                      className={`w-3 h-3.5 bg-[#EF4444] shadow-md transition-transform ${isPrecisionScrubbing ? 'scale-125' : ''}`}
+                      style={{ clipPath: 'polygon(0% 0%, 100% 0%, 100% 60%, 50% 100%, 0% 60%)' }}
+                    />
                   </div>
-
-                  {/* Standard Playhead Time Badge */}
-                  {!isPrecisionScrubbing && (
-                    <div className={`absolute top-0 transform ${pillAnchor} -translate-y-4 px-1 rounded bg-[#EF4444] text-white font-mono tabular-nums text-[8px] font-bold shadow pointer-events-none whitespace-nowrap`}>
-                      {formatReadout(currentProjectMs)}
-                    </div>
-                  )}
                 </div>
               );
             })()}
@@ -3192,9 +3196,7 @@ export const Screen2Workspace: React.FC = () => {
                 const clipThumbs = clipFilmstrips[item.blobUrl] || (item.kind === 'SOURCE_CLIP' ? thumbnails : null);
                 const hasClipThumbnails = !!clipThumbs && Object.keys(clipThumbs).length > 0;
                 const isNarrow = item.durationMs < 2000 || durPct < 6;
-                const isHighZoom = timelineZoom >= 3;
-                const frameIntervalMs = isHighZoom ? 500 : 1000;
-                const tileCount = Math.max(1, Math.round(item.durationMs / frameIntervalMs));
+                const tileCount = Math.max(1, Math.ceil((item.durationMs / 1000) * (timelineZoom >= 2 ? timelineZoom : 1.5)));
 
                 // Active item touch reorder helpers
                 const nonDeletedItems = project.items.filter(it => it.status !== 'DELETED');
@@ -3266,6 +3268,9 @@ export const Screen2Workspace: React.FC = () => {
                     {isSelected && isDraggable && nonDeletedItems.length >= 2 && (
                       <div
                         className="absolute -top-3.5 left-1/2 -translate-x-1/2 flex items-center bg-[#181715] dark:bg-[#070706] text-white rounded shadow-md z-40 px-1 py-0.5 gap-1 border border-[#3A3833] dark:border-[#2E2C28]"
+                        data-no-scrub="true"
+                        onMouseDown={(e) => e.stopPropagation()}
+                        onPointerDown={(e) => e.stopPropagation()}
                         onClick={(e) => e.stopPropagation()}
                       >
                         <button
@@ -3322,13 +3327,13 @@ export const Screen2Workspace: React.FC = () => {
                     {hasClipThumbnails && !isSilence && !isMeme && (
                       <div className="absolute inset-0 flex flex-row overflow-hidden pointer-events-none opacity-85 rounded-lg">
                         {Array.from({ length: tileCount }).map((_, tileIdx) => {
-                          const tileSourceMs = item.sourceStartMs + (tileIdx * item.durationMs) / tileCount;
-                          const nearestMs = Math.round(tileSourceMs / 500) * 500;
-                          const frameUrl = (clipThumbs && (clipThumbs[nearestMs] || clipThumbs[Math.floor(tileSourceMs / 1000) * 1000] || clipThumbs[0])) || '';
+                          const tileSourceMs = item.sourceStartMs + (tileIdx * 1000);
+                          const nearestMs = Math.round(tileSourceMs / 1000) * 1000;
+                          const frameUrl = (clipThumbs && (clipThumbs[nearestMs] || clipThumbs[0])) || '';
                           return (
                             <div
                               key={tileIdx}
-                              className="flex-1 h-full bg-cover bg-center border-r border-black/25"
+                              className="w-14 shrink-0 h-full bg-cover bg-center border-r border-black/25"
                               style={{
                                 backgroundImage: frameUrl ? `url(${frameUrl})` : undefined,
                                 backgroundColor: frameUrl ? undefined : '#22211E',
@@ -3365,8 +3370,11 @@ export const Screen2Workspace: React.FC = () => {
                       {isSilence && (
                         <div
                           className="flex items-center space-x-1"
+                          data-no-scrub="true"
                           draggable={false}
                           onDragStart={(e) => e.stopPropagation()}
+                          onMouseDown={(e) => e.stopPropagation()}
+                          onPointerDown={(e) => e.stopPropagation()}
                           onClick={(e) => e.stopPropagation()}
                         >
                           <button
@@ -3396,8 +3404,11 @@ export const Screen2Workspace: React.FC = () => {
                       {isMeme && (isSelected || !isNarrow) && (
                         <div
                           className={`items-center space-x-1 ${!isSelected ? 'hidden sm:flex' : 'flex'}`}
+                          data-no-scrub="true"
                           draggable={false}
                           onDragStart={(e) => e.stopPropagation()}
+                          onMouseDown={(e) => e.stopPropagation()}
+                          onPointerDown={(e) => e.stopPropagation()}
                           onClick={(e) => e.stopPropagation()}
                         >
                           <button
@@ -3437,8 +3448,11 @@ export const Screen2Workspace: React.FC = () => {
 
                     {/* Transition Picker Diamond / Badge (Step 3.3) */}
                     <div
+                      data-no-scrub="true"
                       draggable={false}
                       onDragStart={(e) => e.stopPropagation()}
+                      onMouseDown={(e) => e.stopPropagation()}
+                      onPointerDown={(e) => e.stopPropagation()}
                       onClick={(e) => {
                         e.stopPropagation();
                         const types: TransitionType[] = ['none', 'fade', 'dissolve', 'wipeleft', 'slideup'];
@@ -3466,7 +3480,12 @@ export const Screen2Workspace: React.FC = () => {
             </div>
 
             {/* Background Music Track (Synced directly below video track) */}
-            <div className="w-full h-7 mt-1.5 flex items-center">
+            <div
+              data-no-scrub="true"
+              onMouseDown={(e) => e.stopPropagation()}
+              onPointerDown={(e) => e.stopPropagation()}
+              className="w-full h-8 mt-1.5 flex items-center shrink-0"
+            >
               {bgMusic ? (
                 <div className="w-full h-full bg-[#0F766E]/15 border border-[#0F766E]/40 text-[#0F766E] dark:text-[#2DD4BF] rounded-md px-2 flex items-center justify-between text-xs transition-all shadow-sm">
                   <div className="flex items-center space-x-1.5 min-w-0 mr-2">

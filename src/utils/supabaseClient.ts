@@ -37,6 +37,128 @@ export function getDeviceType(): 'mobile' | 'tablet' | 'desktop' {
   return 'desktop';
 }
 
+function getCookie(name: string): string | null {
+  if (typeof document === 'undefined') return null;
+  const match = document.cookie.match(new RegExp('(?:^|; )' + name.replace(/([.$?*|{}()[\]\\/+^])/g, '\\$1') + '=([^;]*)'));
+  return match ? decodeURIComponent(match[1]) : null;
+}
+
+function setCookie(name: string, value: string, maxAgeSec = 2592000): void {
+  if (typeof document === 'undefined') return;
+  document.cookie = `${name}=${encodeURIComponent(value)}; max-age=${maxAgeSec}; path=/; SameSite=Lax`;
+}
+
+/**
+ * Returns or generates a persistent visitor identifier stored in both cookie and localStorage.
+ */
+export function getOrCreateGuestVisitorId(): string {
+  if (typeof window === 'undefined') return 'fc_guest';
+  try {
+    const fromCookie = getCookie('fastcutz_uid');
+    if (fromCookie && fromCookie.trim()) {
+      localStorage.setItem('fastcutz_uid', fromCookie.trim());
+      return fromCookie.trim();
+    }
+
+    const fromStorage = localStorage.getItem('fastcutz_uid');
+    if (fromStorage && fromStorage.trim()) {
+      setCookie('fastcutz_uid', fromStorage.trim(), 2592000);
+      return fromStorage.trim();
+    }
+
+    let rawHex = '';
+    if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+      rawHex = crypto.randomUUID().replace(/-/g, '').slice(0, 12);
+    } else {
+      rawHex = Math.random().toString(36).substring(2, 14);
+    }
+    const newId = `fc_${rawHex}`;
+    setCookie('fastcutz_uid', newId, 2592000);
+    localStorage.setItem('fastcutz_uid', newId);
+    return newId;
+  } catch {
+    return `fc_${Math.random().toString(36).substring(2, 14)}`;
+  }
+}
+
+let pendingRegistration: Promise<string | null> | null = null;
+
+/**
+ * Deduplicated silent guest registration in Supabase `users` table.
+ * Caches userId in localStorage & cookie so reloads never fire duplicate rows.
+ */
+export async function ensureGuestUserRegistered(): Promise<string | null> {
+  if (pendingRegistration) {
+    return pendingRegistration;
+  }
+
+  pendingRegistration = (async () => {
+    try {
+      const visitorId = getOrCreateGuestVisitorId();
+      const cachedUserId = localStorage.getItem('fastcutz_sb_user_id') || getCookie('fastcutz_sb_uid');
+      const cachedVisitorUid = localStorage.getItem('fastcutz_sb_user_uid');
+
+      if (cachedUserId && cachedVisitorUid === visitorId) {
+        return cachedUserId;
+      }
+
+      const client = getSupabaseClient();
+      if (!client) {
+        return cachedUserId || null;
+      }
+
+      const guestEmail = `${visitorId}@guest.fastcutz.ai`;
+
+      // Insert guest row using exact users columns: name, email, device_type
+      const { data, error } = await client
+        .from('users')
+        .insert([
+          {
+            name: 'Guest Creator',
+            email: guestEmail,
+            device_type: getDeviceType(),
+          },
+        ])
+        .select('id')
+        .single();
+
+      if (!error && data?.id) {
+        const idStr = String(data.id);
+        localStorage.setItem('fastcutz_sb_user_id', idStr);
+        localStorage.setItem('fastcutz_sb_user_uid', visitorId);
+        setCookie('fastcutz_sb_uid', idStr, 2592000);
+        return idStr;
+      }
+
+      // If duplicate-email / conflict occurred, safely fetch/reuse the existing row
+      if (error) {
+        const { data: existingUser } = await client
+          .from('users')
+          .select('id')
+          .eq('email', guestEmail)
+          .maybeSingle();
+
+        if (existingUser?.id) {
+          const idStr = String(existingUser.id);
+          localStorage.setItem('fastcutz_sb_user_id', idStr);
+          localStorage.setItem('fastcutz_sb_user_uid', visitorId);
+          setCookie('fastcutz_sb_uid', idStr, 2592000);
+          return idStr;
+        }
+      }
+
+      return cachedUserId || null;
+    } catch (err) {
+      console.warn('[Fastcutz Supabase] ensureGuestUserRegistered notice:', err);
+      return null;
+    } finally {
+      pendingRegistration = null;
+    }
+  })();
+
+  return pendingRegistration;
+}
+
 export interface UserProfile {
   name: string;
   email: string;
@@ -132,8 +254,12 @@ export async function logExportEvent(params: {
     return { ok: false, skipped: true };
   }
 
+  // Ensure guest user is registered so exports attach to a valid user
+  await ensureGuestUserRegistered();
+
   const profile = getSavedUserProfile();
-  const user_email = profile && !profile.isGuest && profile.email ? profile.email : 'guest';
+  const visitorId = getOrCreateGuestVisitorId();
+  const user_email = profile && !profile.isGuest && profile.email ? profile.email : `${visitorId}@guest.fastcutz.ai`;
 
   try {
     const { error } = await client.from('export_events').insert([
@@ -172,10 +298,14 @@ export async function submitUserFeedback(params: {
     return { ok: false, skipped: true };
   }
 
+  // Ensure guest user is registered so feedback attaches to a valid user
+  await ensureGuestUserRegistered();
+
   const savedProfile = getSavedUserProfile();
+  const visitorId = getOrCreateGuestVisitorId();
   const user_email =
     params.emailOverride?.trim().toLowerCase() ||
-    (savedProfile && !savedProfile.isGuest ? savedProfile.email : 'guest');
+    (savedProfile && !savedProfile.isGuest ? savedProfile.email : `${visitorId}@guest.fastcutz.ai`);
 
   try {
     const { error } = await client.from('user_feedback').insert([

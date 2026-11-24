@@ -58,17 +58,13 @@ const Screen3Filmstrip: React.FC = () => {
       <div className="flex items-center justify-center space-x-1.5 py-0.5">
         {item.isHighlight ? (
           <>
-            <span className="font-extrabold text-xs sm:text-sm tracking-tight text-[#181715] dark:text-[#F4F2EC]">
+            <span className="font-semibold text-xs sm:text-sm tracking-tight text-zinc-900 dark:text-white opacity-100">
               Fastcutz<span className="text-[#D96B27] dark:text-[#E8632A]">.ai</span>
             </span>
             <span className="w-1.5 h-1.5 rounded-full bg-[#D96B27] dark:bg-[#E8632A]" />
           </>
-        ) : item.isPrimary ? (
-          <span className="font-bold text-xs sm:text-sm text-[#181715] dark:text-[#F4F2EC] tracking-tight">
-            {item.text}
-          </span>
         ) : (
-          <span className="font-medium text-xs sm:text-sm text-[#66625B] dark:text-[#A39E95] tracking-tight">
+          <span className="font-semibold text-xs sm:text-sm text-zinc-900 dark:text-white opacity-100 tracking-tight">
             {item.text}
           </span>
         )}

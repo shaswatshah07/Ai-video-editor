@@ -641,12 +641,10 @@ export const Screen1Upload: React.FC = () => {
   const [emailInput, setEmailInput] = useState<string>('');
   const [modalError, setModalError] = useState<string | null>(null);
 
-  // Auto-open modal on first visit ONLY if getSavedUserProfile() is null
+  // Load saved profile if present (modal NEVER auto-opens on initial visit)
   useEffect(() => {
     const saved = getSavedUserProfile();
-    if (!saved) {
-      setIsAuthModalOpen(true);
-    } else {
+    if (saved) {
       setUserProfile(saved);
     }
   }, []);
