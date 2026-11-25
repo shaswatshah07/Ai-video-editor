@@ -522,13 +522,21 @@ export const Screen3Export: React.FC = () => {
               onClick={() => setShowDetails(!showDetails)}
               className="w-full px-4 py-3 bg-[#F0EEE9] dark:bg-[#1E1D1B] hover:bg-[#E7E4DD] dark:hover:bg-[#262421] flex items-center justify-between text-xs font-semibold text-[#181715] dark:text-[#F4F2EC] transition-colors cursor-pointer"
             >
-              <span>Export & Audio Details</span>
+              <span>Under the Hood · Render Diagnostics</span>
               {showDetails ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
             </button>
 
             {showDetails && (
               <div className="p-4 space-y-3 text-xs font-mono tabular-nums text-[#181715] dark:text-[#F4F2EC] border-t border-[#E5E2DC] dark:border-[#2C2A27]">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px]">
+                  <div>
+                    <span className="text-[#66625B] dark:text-[#A39E95]">Engine: </span>
+                    <span className="text-[#181715] dark:text-[#F4F2EC]">FFmpeg.wasm (100% Local in Browser)</span>
+                  </div>
+                  <div>
+                    <span className="text-[#66625B] dark:text-[#A39E95]">Server Video Upload: </span>
+                    <span className="text-[#0F766E] dark:text-[#2DD4BF] font-semibold">0 B (Processed On-Device)</span>
+                  </div>
                   <div>
                     <span className="text-[#66625B] dark:text-[#A39E95]">Exit Code: </span>
                     <span className={exportResult.exitCode === 0 ? 'text-[#0F766E] dark:text-[#2DD4BF] font-bold' : 'text-[#DC2626] dark:text-[#F87171] font-bold'}>

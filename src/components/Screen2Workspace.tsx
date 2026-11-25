@@ -271,6 +271,7 @@ export const Screen2Workspace: React.FC = () => {
 
   // Workspace inline banner error
   const [workspaceBannerError, setWorkspaceBannerError] = useState<string | null>(null);
+  const [showLeaveModal, setShowLeaveModal] = useState<boolean>(false);
 
   // Mobile Drawer tab state
   const [mobileDrawerTab, setMobileDrawerTab] = useState<'ai' | 'clips' | 'audio' | 'transcript'>('ai');
@@ -1096,11 +1097,6 @@ export const Screen2Workspace: React.FC = () => {
     if ((e.target as HTMLElement).closest('button, input, select, textarea, a, label, [data-no-scrub="true"]')) {
       return;
     }
-    try {
-      e.currentTarget.setPointerCapture(e.pointerId);
-    } catch {
-      // Ignore if not supported
-    }
     const res = calcTrackTimeAndPct(e.clientX);
     if (!res) return;
     setIsScrubbing(true);
@@ -1238,11 +1234,112 @@ export const Screen2Workspace: React.FC = () => {
     };
   }, [isScrubbing, calcTrackTimeAndPct]);
 
-  // Keyboard shortcut listener ('S' to split at playhead)
+  const activeClipCount = useMemo(
+    () => (project ? project.items.filter((it) => it.status === 'ACTIVE').length : 0),
+    [project]
+  );
+
+  const selectedClip = useMemo(
+    () =>
+      project && selectedItemId
+        ? project.items.find((it) => it.id === selectedItemId && it.status !== 'DELETED') ?? null
+        : null,
+    [project, selectedItemId]
+  );
+
+  const canDeleteSelected =
+    Boolean(selectedClip) && (selectedClip?.status === 'ACTIVE' ? activeClipCount > 1 : activeClipCount >= 1);
+
+  const handleDeleteSelectedClip = useCallback(() => {
+    if (!canDeleteSelected) return;
+    deleteSelected();
+    setSelectedItemId(null);
+
+    const updatedProject = useEditorStore.getState().project;
+    if (!updatedProject) return;
+
+    const nextTotalMs = updatedProject.totalProjectDurationMs;
+    const clamped = Math.max(0, Math.min(currentProjectMsRef.current, nextTotalMs));
+    currentProjectMsRef.current = clamped;
+    setCurrentProjectMs(clamped);
+    lastSeekTargetRef.current = null;
+
+    const { item, sourceMs } = mapProjectToSource(clamped, updatedProject.items);
+    if (item && item.kind === 'SOURCE_CLIP') {
+      setActiveMemePlaying(false);
+      if (memeVideoRef.current) {
+        if (!memeVideoRef.current.paused) memeVideoRef.current.pause();
+        memeVideoRef.current.muted = true;
+      }
+      if (mainVideoRef.current) {
+        mainVideoRef.current.muted = false;
+        mainVideoRef.current.currentTime = sourceMs / 1000;
+      }
+    } else if (item && item.kind === 'MEME_CLIP') {
+      setActiveMemePlaying(true);
+      if (mainVideoRef.current) {
+        if (!mainVideoRef.current.paused) mainVideoRef.current.pause();
+        mainVideoRef.current.muted = true;
+      }
+      if (memeVideoRef.current) {
+        memeVideoRef.current.muted = false;
+        if (loadedSecondaryUrlRef.current !== item.blobUrl) {
+          loadedSecondaryUrlRef.current = item.blobUrl;
+          setIsSecondaryReady(false);
+          memeVideoRef.current.src = item.blobUrl;
+        }
+        memeVideoRef.current.currentTime = sourceMs / 1000;
+      }
+    }
+    updateTransitionFrame(clamped, updatedProject.items);
+  }, [canDeleteSelected, deleteSelected, setSelectedItemId, setCurrentProjectMs, updateTransitionFrame]);
+
+  const handleConfirmLeaveHome = useCallback(() => {
+    setShowLeaveModal(false);
+    setIsPlaying(false);
+    isPlayingRef.current = false;
+    if (mainVideoRef.current && !mainVideoRef.current.paused) {
+      mainVideoRef.current.pause();
+    }
+    if (memeVideoRef.current && !memeVideoRef.current.paused) {
+      memeVideoRef.current.pause();
+      memeVideoRef.current.muted = true;
+    }
+    if (bgMusicRef.current && !bgMusicRef.current.paused) {
+      bgMusicRef.current.pause();
+    }
+    cancelTranscription();
+    setSelectedItemId(null);
+    setScreen('UPLOAD');
+  }, [setIsPlaying, cancelTranscription, setSelectedItemId, setScreen]);
+
+  // Keyboard shortcut listener ('S' to split, Delete/Backspace to delete selected clip, Space to play/pause)
   useEffect(() => {
+    const isTypingTarget = (el: HTMLElement | null) =>
+      Boolean(
+        el &&
+          (el.tagName === 'INPUT' ||
+            el.tagName === 'TEXTAREA' ||
+            el.tagName === 'SELECT' ||
+            el.isContentEditable)
+      );
+
     const handleKeyDown = (e: KeyboardEvent) => {
-      const activeEl = document.activeElement;
-      if (activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA')) {
+      if (showLeaveModal) {
+        if (e.key === 'Escape') {
+          e.preventDefault();
+          setShowLeaveModal(false);
+        }
+        return;
+      }
+      if (isTypingTarget(e.target as HTMLElement | null) || isTypingTarget(document.activeElement as HTMLElement | null)) {
+        return;
+      }
+      if (e.key === 'Delete' || e.key === 'Backspace') {
+        if (canDeleteSelected) {
+          e.preventDefault();
+          handleDeleteSelectedClip();
+        }
         return;
       }
       if (e.key === 's' || e.key === 'S') {
@@ -1255,7 +1352,7 @@ export const Screen2Workspace: React.FC = () => {
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [splitAtPlayhead, togglePlayPause]);
+  }, [splitAtPlayhead, togglePlayPause, canDeleteSelected, handleDeleteSelectedClip, showLeaveModal]);
 
   // AI Command Execution
   const handleSendCommand = async () => {
@@ -2522,11 +2619,24 @@ export const Screen2Workspace: React.FC = () => {
       {/* Top Header */}
       <header className="h-12 md:h-14 border-b border-[#E5E2DC] dark:border-[#2C2A27] bg-white dark:bg-[#171615] px-2.5 sm:px-3 md:px-4 flex items-center justify-between z-20 shrink-0">
         <div className="flex items-center space-x-2.5 md:space-x-3 min-w-0">
-          <div className="w-7 h-7 md:w-8 md:h-8 rounded-lg bg-[#D96B27] dark:bg-[#E8632A] text-white flex items-center justify-center font-bold text-xs md:text-sm shrink-0 shadow-sm">
-            <Scissors className="w-4 h-4 text-white" />
-          </div>
+          <button
+            type="button"
+            onClick={() => setShowLeaveModal(true)}
+            title="Back to Home"
+            aria-label="Back to Home"
+            className="flex items-center space-x-2 rounded-lg p-0.5 -ml-0.5 hover:bg-[#F7F6F2] dark:hover:bg-[#24221F] transition-colors cursor-pointer shrink-0 group"
+          >
+            <div className="w-7 h-7 md:w-8 md:h-8 rounded-lg bg-[#D96B27] dark:bg-[#E8632A] group-hover:bg-[#C25A1B] dark:group-hover:bg-[#F2743D] text-white flex items-center justify-center font-bold text-xs md:text-sm shrink-0 shadow-sm transition-colors">
+              <Scissors className="w-4 h-4 text-white" />
+            </div>
+            <span className="hidden sm:inline font-extrabold tracking-tight text-xs md:text-sm">
+              <span className="text-[#181715] dark:text-[#F4F2EC]">Fastcutz</span>
+              <span className="text-[#D96B27] dark:text-[#E8632A]">.ai</span>
+            </span>
+          </button>
+          <div className="h-4 w-[1px] bg-[#E5E2DC] dark:bg-[#2C2A27] hidden sm:block shrink-0" />
           <div className="min-w-0">
-            <h2 className="text-xs md:text-sm font-semibold tracking-wide text-[#181715] dark:text-[#F4F2EC] truncate max-w-[150px] sm:max-w-[240px] md:max-w-none">{project.title}</h2>
+            <h2 className="text-xs md:text-sm font-semibold tracking-wide text-[#181715] dark:text-[#F4F2EC] truncate max-w-[140px] sm:max-w-[200px] md:max-w-none">{project.title}</h2>
             <div className="flex items-center space-x-2 text-[10px] md:text-[11px] text-[#66625B] dark:text-[#A39E95] tabular-nums font-mono">
               <span>{curProjSec}s / {totalProjSec}s</span>
             </div>
@@ -2656,10 +2766,10 @@ export const Screen2Workspace: React.FC = () => {
         </div>
 
         {/* Center: Dual-Video Preview Player (Desktop & Mobile) */}
-        <div className="flex flex-col md:flex-1 items-center justify-start md:justify-center p-1 sm:p-2 md:p-4 bg-[#F7F6F2] dark:bg-[#0E0E0D] overflow-y-auto md:overflow-hidden shrink-0 md:shrink w-full">
+        <div className="flex flex-col md:flex-1 md:min-w-0 md:min-h-0 items-center justify-start md:justify-center lg:justify-between p-1 sm:p-2 md:p-4 bg-[#F7F6F2] dark:bg-[#0E0E0D] overflow-y-auto md:overflow-hidden shrink-0 md:shrink w-full">
           {/* Inline Workspace Error Banner */}
           {workspaceBannerError && (
-            <div className="w-full max-w-3xl mb-2 px-3 py-2 rounded-xl bg-[#FEF2F2] dark:bg-[#450A0A]/40 border border-[#FCA5A5] dark:border-[#991B1B] text-[#991B1B] dark:text-[#FCA5A5] text-xs flex items-center justify-between gap-2 shadow-sm animate-in fade-in">
+            <div className="w-full max-w-3xl lg:max-w-none shrink-0 mb-2 px-3 py-2 rounded-xl bg-[#FEF2F2] dark:bg-[#450A0A]/40 border border-[#FCA5A5] dark:border-[#991B1B] text-[#991B1B] dark:text-[#FCA5A5] text-xs flex items-center justify-between gap-2 shadow-sm animate-in fade-in">
               <div className="flex items-center gap-2 min-w-0">
                 <AlertCircle className="w-4 h-4 flex-shrink-0 text-[#EF4444]" />
                 <span className="truncate">{workspaceBannerError}</span>
@@ -2682,7 +2792,7 @@ export const Screen2Workspace: React.FC = () => {
             const selectedSilences = silenceItems.filter(it => it.meta?.silenceSelected !== false).length;
 
             return (
-              <div className="w-full max-w-3xl mb-2 bg-[#FFFBEB] dark:bg-[#78350F]/30 border border-[#FCD34D] dark:border-[#B45309] rounded-xl px-3.5 py-2 flex flex-wrap sm:flex-nowrap items-center justify-between text-xs gap-2 shadow-sm">
+              <div className="w-full max-w-3xl lg:max-w-none shrink-0 mb-2 bg-[#FFFBEB] dark:bg-[#78350F]/30 border border-[#FCD34D] dark:border-[#B45309] rounded-xl px-3.5 py-2 flex flex-wrap sm:flex-nowrap items-center justify-between text-xs gap-2 shadow-sm">
                 <div className="flex items-center space-x-2 text-[#92400E] dark:text-[#FDE68A] min-w-0">
                   <ShieldAlert className="w-4 h-4 flex-shrink-0 text-[#D97706] dark:text-[#FBBF24]" />
                   <span className="truncate sm:whitespace-normal">
@@ -2717,7 +2827,7 @@ export const Screen2Workspace: React.FC = () => {
           })()}
 
           {/* Dual-Video Canvas Frame */}
-          <div className="relative w-full max-w-3xl h-[23dvh] sm:h-[25dvh] min-h-[140px] max-h-[200px] md:h-auto md:aspect-video bg-[#0B0B0A] dark:bg-[#070706] rounded-xl overflow-hidden border border-[#D8D4CC] dark:border-[#2E2C28] flex items-center justify-center shadow-sm">
+          <div className="relative w-full max-w-3xl h-[23dvh] sm:h-[25dvh] min-h-[140px] max-h-[200px] md:h-auto md:aspect-video lg:aspect-auto lg:h-full lg:flex-1 lg:min-h-0 lg:max-w-none lg:max-h-none bg-[#0B0B0A] dark:bg-[#070706] rounded-xl overflow-hidden border border-[#D8D4CC] dark:border-[#2E2C28] flex items-center justify-center shadow-sm transition-all duration-200">
             {/* Playhead-driven Frame-accurate Transition Stage (Spec 1) */}
             <div
               ref={transitionStageRef}
@@ -2774,7 +2884,7 @@ export const Screen2Workspace: React.FC = () => {
           </div>
 
           {/* Player Controls Bar */}
-          <div className="w-full max-w-3xl flex items-center justify-between mt-1 md:mt-3 px-1 md:px-2">
+          <div className="w-full max-w-3xl lg:max-w-none shrink-0 flex items-center justify-between mt-1 md:mt-3 px-1 md:px-2">
             <div className="flex items-center space-x-2 md:space-x-3">
               <button
                 onClick={togglePlayPause}
@@ -2811,10 +2921,21 @@ export const Screen2Workspace: React.FC = () => {
               </button>
 
               <button
-                onClick={deleteSelected}
-                disabled={!selectedItemId}
-                className="px-2.5 py-1.5 min-h-[36px] bg-[#FEF2F2] dark:bg-[#450A0A]/40 hover:bg-[#FEE2E2] dark:hover:bg-[#5E0F0F]/50 border border-[#FCA5A5] dark:border-[#991B1B] text-[#DC2626] dark:text-[#FCA5A5] rounded-lg text-xs font-medium flex items-center space-x-1.5 transition-colors disabled:opacity-30 disabled:cursor-not-allowed shadow-sm cursor-pointer"
-                title="Delete selected clip"
+                type="button"
+                onClick={handleDeleteSelectedClip}
+                disabled={!canDeleteSelected}
+                className={`px-2.5 py-1.5 min-h-[36px] rounded-lg text-xs font-medium flex items-center space-x-1.5 transition-colors shadow-sm ${
+                  canDeleteSelected
+                    ? 'bg-red-50 dark:bg-red-950/60 hover:bg-red-100 dark:hover:bg-red-900/70 border border-red-300 dark:border-red-700 text-red-600 dark:text-red-300 hover:text-red-700 dark:hover:text-red-200 cursor-pointer'
+                    : 'bg-[#FEF2F2] dark:bg-[#450A0A]/40 border border-[#FCA5A5] dark:border-[#991B1B] text-[#DC2626] dark:text-[#FCA5A5] opacity-35 cursor-not-allowed'
+                }`}
+                title={
+                  !selectedClip
+                    ? 'Select a clip on the timeline to delete'
+                    : !canDeleteSelected
+                    ? 'Cannot delete the only remaining clip'
+                    : 'Delete selected clip (Delete / Backspace)'
+                }
               >
                 <Trash2 className="w-3.5 h-3.5" />
                 <span className="hidden sm:inline">Delete</span>
@@ -3274,6 +3395,12 @@ export const Screen2Workspace: React.FC = () => {
                       setDraggedItemId(null);
                       setDropTarget(null);
                     }}
+                    onPointerDown={(e) => {
+                      if ((e.target as HTMLElement).closest('button, input, select, textarea, a, label, [data-no-scrub="true"]')) {
+                        return;
+                      }
+                      setSelectedItemId(item.id);
+                    }}
                     onClick={(e) => {
                       e.stopPropagation();
                       setSelectedItemId(item.id);
@@ -3283,21 +3410,42 @@ export const Screen2Workspace: React.FC = () => {
                     className={`h-14 md:h-16 rounded-lg px-2 py-1 flex flex-col justify-between transition-all relative select-none cursor-pointer box-border overflow-visible flex-shrink-0 ${
                       draggedItemId === item.id ? 'opacity-50' : 'opacity-100'
                     } ${
-                      isSelected
-                        ? 'ring-2 ring-[#D96B27] dark:ring-[#E8632A] border-transparent shadow-md'
-                        : 'border border-[#E5E2DC] dark:border-[#2C2A27]'
-                    } ${
                       isSilence
                         ? isSilenceSelected
                           ? 'bg-[#FEF3C7] dark:bg-[#78350F]/40 border border-[#F59E0B] dark:border-[#B45309] text-[#92400E] dark:text-[#FDE68A] hover:bg-[#FDE68A] dark:hover:bg-[#78350F]/60'
-                          : 'border-dashed border-[#D8D4CC] dark:border-[#383531] bg-[#F2EFEB] dark:bg-[#1E1D1B] text-[#8E8A82] dark:text-[#78736B] hover:bg-[#E5E2DC] dark:hover:bg-[#262421]'
+                          : 'border border-dashed border-[#D8D4CC] dark:border-[#383531] bg-[#F2EFEB] dark:bg-[#1E1D1B] text-[#8E8A82] dark:text-[#78736B] hover:bg-[#E5E2DC] dark:hover:bg-[#262421]'
                         : isMeme
                         ? replacingMemeId === item.id
                           ? 'bg-[#FFF1F2] dark:bg-[#4C0519]/40 text-[#BE123C] dark:text-[#FDA4AF] ring-2 ring-[#D96B27] dark:ring-[#E8632A] animate-pulse shadow-lg border border-[#FDA4AF] dark:border-[#9F1239]'
                           : 'bg-[#FFF1F2] dark:bg-[#4C0519]/40 border border-[#FDA4AF] dark:border-[#9F1239] text-[#BE123C] dark:text-[#FDA4AF] hover:bg-[#FFE4E6] dark:hover:bg-[#4C0519]/60'
                         : 'bg-[#252422] dark:bg-[#1B1A18] text-[#F7F6F2] border border-[#3D3A35] dark:border-[#2E2C28] hover:border-[#524E47] dark:hover:border-[#423F3A]'
+                    } ${
+                      isSelected
+                        ? 'ring-2 ring-orange-500 ring-inset shadow-[0_0_0_1px_rgba(249,115,22,0.75),0_4px_12px_rgba(249,115,22,0.28)] z-20 brightness-110'
+                        : ''
                     }`}
                   >
+                    {/* Inline Delete Button on Selected Clip */}
+                    {isSelected && canDeleteSelected && !isSilence && (
+                      <button
+                        type="button"
+                        data-no-scrub="true"
+                        draggable={false}
+                        onDragStart={(e) => e.stopPropagation()}
+                        onPointerDown={(e) => e.stopPropagation()}
+                        onMouseDown={(e) => e.stopPropagation()}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDeleteSelectedClip();
+                        }}
+                        title="Delete selected clip (Delete)"
+                        aria-label="Delete selected clip"
+                        className="absolute top-1 right-1 z-30 w-5 h-5 rounded-md bg-red-600 hover:bg-red-500 text-white flex items-center justify-center shadow-md ring-1 ring-white/80 dark:ring-black/60 transition-transform hover:scale-105 cursor-pointer"
+                      >
+                        <Trash2 className="w-3 h-3" />
+                      </button>
+                    )}
+
                     {/* Touch Reorder Buttons on Selected Active Clip */}
                     {isSelected && isDraggable && nonDeletedItems.length >= 2 && (
                       <div
@@ -3437,7 +3585,7 @@ export const Screen2Workspace: React.FC = () => {
                       )}
                       {isMeme && (isSelected || !isNarrow) && (
                         <div
-                          className={`items-center space-x-1 ${!isSelected ? 'hidden sm:flex' : 'flex'}`}
+                          className={`items-center space-x-1 ${!isSelected ? 'hidden sm:flex' : canDeleteSelected ? 'flex mr-6' : 'flex'}`}
                           data-no-scrub="true"
                           draggable={false}
                           onDragStart={(e) => e.stopPropagation()}
@@ -3460,13 +3608,15 @@ export const Screen2Workspace: React.FC = () => {
                           >
                             {replacingMemeId === item.id ? 'Cancel' : 'Replace'}
                           </button>
-                          <button
-                            onClick={() => removeMemeClip(item.id)}
-                            className="p-1 bg-white dark:bg-[#24221F] hover:bg-[#FEF2F2] dark:hover:bg-[#450A0A]/40 text-[#BE123C] dark:text-[#FDA4AF] hover:text-[#DC2626] dark:hover:text-[#F87171] rounded border border-[#FDA4AF] dark:border-[#9F1239] transition-colors cursor-pointer"
-                            title="Remove this meme and restore continuous video"
-                          >
-                            <Trash2 className="w-2.5 h-2.5" />
-                          </button>
+                          {!(isSelected && canDeleteSelected) && (
+                            <button
+                              onClick={() => removeMemeClip(item.id)}
+                              className="p-1 bg-white dark:bg-[#24221F] hover:bg-[#FEF2F2] dark:hover:bg-[#450A0A]/40 text-[#BE123C] dark:text-[#FDA4AF] hover:text-[#DC2626] dark:hover:text-[#F87171] rounded border border-[#FDA4AF] dark:border-[#9F1239] transition-colors cursor-pointer"
+                              title="Remove this meme and restore continuous video"
+                            >
+                              <Trash2 className="w-2.5 h-2.5" />
+                            </button>
+                          )}
                         </div>
                       )}
                     </div>
@@ -3648,6 +3798,47 @@ export const Screen2Workspace: React.FC = () => {
           {mobileDrawerTab === 'transcript' && renderTranscriptSection()}
         </div>
       </div>
+
+      {/* Unsaved-work Leave Workspace Confirmation Modal */}
+      {showLeaveModal && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/55 backdrop-blur-xs p-4"
+          onClick={() => setShowLeaveModal(false)}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="leave-workspace-title"
+        >
+          <div
+            className="w-full max-w-sm rounded-2xl bg-white dark:bg-[#171615] border border-[#E5E2DC] dark:border-[#2C2A27] shadow-2xl p-5 space-y-4 text-[#181715] dark:text-[#F4F2EC]"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="space-y-1.5">
+              <h3 id="leave-workspace-title" className="text-base font-bold text-[#181715] dark:text-[#F4F2EC]">
+                Leave workspace?
+              </h3>
+              <p className="text-xs leading-relaxed text-[#66625B] dark:text-[#A39E95]">
+                Your current timeline edits aren&apos;t saved yet. Export your MP4 first if you want to keep your changes.
+              </p>
+            </div>
+            <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2 pt-1">
+              <button
+                type="button"
+                onClick={() => setShowLeaveModal(false)}
+                className="px-3.5 py-2 rounded-lg text-xs font-medium bg-[#F0EEE9] dark:bg-[#24221F] hover:bg-[#E7E4DD] dark:hover:bg-[#2E2B27] border border-[#E5E2DC] dark:border-[#2C2A27] text-[#181715] dark:text-[#F4F2EC] transition-colors cursor-pointer"
+              >
+                Stay &amp; Keep Editing
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmLeaveHome}
+                className="px-3.5 py-2 rounded-lg text-xs font-semibold bg-[#D96B27] dark:bg-[#E8632A] hover:bg-[#C25A1B] dark:hover:bg-[#F2743D] text-white shadow-sm transition-colors cursor-pointer"
+              >
+                Discard &amp; Go Home
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

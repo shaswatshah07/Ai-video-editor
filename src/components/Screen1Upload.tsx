@@ -1801,6 +1801,23 @@ export const Screen1Upload: React.FC = () => {
               </button>
             </div>
           </div>
+
+          {/* 1-Row Quiet Engine Strip */}
+          <div className="md:col-span-12 flex flex-wrap items-center justify-center gap-2 text-[11px] pt-1">
+            {[
+              'FFmpeg.wasm · Local MP4',
+              'Whisper · On-Device Hinglish',
+              'Gemini · Command Hub',
+              '0 MB Cloud Upload'
+            ].map((pill) => (
+              <span
+                key={pill}
+                className="px-2.5 py-1 rounded-full border border-[#E5E2DC] dark:border-[#2C2A27] bg-white/75 dark:bg-[#171615]/80 text-[#66625B] dark:text-[#A39E95] font-mono tracking-tight"
+              >
+                {pill}
+              </span>
+            ))}
+          </div>
         </main>
       </section>
 
